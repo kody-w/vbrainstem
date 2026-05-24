@@ -38,8 +38,13 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   background: var(--bg); color: var(--text);
   min-height:100vh; min-height:100dvh; /* dvh tracks iOS toolbar; vh is the fallback */
-  display: flex; flex-direction: column;
 }
+/* View modes: landing mirrors rapp-installer; app is the running brainstem */
+body.mode-app { display:flex; flex-direction:column; }
+body.mode-app #landingView { display:none; }
+body.mode-app #appView { flex:1; min-height:0; display:flex; flex-direction:column; }
+body.mode-landing { display:flex; flex-direction:column; align-items:center; padding:48px 24px 72px; }
+body.mode-landing #appView { display:none; }
 a { color: var(--accent); text-decoration:none; }
 code, .mono { font-family: 'SF Mono','Fira Code',Consolas,'Liberation Mono',Menlo,monospace; }
 
@@ -334,9 +339,189 @@ code, .mono { font-family: 'SF Mono','Fira Code',Consolas,'Liberation Mono',Menl
 }
 .summon-toast.show { transform: translate(-50%, 0); opacity: 1; }
 .summon-toast b { font-weight: 800; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Landing page — mirrors kody-w/rapp-installer index.html.
+   Pure presentation; the runtime engine below is unchanged.
+   ═══════════════════════════════════════════════════════════════════════ */
+#landingView { width:100%; max-width:640px; display:flex; flex-direction:column; align-items:center; }
+
+/* Hero */
+.lp-hero { text-align:center; max-width:620px; margin-bottom:40px; }
+.lp-hero .lp-logo { font-size:64px; line-height:1; margin-bottom:16px; filter:drop-shadow(0 6px 22px rgba(88,166,255,.35)); }
+.lp-hero h1 { font-size:36px; font-weight:700; margin-bottom:10px; letter-spacing:-.5px; }
+.lp-hero p { color:var(--text-dim); font-size:16px; line-height:1.6; }
+.lp-hero p strong { color:var(--text); }
+.lp-hero .lp-tagline { color:var(--accent); font-weight:600; font-size:12px; margin-top:14px; text-transform:uppercase; letter-spacing:1px; }
+
+/* Boot terminal — mirrors the install-widget */
+.lp-boot {
+  width:100%; max-width:620px; margin-bottom:36px;
+  background:var(--surface); border:2px solid var(--green); border-radius:12px;
+  overflow:hidden; box-shadow:0 14px 44px rgba(0,0,0,.45);
+}
+.lp-boot-bar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 14px; height:40px; border-bottom:1px solid var(--border); background:var(--surface2);
+}
+.lp-boot-bar-left { display:flex; align-items:center; gap:12px; }
+.lp-dots { display:flex; gap:6px; }
+.lp-dots span { width:11px; height:11px; border-radius:50%; }
+.lp-dots span:nth-child(1){ background:#f85149; }
+.lp-dots span:nth-child(2){ background:#d29922; }
+.lp-dots span:nth-child(3){ background:#3fb950; }
+.lp-boot-title { font-family:'SF Mono','Fira Code',monospace; font-size:12px; color:var(--text-muted); }
+.lp-boot-tag {
+  font-family:'SF Mono','Fira Code',monospace; font-size:11px; font-weight:600;
+  color:var(--orange); padding:3px 9px; border-radius:11px; background:var(--orange-bg);
+}
+.lp-boot-tag.ready { color:var(--green); background:var(--green-bg); }
+.lp-boot-body {
+  padding:16px 18px; min-height:120px; max-height:210px; overflow-y:auto;
+  font-family:'SF Mono','Fira Code',monospace; font-size:13px; line-height:1.9;
+}
+.lp-line { display:flex; gap:9px; white-space:pre-wrap; word-break:break-word; }
+.lp-line .lp-mark { flex-shrink:0; }
+.lp-line.cmd { color:var(--text); }      .lp-line.cmd .lp-mark { color:var(--text-muted); }
+.lp-line.run { color:var(--text-dim); }  .lp-line.run .lp-mark { color:var(--accent); }
+.lp-line.ok  { color:var(--text); }       .lp-line.ok  .lp-mark { color:var(--green); }
+.lp-boot-foot { padding:0 18px 16px; }
+.lp-launch {
+  width:100%; background:var(--green); color:#fff; border:none; border-radius:8px;
+  padding:12px 18px; font-size:14px; font-weight:700; cursor:pointer; transition:all .15s; font-family:inherit;
+}
+.lp-launch:hover:not(:disabled) { background:#2ea043; transform:translateY(-1px); }
+.lp-launch:disabled { opacity:.4; cursor:default; }
+
+/* Tier cards — mirror rapp-installer */
+.lp-tiers { width:100%; max-width:620px; }
+.lp-tier { background:var(--surface); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; overflow:hidden; transition:border-color .15s; }
+.lp-tier:hover { border-color:var(--border-hover); }
+.lp-tier-head { padding:18px 20px; display:flex; align-items:center; gap:15px; cursor:pointer; user-select:none; }
+.lp-tier-icon { font-size:28px; flex-shrink:0; }
+.lp-tier-title h2 { font-size:16px; font-weight:600; margin-bottom:2px; }
+.lp-tier-title .lp-sub { font-size:13px; color:var(--text-dim); }
+.lp-tier-badge { margin-left:auto; font-size:10px; font-weight:700; padding:4px 10px; border-radius:11px; flex-shrink:0; text-transform:uppercase; letter-spacing:.5px; }
+.lp-tier-badge.start { background:var(--green); color:#fff; }
+.lp-tier-badge.info  { background:var(--accent-bg); color:var(--accent); border:1px solid var(--accent); }
+.lp-tier-badge.adv   { background:var(--purple-bg); color:var(--purple); border:1px solid var(--purple); }
+.lp-tier-arrow { color:var(--text-muted); font-size:15px; transition:transform .2s; flex-shrink:0; }
+.lp-tier.open .lp-tier-arrow { transform:rotate(90deg); }
+.lp-tier-body { display:none; padding:2px 20px 20px; }
+.lp-tier.open .lp-tier-body { display:block; }
+.lp-tier-body p { color:var(--text-dim); font-size:13.5px; line-height:1.65; margin-top:12px; }
+.lp-tier-body .lp-em { color:var(--purple); font-style:italic; }
+.lp-tier-body code { background:var(--surface2); padding:1px 6px; border-radius:4px; font-family:'SF Mono',monospace; font-size:12px; color:var(--accent); }
+.lp-tier-body a { color:var(--accent); }
+
+/* Status bar + footer links */
+.lp-status { width:100%; max-width:620px; margin-top:20px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px 24px; text-align:center; }
+.lp-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; background:var(--text-muted); }
+.lp-dot.checking { background:var(--orange); animation:pulse 1s infinite; }
+.lp-dot.ready { background:var(--green); }
+.lp-status-label { font-size:14px; vertical-align:middle; color:var(--text-dim); }
+.lp-status .lp-launch { margin-top:12px; width:auto; padding:10px 26px; }
+.lp-links { margin-top:30px; text-align:center; font-size:13px; color:var(--text-muted); }
+.lp-links a { margin:0 11px; color:var(--text-dim); }
+.lp-links a:hover { color:var(--accent); }
+
+@media (max-width:768px) {
+  body.mode-landing { padding:32px 16px 56px; }
+  .lp-hero h1 { font-size:30px; }
+  .lp-hero .lp-logo { font-size:54px; }
+}
 </style>
 </head>
-<body>
+<body class="mode-landing">
+
+<!-- ═══════════════ Landing (mirrors rapp-installer index.html) ═══════════════ -->
+<div id="landingView">
+
+  <div class="lp-hero">
+    <div class="lp-logo">🧠</div>
+    <h1>RAPP Brainstem</h1>
+    <p>A local-first AI agent server that runs <strong>entirely in your browser</strong>.<br>Real CPython via Pyodide — no install, no server, no API keys to start.</p>
+    <div class="lp-tagline">Virtual brainstem · runs on WebAssembly</div>
+  </div>
+
+  <div class="lp-boot" id="lpBoot">
+    <div class="lp-boot-bar">
+      <div class="lp-boot-bar-left">
+        <div class="lp-dots"><span></span><span></span><span></span></div>
+        <span class="lp-boot-title">brainstem — wasm</span>
+      </div>
+      <span class="lp-boot-tag" id="lpBootTag">booting…</span>
+    </div>
+    <div class="lp-boot-body" id="lpBootBody"></div>
+    <div class="lp-boot-foot">
+      <button class="lp-launch" id="lpLaunch" onclick="launchBrainstem()" disabled>Launch Brainstem ▶</button>
+    </div>
+  </div>
+
+  <div class="lp-tiers">
+    <div class="lp-tier" onclick="toggleTier(event, this)">
+      <div class="lp-tier-head">
+        <div class="lp-tier-icon">🧠</div>
+        <div class="lp-tier-title">
+          <h2>Run agents in your browser</h2>
+          <div class="lp-sub">The survival basics — a brainstem with no server</div>
+        </div>
+        <span class="lp-tier-badge start">Start here</span>
+        <span class="lp-tier-arrow">▶</span>
+      </div>
+      <div class="lp-tier-body">
+        <p>Chat naturally and the brainstem routes to the right agent, then executes it locally in a real CPython sandbox (<code>Pyodide</code>, compiled to WebAssembly). No backend, no keys — nothing leaves your machine.</p>
+        <p><span class="lp-em">The biological brainstem keeps you alive without thinking about it. This one keeps your agents running — right here in the tab.</span></p>
+      </div>
+    </div>
+    <div class="lp-tier" onclick="toggleTier(event, this)">
+      <div class="lp-tier-head">
+        <div class="lp-tier-icon">💾</div>
+        <div class="lp-tier-title">
+          <h2>Memory, tools &amp; hot-loading</h2>
+          <div class="lp-sub">Persists in your browser — drag in new skills</div>
+        </div>
+        <span class="lp-tier-badge info">How it works</span>
+        <span class="lp-tier-arrow">▶</span>
+      </div>
+      <div class="lp-tier-body">
+        <p>Built-in <code>ManageMemory</code> and <code>ContextMemory</code> agents persist to a localStorage-backed virtual filesystem. Drop any <code>agent.py</code> onto the chat to hot-load it instantly. Sign in with GitHub to chat through GitHub Models — your Copilot subscription is the engine.</p>
+      </div>
+    </div>
+    <div class="lp-tier" onclick="toggleTier(event, this)">
+      <div class="lp-tier-head">
+        <div class="lp-tier-icon">🔌</div>
+        <div class="lp-tier-title">
+          <h2>Live RAR registry</h2>
+          <div class="lp-sub">Every public agent, streamed on demand</div>
+        </div>
+        <span class="lp-tier-badge adv">Advanced</span>
+        <span class="lp-tier-arrow">▶</span>
+      </div>
+      <div class="lp-tier-body">
+        <p>Agents stream live from the <a href="https://github.com/kody-w/RAR">kody-w/RAR</a> registry. Scan a Grail card QR — a <code>?agent=@publisher/slug</code> deep-link — to summon a specific agent straight into the dropdown. Want a server-grade brainstem with persistent memory and Azure deploy? <a href="https://kody-w.github.io/rapp-installer/">Install the local one</a>.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="lp-status">
+    <span class="lp-dot checking" id="lpDot"></span>
+    <span class="lp-status-label" id="lpStatus">Booting virtual brainstem…</span>
+    <br>
+    <button class="lp-launch" id="lpLaunch2" onclick="launchBrainstem()" disabled>Enter the Brainstem</button>
+  </div>
+
+  <div class="lp-links">
+    <a href="https://github.com/kody-w/vbrainstem">GitHub</a>
+    <a href="https://kody-w.github.io/RAR/">RAPP Store</a>
+    <a href="https://github.com/kody-w/RAR">Registry</a>
+    <a href="virtual-brainstem.html">Classic UI</a>
+  </div>
+
+</div>
+
+<!-- ═══════════════ Running app — revealed on Launch (engine unchanged) ═══════════════ -->
+<div id="appView">
 
 <!-- Header -->
 <div class="bs-header">
@@ -406,8 +591,15 @@ code, .mono { font-family: 'SF Mono','Fira Code',Consolas,'Liberation Mono',Menl
   </div>
 </div>
 
+</div><!-- /#appView -->
 
 <script>
+// Summon / QR deep-link arrivals skip the landing and open straight into chat.
+// Set synchronously (before first paint) so there is no landing flash.
+if (new URLSearchParams(location.search).getAll('agent').length) {
+  try { document.body.className = 'mode-app'; } catch (_) {}
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // SECTION 1: lispy.js — Complete Lisp Interpreter in JavaScript
 // ═══════════════════════════════════════════════════════════════════════
@@ -4531,7 +4723,63 @@ async function applySummonDeepLink() {
   history.replaceState({}, '', url.toString());
 }
 
+// ── Landing page (mirrors rapp-installer) — boot terminal + launch ──
+const _lpSleep = ms => new Promise(r => setTimeout(r, ms));
+
+function bootLog(text, kind = 'run') {
+  const body = document.getElementById('lpBootBody');
+  if (!body) return;
+  const line = document.createElement('div');
+  line.className = 'lp-line ' + kind;
+  const mark = document.createElement('span');
+  mark.className = 'lp-mark';
+  mark.textContent = kind === 'cmd' ? '$' : kind === 'ok' ? '✓' : '→';
+  const txt = document.createElement('span');
+  txt.textContent = text;
+  line.appendChild(mark);
+  line.appendChild(txt);
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+}
+
+function setLandingStatus(state, text) {
+  const dot = document.getElementById('lpDot');
+  const label = document.getElementById('lpStatus');
+  if (dot) dot.className = 'lp-dot ' + state;
+  if (label) label.textContent = text;
+}
+
+function bootReady() {
+  document.querySelectorAll('.lp-launch').forEach(b => { b.disabled = false; });
+  const tag = document.getElementById('lpBootTag');
+  if (tag) { tag.textContent = 'ready'; tag.classList.add('ready'); }
+  const n = (typeof availableAgents !== 'undefined' && availableAgents) ? availableAgents.length : 0;
+  setLandingStatus('ready', `Virtual brainstem online · ${n} registry agents`);
+}
+
+function launchBrainstem() {
+  if (document.body.classList.contains('mode-app')) return;
+  document.body.classList.remove('mode-landing');
+  document.body.classList.add('mode-app');
+  const inp = document.getElementById('chatInput');
+  if (inp && !inp.disabled) setTimeout(() => inp.focus(), 60);
+  window.scrollTo(0, 0);
+}
+
+function toggleTier(e, el) {
+  if (e.target.closest('a')) return;
+  el.classList.toggle('open');
+}
+
 (async function init() {
+  const summoning = new URLSearchParams(location.search).getAll('agent').length > 0;
+
+  bootLog('boot brainstem.wasm', 'cmd');
+  await _lpSleep(160);
+  bootLog('LisPy interpreter mounted', 'ok');
+  await _lpSleep(110);
+  bootLog('Python → JS transpiler online', 'ok');
+
   // Handle OAuth callback if present
   await handleAuthCallback();
 
@@ -4539,6 +4787,7 @@ async function applySummonDeepLink() {
   if (chatToken) {
     await fetchGHUser();
     fetchModels(); // non-blocking — populates dropdown in background
+    bootLog('GitHub session restored', 'ok');
   }
   updateGHPill();
 
@@ -4546,10 +4795,22 @@ async function applySummonDeepLink() {
   restoreVFSAgents();
 
   // Load registry for agent dropdown — await so summon can validate
+  bootLog('fetching agent registry…', 'run');
   await loadRegistryForChat();
+  bootLog(`registry loaded · ${availableAgents.length} agents`, 'ok');
+
+  bootReady();
 
   // Apply summon deep-link (?agent=@pub/slug) if present
   await applySummonDeepLink();
+
+  // Warm CPython in the background so the first agent run is instant.
+  ensurePyodide()
+    .then(() => bootLog('CPython (Pyodide) ready', 'ok'))
+    .catch(() => bootLog('CPython will load on first agent run', 'run'));
+
+  // QR / deep-link arrivals skip the landing and drop straight into chat.
+  if (summoning) launchBrainstem();
 })();
 
 </script>
