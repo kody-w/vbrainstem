@@ -191,9 +191,10 @@
   <p>The skill makes Claude run this first — it exits <code>PASS</code> only if a separate sealed peer reached the real brainstem:</p>
   <div class="code"><button class="cp">copy</button><pre><span class="c-cm"># one-command proof this machine can be a sealed doorman</span>
 curl -fsSL https://raw.githubusercontent.com/kody-w/vbrainstem/main/doorman_selftest.sh | bash</pre></div>
-  <p>The easy GUI door (a secure-context page that shows peer-id + token + QR and stays open):</p>
-  <div class="code"><button class="cp">copy</button><pre>open https://kody-w.github.io/vbrainstem/brainstem_bridge.html
-<span class="c-cm"># leave the URL at http://localhost:7077 → click “Host bridge”</span></pre></div>
+  <p>Open the door (GUI). The brainstem is on <code>http://localhost</code>, so <b>serve the bridge from <code>localhost</code> too</b> — an HTTPS page is blocked from fetching <code>http://localhost</code> (mixed-content / private-network) and the call hangs; <code>localhost</code> is still a secure context, so sealing works:</p>
+  <div class="code"><button class="cp">copy</button><pre>curl -fsSL https://raw.githubusercontent.com/kody-w/vbrainstem/main/brainstem_bridge.html -o brainstem_bridge.html
+python3 -m http.server 8123 &amp;
+open http://localhost:8123/brainstem_bridge.html   <span class="c-cm"># URL stays http://localhost:7077 → “Host bridge”</span></pre></div>
 </section>
 
 <section id="duties">
@@ -257,6 +258,7 @@ bash vbridge.sh &lt;peerB&gt; &lt;tokenB&gt; ask "who are you and what can you d
     <tr><td>Self-test fails at brainstem health</td><td>The local brainstem isn't on <code>BRAINSTEM_URL</code> — start it (or set the URL).</td></tr>
     <tr><td><code>Chrome not found</code></td><td><code>export CHROME=/path/to/chrome</code> and retry.</td></tr>
     <tr><td>Two devices on different networks won't pair</td><td>NAT traversal needs STUN/TURN — fine on normal nets; same-machine/LAN needs neither.</td></tr>
+    <tr><td>Bridge hangs at “starting bridge”, never hosts</td><td>The page is HTTPS but the brainstem is <code>http://localhost</code> — serve the bridge from <code>localhost</code> (HTTPS→localhost is blocked by mixed-content / private-network).</td></tr>
     <tr><td><code>crypto.subtle</code> undefined</td><td>The bridge is on <code>file://</code> — use the HTTPS page or a <code>localhost</code> server (secure contexts).</td></tr>
     <tr><td>Visitor gets timeouts, not errors</td><td>That's a wrong-key peer being shut out (it can't read the sealed rejection) — re-check the token.</td></tr>
   </table>

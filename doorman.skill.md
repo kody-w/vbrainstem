@@ -62,25 +62,22 @@ A **kited twin** is a tab flown on a kite string. It is **tethered** when the st
 
 ## 3. Doorman duty A — open the door (front this machine's brainstem)
 
-Expose this machine's local brainstem into the neighborhood so a remote browser/peer can drive it. **Easiest (GUI):** have the user open
+Expose this machine's local brainstem into the neighborhood so a remote browser/peer can drive it.
 
-```
-https://kody-w.github.io/vbrainstem/brainstem_bridge.html
-```
-
-leave the URL at `http://localhost:7077`, and click **Host bridge**. The page shows a **peer-id**, a **token**, and an **operator link**. Hand the operator link to the authorized visitor (same person/account) over a private channel. Everything they send is sealed.
-
-**Headless (you host it yourself), keeping the door open:**
+**The brainstem is on `http://localhost`, so serve the bridge page from `localhost` too.** A page loaded over **HTTPS** (e.g. the deployed site) is blocked by Chrome's mixed-content / private-network policy from fetching `http://localhost` — the call silently **hangs**. `http://localhost` is itself a secure context, so WebCrypto/sealing still works. (Verified the hard way: the deployed page hosts a peer fine but never reaches `:7077`.)
 
 ```bash
-# adapt the hosting block from doorman_selftest.sh, but DON'T run --once and DON'T kill Chrome:
-#  - serve brainstem_bridge.html with an auto-host driver that POSTs {peer_id, token}
-#  - launch headless Chrome at it on a private --remote-debugging-port
-#  - read peer_id + token, hand them to the visitor, and LEAVE Chrome running
-# The door stays open until you kill that Chrome process (= ending the session).
+curl -fsSL https://raw.githubusercontent.com/kody-w/vbrainstem/main/brainstem_bridge.html -o brainstem_bridge.html
+python3 -m http.server 8123 &                     # any static server
+open http://localhost:8123/brainstem_bridge.html   # macOS (Linux: xdg-open)
+# leave the URL at http://localhost:7077 → click “Host bridge”
 ```
 
-> Note: `brainstem_bridge.html` must run in a **secure context** for WebCrypto — use the deployed HTTPS page or a `localhost`-served copy (not `file://`). HTTPS → `http://localhost` fetch is allowed by Chrome; the brainstem reflects CORS.
+The page shows a **peer-id**, a **token**, and an **operator link**. Hand the operator link to the authorized visitor (same person/account) over a private channel; everything they send is sealed. *(The deployed HTTPS page is fine only when the target brainstem is itself reachable over HTTPS / a public URL — not for `http://localhost`.)*
+
+**Headless / programmatic (you host it yourself via CDP)** — this is exactly what `doorman_selftest.sh` automates: serve the bridge on `localhost`, launch Chrome with a private `--remote-debugging-port`, then over CDP set `#bs` and call `host()`, and read back `_state.id` + `_state.token`. Leave Chrome running; killing it ends the session.
+
+> Note: never serve the bridge from `file://` — WebCrypto needs a secure context (`http://localhost` or HTTPS).
 
 ---
 
