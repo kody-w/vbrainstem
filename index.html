@@ -515,7 +515,7 @@ code, .mono { font-family: 'SF Mono','Fira Code',Consolas,'Liberation Mono',Menl
     <a href="https://github.com/kody-w/vbrainstem">GitHub</a>
     <a href="https://kody-w.github.io/RAR/">RAPP Store</a>
     <a href="https://github.com/kody-w/RAR">Registry</a>
-    <a href="virtual-brainstem.html">Classic UI</a>
+    <a href="https://kody-w.github.io/rapp-installer/">Local Brainstem</a>
   </div>
 
 </div>
@@ -3370,13 +3370,15 @@ function runTests() {
 // SECTION 6: Chat Mode — GitHub Models + Built-in Agents
 // ═══════════════════════════════════════════════════════════════════════
 
-const GH_MODELS_URL = 'https://models.inference.ai.azure.com/chat/completions';
+const GH_MODELS_URL = 'https://models.inference.ai.azure.com/chat/completions';   // legacy fallback (bare model ids)
+const GH_MODELS_NEW_URL = 'https://models.github.ai/inference/chat/completions';  // new GitHub Models — full account catalog
+const GH_CATALOG_URL = 'https://models.github.ai/catalog/models';                 // public model catalog
 const AUTH_CLIENT_ID = 'Ov23liuueQBIUggrH8NG';
 const AUTH_WORKER_URL = 'https://rappterbook-auth.kwildfeuer.workers.dev';
 
 let chatToken = localStorage.getItem('rb_access_token') || localStorage.getItem('gh_token') || null;
 let chatUser = null;
-let chatModel = localStorage.getItem('vb_model') || 'gpt-4o-mini';
+let chatModel = localStorage.getItem('vb_model') || 'openai/gpt-4o-mini';
 let availableModels = [];
 let chatHistory = [];
 let chatBusy = false;
@@ -3829,14 +3831,7 @@ class <ClassName>Agent(BasicAgent):
       { role: 'user', content: genPrompt }
     ];
 
-    const resp = await fetch(GH_MODELS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatToken}` },
-      body: JSON.stringify({ model: chatModel, messages: genMessages, temperature: 0.4, max_tokens: 2048 })
-    });
-
-    if (!resp.ok) throw new Error(`LLM error: ${resp.status}`);
-    const data = await resp.json();
+    const data = await ghChatCompletions({ model: chatModel, messages: genMessages, temperature: 0.4, max_tokens: 2048 });
     let source = data.choices[0].message.content;
 
     // Strip markdown fences if the LLM wrapped it anyway
@@ -3869,35 +3864,66 @@ class <ClassName>Agent(BasicAgent):
 
 // ── GitHub Models API ──
 
+function _handleAuthExpired() {
+  chatToken = null;
+  localStorage.removeItem('rb_access_token');
+  localStorage.removeItem('gh_token');
+  updateGHPill();
+}
+
+// 'openai/gpt-4o' -> 'gpt-4o' — the legacy endpoint uses bare model names.
+function stripPublisher(model) {
+  return (model && model.includes('/')) ? model.split('/').pop() : model;
+}
+
+// Does the selected model advertise tool-calling? Agent routing needs it.
+function modelSupportsTools(id) {
+  const m = availableModels.find(x => (x.id || x) === id);
+  if (!m || !m.capabilities) return true; // unknown — assume yes (old behavior)
+  return m.capabilities.includes('tool-calling');
+}
+
+// POST a chat-completions body to GitHub Models. Tries the new models.github.ai
+// endpoint first (the full account catalog: GPT-5/o-series, Llama, Mistral,
+// DeepSeek, Phi, Grok, Cohere…) and falls back to the legacy Azure inference
+// endpoint (bare model id) if the new API rejects this token.
+async function ghChatCompletions(body) {
+  if (!chatToken) throw new Error('Not signed in');
+  const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatToken}` };
+
+  // 1) New GitHub Models API — full 'publisher/model' id.
+  try {
+    const resp = await fetch(GH_MODELS_NEW_URL, { method: 'POST', headers, body: JSON.stringify(body) });
+    if (resp.ok) return resp.json();
+    if (resp.status === 401) { _handleAuthExpired(); throw new Error('Token expired -- please sign in again'); }
+    // other statuses → try legacy (this token/model may not be on the new API)
+  } catch (e) {
+    if (/Token expired/.test(e.message)) throw e;
+    // network/CORS error → fall through to legacy
+  }
+
+  // 2) Legacy Azure inference endpoint — strip the publisher prefix.
+  const resp2 = await fetch(GH_MODELS_URL, {
+    method: 'POST', headers,
+    body: JSON.stringify({ ...body, model: stripPublisher(body.model) })
+  });
+  if (!resp2.ok) {
+    const errText = await resp2.text();
+    if (resp2.status === 401) { _handleAuthExpired(); throw new Error('Token expired -- please sign in again'); }
+    throw new Error(`GitHub Models (${resp2.status}): ${errText.slice(0, 200)}`);
+  }
+  return resp2.json();
+}
+
 async function callGitHubModels(messages) {
   if (!chatToken) throw new Error('Not signed in');
-  const resp = await fetch(GH_MODELS_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${chatToken}`
-    },
-    body: JSON.stringify({
-      model: chatModel,
-      messages,
-      tools: buildChatTools(),
-      tool_choice: 'auto',
-      temperature: 0.7,
-      max_tokens: 2048
-    })
-  });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    if (resp.status === 401) {
-      chatToken = null;
-      localStorage.removeItem('rb_access_token');
-      localStorage.removeItem('gh_token');
-      updateGHPill();
-      throw new Error('Token expired -- please sign in again');
-    }
-    throw new Error(`GitHub Models (${resp.status}): ${errText.slice(0, 200)}`);
+  const body = { model: chatModel, messages, temperature: 0.7, max_tokens: 2048 };
+  // Only request tools when the chosen model supports them; otherwise plain chat.
+  if (modelSupportsTools(chatModel)) {
+    body.tools = buildChatTools();
+    body.tool_choice = 'auto';
   }
-  return resp.json();
+  return ghChatCompletions(body);
 }
 
 // ── Chat UI ──
@@ -4180,54 +4206,57 @@ function extractModelName(raw) {
 }
 
 async function fetchModels() {
-  if (!chatToken) return;
+  // The public GitHub Models catalog — the full set the account can use.
+  // Listing needs no token; the token is only used at completion time.
   try {
-    const resp = await fetch('https://models.inference.ai.azure.com/models', {
-      headers: { 'Authorization': `Bearer ${chatToken}` }
-    });
-    if (!resp.ok) return;
-    const data = await resp.json();
-    const list = data.data || data || [];
-
-    // Extract clean model names, filter to chat models
-    const seen = new Set();
-    const models = [];
-    for (const m of list) {
-      const rawId = m.id || m.name || '';
-      const caps = m.capabilities || {};
-      // Skip non-chat models
-      if (caps.chat_completion === false) continue;
-      if (/embed|whisper|dall-e|tts|audio/i.test(rawId)) continue;
-
-      const clean = extractModelName(rawId);
-      if (!seen.has(clean)) {
-        seen.add(clean);
-        models.push(clean);
-      }
-    }
-    models.sort();
-
-    if (models.length > 0) {
-      availableModels = models;
-      populateModelSelect(models);
-    }
-  } catch(e) {
-    console.warn('Failed to fetch models:', e.message);
-    populateModelSelect(['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1-nano']);
+    const resp = await fetch(GH_CATALOG_URL, { headers: { 'Accept': 'application/json' } });
+    if (!resp.ok) throw new Error('catalog ' + resp.status);
+    const list = await resp.json();
+    const models = (Array.isArray(list) ? list : (list.data || []))
+      .filter(m => (m.supported_output_modalities || []).includes('text')) // chat models only (drops embeddings)
+      .map(m => ({
+        id: m.id,
+        name: m.name || m.id,
+        publisher: m.publisher || (m.id || '').split('/')[0],
+        capabilities: m.capabilities || []
+      }))
+      .sort((a, b) => (a.publisher + a.id).localeCompare(b.publisher + b.id));
+    if (!models.length) throw new Error('empty catalog');
+    availableModels = models;
+    populateModelSelect(models);
+  } catch (e) {
+    console.warn('Model catalog fetch failed, using defaults:', e.message);
+    availableModels = [
+      { id: 'openai/gpt-4o-mini', name: 'OpenAI GPT-4o Mini', publisher: 'OpenAI', capabilities: ['tool-calling'] },
+      { id: 'openai/gpt-4o',      name: 'OpenAI GPT-4o',      publisher: 'OpenAI', capabilities: ['tool-calling'] },
+      { id: 'openai/gpt-4.1',     name: 'OpenAI GPT-4.1',     publisher: 'OpenAI', capabilities: ['tool-calling'] }
+    ];
+    populateModelSelect(availableModels);
   }
 }
 
 function populateModelSelect(models) {
   const select = document.getElementById('modelSelect');
-  select.innerHTML = models.map(m =>
-    `<option value="${m}" ${m === chatModel ? 'selected' : ''}>${m}</option>`
-  ).join('');
-  // If saved model not in list, select first
-  if (!models.includes(chatModel) && models.length > 0) {
-    chatModel = models[0];
-    select.value = chatModel;
+  const ids = models.map(m => m.id);
+  // Reconcile the saved/selected model with what's available
+  // (tolerates a legacy bare name like 'gpt-4o-mini' by matching the suffix).
+  if (!ids.includes(chatModel)) {
+    const match = ids.find(id => stripPublisher(id) === stripPublisher(chatModel));
+    chatModel = match || ids[0] || chatModel;
     localStorage.setItem('vb_model', chatModel);
   }
+  // Group by publisher for a scannable dropdown.
+  const groups = {};
+  for (const m of models) (groups[m.publisher] = groups[m.publisher] || []).push(m);
+  select.innerHTML = Object.keys(groups).sort().map(pub => {
+    const opts = groups[pub].map(m => {
+      const label = m.name.startsWith(pub + ' ') ? m.name.slice(pub.length + 1) : m.name;
+      const noTools = (m.capabilities || []).includes('tool-calling') ? '' : ' (no tools)';
+      return `<option value="${m.id}" ${m.id === chatModel ? 'selected' : ''}>${label}${noTools}</option>`;
+    }).join('');
+    return `<optgroup label="${pub}">${opts}</optgroup>`;
+  }).join('');
+  select.value = chatModel;
 }
 
 function selectModel(model) {
