@@ -293,7 +293,7 @@
     display: flex; gap: 10px;
     max-width: 760px; margin: 0 auto;
   }
-  #input {
+  #input, #chatInput {
     flex: 1; background: #0d1117;
     border: 1px solid #30363d; border-radius: 8px;
     color: #e6edf3; font-size: 14px;
@@ -302,17 +302,17 @@
     font-family: inherit;
     transition: border-color 0.15s;
   }
-  #input:focus { border-color: #1f6feb; }
-  #input::placeholder { color: #484f58; }
-  #input:disabled { opacity: 0.6; }
-  #send {
+  #input:focus, #chatInput:focus { border-color: #1f6feb; }
+  #input::placeholder, #chatInput::placeholder { color: #484f58; }
+  #input:disabled, #chatInput:disabled { opacity: 0.6; }
+  #send, #chatSend {
     background: #1f6feb; color: #fff; border: none; border-radius: 8px;
     padding: 10px 18px; font-size: 14px; font-weight: 600;
     cursor: pointer; transition: background 0.15s, opacity 0.15s;
     align-self: flex-end;
   }
-  #send:hover { background: #388bfd; }
-  #send:disabled { opacity: 0.4; cursor: default; }
+  #send:hover, #chatSend:hover { background: #388bfd; }
+  #send:disabled, #chatSend:disabled { opacity: 0.4; cursor: default; }
 
   .toolbar-row {
     display: flex; justify-content: space-between; align-items: center;
@@ -348,7 +348,7 @@
     padding: 4px 8px; font-size: 12px;
     font-family: "SF Mono", monospace;
     cursor: pointer; outline: none; transition: border-color 0.15s;
-    max-width: 240px;
+    max-width: min(420px, 32vw);
   }
   #model-select:hover, #modelSelect:hover, .model-select:hover { border-color: #58a6ff; }
   #model-select:focus, #modelSelect:focus, .model-select:focus { border-color: #1f6feb; }
@@ -409,6 +409,93 @@
   .agent-count {
     background: #238636; color: #fff; padding: 0 6px; border-radius: 9px;
     font-size: 10px; margin-left: 4px; font-weight: 700; vertical-align: middle;
+  }
+
+  /* ── Registry panel (book button) — repurposes the engine's #agentDropdownPanel ── */
+  .registry-wrapper { position: relative; }
+
+  /* ── Installed/enabled Agents panel (⊕ button) — local-brainstem .agent-list look ── */
+  #agents-panel {
+    display: none;
+    position: absolute; top: 100%; right: 0; margin-top: 6px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px; width: 300px; z-index: 50;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    font-size: 13px;
+    max-height: 400px; overflow-y: auto; overflow-x: hidden;
+  }
+  #agents-panel.open { display: block; }
+  #agents-panel h3 {
+    font-size: 13px; font-weight: 600; margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .agent-list { list-style: none; margin: 0; padding: 0; }
+  .agent-list li {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 8px; padding: 8px 0; border-bottom: 1px solid #21262d;
+    font-size: 12px;
+  }
+  .agent-list li:last-child { border-bottom: none; }
+  .agent-list .agent-name { flex: 1; min-width: 0; }
+  .agent-list .agent-title {
+    color: #e6edf3; font-family: "SF Mono", monospace;
+    word-break: break-word; line-height: 1.4;
+  }
+  .agent-list .agent-file {
+    color: #8b949e; font-family: "SF Mono", monospace;
+    font-size: 10px; word-break: break-all; margin-top: 2px;
+  }
+  .agent-list .agent-controls { display: flex; gap: 4px; flex-shrink: 0; }
+  .agent-list .export-btn {
+    background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+    border-radius: 4px; padding: 3px 6px; font-size: 10px;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .agent-list .export-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+  .agent-list .del-btn:hover { border-color: #f85149; color: #f85149; }
+
+  /* ── Voice settings panel ── */
+  .voice-wrapper { position: relative; }
+  #voice-panel {
+    display: none;
+    position: absolute; top: 100%; right: 0; margin-top: 6px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px; width: 300px; z-index: 50;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    font-size: 13px;
+  }
+  #voice-panel.open { display: block; }
+  #voice-panel h3 {
+    font-size: 13px; font-weight: 600; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  #voice-panel label {
+    display: block; color: #8b949e; font-size: 11px;
+    margin-bottom: 4px; margin-top: 10px;
+  }
+  #voice-panel label:first-of-type { margin-top: 0; }
+  #voice-panel input, #voice-panel select {
+    width: 100%; background: #0d1117; color: #e6edf3;
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 6px 8px; font-size: 12px;
+    font-family: "SF Mono", monospace;
+    outline: none; transition: border-color 0.15s;
+  }
+  #voice-panel input:focus, #voice-panel select:focus { border-color: #1f6feb; }
+  #voice-panel .panel-row {
+    display: flex; gap: 8px; align-items: center; margin-top: 12px;
+  }
+  #voice-panel .panel-btn {
+    background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+    border-radius: 6px; padding: 5px 10px; font-size: 11px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  #voice-panel .panel-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+  #voice-panel .panel-btn.primary { background: #238636; border-color: #238636; color: #fff; }
+  #voice-panel .panel-btn.primary:hover { background: #2ea043; }
+  #voice-panel .panel-status {
+    font-size: 11px; color: #8b949e; margin-top: 8px;
+    min-height: 16px;
   }
 
   /* ── Drag & Drop Overlay (engine: #dropOverlay) ── */
@@ -524,10 +611,10 @@
   body.light-mode .chat-activity-pill { background: #f6f8fa; border-color: #d0d7de; color: #57606a; }
   body.light-mode .vb-ao-box { background: #f6f8fa !important; border-color: #d0d7de !important; color: #24292e !important; }
   body.light-mode footer { background: #f6f8fa; border-top-color: #d0d7de; }
-  body.light-mode #input {
+  body.light-mode #input, body.light-mode #chatInput {
     background: #ffffff; border-color: #d0d7de; color: #24292e;
   }
-  body.light-mode #input::placeholder { color: #57606a; }
+  body.light-mode #input::placeholder, body.light-mode #chatInput::placeholder { color: #57606a; }
   body.light-mode .starter-btn {
     background: #ffffff; border: 1px solid #d0d7de; color: #57606a;
   }
@@ -561,6 +648,32 @@
   body.light-mode .login-skip:hover { color: #24292e; }
   body.light-mode .toolbar-link { color: #57606a; }
   body.light-mode .toolbar-link:hover { color: #24292e; }
+  body.light-mode #agents-panel {
+    background: #ffffff; border-color: #d0d7de; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  }
+  body.light-mode #agents-panel h3 { color: #24292e; }
+  body.light-mode .agent-list li { border-color: #d0d7de; }
+  body.light-mode .agent-list li:hover { background: #f6f8fa; }
+  body.light-mode .agent-list .agent-title { color: #24292e; }
+  body.light-mode .agent-list .agent-file { color: #57606a; }
+  body.light-mode .agent-list .export-btn {
+    background: #f6f8fa; color: #24292e; border-color: #d0d7de;
+  }
+  body.light-mode .agent-list .export-btn:hover { border-color: #0969da; color: #0969da; }
+  body.light-mode .agent-list .del-btn:hover { border-color: #cf222e; }
+  body.light-mode #voice-panel {
+    background: #ffffff; border-color: #d0d7de; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  }
+  body.light-mode #voice-panel select, body.light-mode #voice-panel input {
+    background: #ffffff; border-color: #d0d7de; color: #24292e;
+  }
+  body.light-mode #voice-panel h3 { color: #24292e; }
+  body.light-mode #voice-panel .panel-btn {
+    background: #f6f8fa; color: #24292e; border-color: #d0d7de;
+  }
+  body.light-mode #voice-panel .panel-btn:hover { border-color: #0969da; color: #0969da; }
+  body.light-mode #voice-panel .panel-btn.primary { background: #1f883d; border-color: #1f883d; color: #fff; }
+  body.light-mode #voice-panel .panel-btn.primary:hover { background: #1a7f37; }
 </style>
 </head>
 <body>
@@ -618,6 +731,7 @@
   <h1>RAPP Brainstem <span id="version-tag" style="font-size:11px;font-weight:400;color:#8b949e;vertical-align:middle">virtual</span></h1>
   <div class="controls">
     <div id="vmStatus" class="bs-status idle"><div class="bs-status-dot"></div><span>Idle</span></div>
+    <select id="modelSelect" class="model-select" onchange="selectModel(this.value)" style="display:none"></select>
 
     <div class="gh-pill" id="ghPill" onclick="handleGHAuth()" title="Sign in / out of GitHub">
       <div class="gh-dot off" id="ghDot"></div>
@@ -628,25 +742,109 @@
       <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0a.996.996 0 000-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/></svg></span>
     </button>
 
-    <div class="agents-wrapper">
-      <button class="icon-btn" id="agents-btn" onclick="toggleAgentDropdown(event)" title="Browse & manage agents">
-        <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v4h4v2h-4v4h-2v-4H7v-2h4z"/></svg></span>
-        Agents <span class="agent-count" id="agentCount">3</span>
+    <div class="registry-wrapper">
+      <button class="icon-btn" id="registry-btn" onclick="toggleAgentDropdown(event)" title="Browse the RAR agent registry">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg></span>
       </button>
       <div id="agentDropdownPanel">
         <h3>
-          <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v4h4v2h-4v4h-2v-4H7v-2h4z"/></svg></span>
-          Agent Registry
+          <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg></span>
+          RAR Agent Registry
         </h3>
         <input class="agent-dropdown-search" type="text" placeholder="Search the RAR agent registry…" oninput="filterAgentDropdown(this.value)" autocomplete="off" spellcheck="false">
         <div class="agent-dropdown-list" id="agentDropdownList"></div>
         <div style="font-size:10px; color:#8b949e; margin-top:12px; text-align:center;">
-          Enable agents here, or drag &amp; drop a <code>.py</code> file anywhere to hot-load.
+          Add an agent here, then manage it from the Agents panel.
         </div>
       </div>
     </div>
 
-    <a class="icon-btn" href="https://kody-w.github.io/RAR/" title="Back to the RAPP Store">
+    <div class="agents-wrapper">
+      <button class="icon-btn" id="agents-btn" onclick="toggleAgentsPanel(event)" title="Manage enabled agents">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v4h4v2h-4v4h-2v-4H7v-2h4z"/></svg></span>
+        <span class="agent-count" id="agentCount">3</span>
+      </button>
+      <div id="agents-panel">
+        <h3>
+          <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v4h4v2h-4v4h-2v-4H7v-2h4z"/></svg></span>
+          Enabled Agents
+        </h3>
+        <ul class="agent-list" id="agent-list-ul"><!-- Populated by JS --></ul>
+        <div style="font-size:10px; color:#8b949e; margin-top:12px; text-align:center;">
+          Drag &amp; drop .py files anywhere, or add from the registry.
+        </div>
+      </div>
+    </div>
+
+    <div class="voice-wrapper">
+      <button class="icon-btn" id="voice-btn" onclick="toggleVoice()" title="Voice mode off">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg></span>
+      </button>
+      <button class="icon-btn" id="voice-settings-btn" onclick="toggleVoicePanel()" title="Voice settings">
+        <span class="icon"><svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M7.429 1.525a6.593 6.593 0 011.142 0c.036.003.108.036.137.146l.289 1.105c.147.56.55.967.997 1.189.174.086.341.183.501.29.417.278.97.423 1.53.27l1.102-.303c.11-.03.175.016.195.046.219.31.41.641.573.989.014.031.022.11-.059.19l-.815.806c-.411.406-.562.957-.53 1.456a4.588 4.588 0 010 .582c-.032.499.119 1.05.53 1.456l.815.806c.08.08.073.159.059.19a6.494 6.494 0 01-.573.99c-.02.029-.086.074-.195.045l-1.103-.303c-.559-.153-1.112-.008-1.529.27-.16.107-.327.204-.5.29-.449.222-.851.628-.998 1.189l-.289 1.105c-.029.11-.1.143-.137.146a6.613 6.613 0 01-1.142 0c-.036-.003-.108-.037-.137-.146l-.289-1.105c-.147-.56-.55-.967-.997-1.189a4.502 4.502 0 01-.501-.29c-.417-.278-.97-.423-1.53-.27l-1.102.303c-.11.03-.175-.016-.195-.046a6.492 6.492 0 01-.573-.989c-.014-.031-.022-.11.059-.19l.815-.806c.411-.406.562-.957.53-1.456a4.587 4.587 0 010-.582c.032-.499-.119-1.05-.53-1.456l-.815-.806c-.08-.08-.073-.159-.059-.19a6.44 6.44 0 01.573-.99c.02-.029.086-.074.195-.045l1.103.303c.559.153 1.112.008 1.529-.27.16-.107.327-.204.5-.29.449-.222.851-.628.998-1.189l.289-1.105c.029-.11.1-.143.137-.146zM8 0c-.236 0-.47.01-.701.03-.743.065-1.29.615-1.458 1.261l-.29 1.106c-.017.066-.078.158-.211.224a5.994 5.994 0 00-.668.386c-.123.082-.233.117-.3.117h-.013l-1.104-.304c-.646-.178-1.314.023-1.71.64a7.994 7.994 0 00-.573.989c-.358.658-.217 1.381.164 1.758l.816.806c.046.046.106.144.098.284a6.095 6.095 0 000 .772c.008.14-.052.238-.098.284l-.816.806c-.38.377-.522 1.1-.164 1.758.145.267.306.524.573.99.396.616 1.064.817 1.71.639l1.104-.304c.068-.019.146-.003.3.117.195.13.4.25.668.387.133.066.194.158.212.224l.289 1.106c.169.646.715 1.196 1.458 1.26a8.094 8.094 0 001.402 0c.743-.064 1.29-.614 1.458-1.26l.29-1.106c.017-.066.078-.158.211-.224a5.98 5.98 0 00.668-.386c.123-.082.233-.117.3-.117h.013l1.104.304c.646.178 1.314-.023 1.71-.64.267-.465.428-.722.573-.989.358-.658.217-1.381-.164-1.758l-.816-.806c-.046-.046-.106-.144-.098-.284a6.095 6.095 0 000-.772c-.008-.14.052-.238.098-.284l.816-.806c.38-.377.522-1.1.164-1.758a7.994 7.994 0 00-.573-.99c-.396-.616-1.064-.817-1.71-.639l-1.104.304c-.068.019-.146.003-.3-.117a5.994 5.994 0 00-.668-.387c-.133-.066-.194-.158-.212-.224L10.16 1.29C9.99.645 9.444.095 8.701.031A8.094 8.094 0 008 0zm0 11a3 3 0 100-6 3 3 0 000 6z"/></svg></span>
+      </button>
+      <div id="voice-panel">
+        <h3>
+          <span class="icon"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg></span>
+          Voice Settings
+        </h3>
+        <label for="voice-provider">Provider</label>
+        <select id="voice-provider" onchange="switchVoiceProvider()">
+          <option value="browser">Browser (free)</option>
+          <option value="azure">Azure Speech</option>
+          <option value="elevenlabs">ElevenLabs</option>
+        </select>
+        <div id="azure-fields">
+          <label for="az-speech-key">Speech API Key</label>
+          <input type="password" id="az-speech-key" placeholder="paste key from Azure portal..." autocomplete="off">
+          <label for="az-speech-region">Region</label>
+          <select id="az-speech-region" onchange="loadAzureVoices()">
+            <option value="eastus">East US</option>
+            <option value="eastus2">East US 2</option>
+            <option value="westus">West US</option>
+            <option value="westus2">West US 2</option>
+            <option value="centralus">Central US</option>
+            <option value="northeurope">North Europe</option>
+            <option value="westeurope">West Europe</option>
+            <option value="swedencentral">Sweden Central</option>
+            <option value="southeastasia">Southeast Asia</option>
+            <option value="australiaeast">Australia East</option>
+            <option value="japaneast">Japan East</option>
+          </select>
+          <label for="az-voice-select">Voice</label>
+          <select id="az-voice-select">
+            <option value="">Enter key &amp; save to load voices</option>
+          </select>
+        </div>
+        <div id="elevenlabs-fields" style="display:none">
+          <label for="el-api-key">ElevenLabs API Key</label>
+          <input type="password" id="el-api-key" placeholder="sk_..." autocomplete="off">
+          <label for="el-voice-select">Voice</label>
+          <select id="el-voice-select">
+            <option value="">Enter API key first</option>
+          </select>
+          <label for="el-model-select">Model</label>
+          <select id="el-model-select">
+            <option value="eleven_multilingual_v2">Multilingual v2</option>
+            <option value="eleven_turbo_v2_5">Turbo v2.5 (low latency)</option>
+            <option value="eleven_monolingual_v1">English v1</option>
+          </select>
+        </div>
+        <div class="panel-row">
+          <button class="panel-btn primary" onclick="saveVoiceSettings()">Save</button>
+          <button class="panel-btn" onclick="testVoice()">Test</button>
+          <button class="panel-btn" onclick="clearVoiceSettings()">Clear Key</button>
+        </div>
+        <div class="panel-row" style="margin-top:6px">
+          <button class="panel-btn" onclick="exportVoiceConfig()">Export</button>
+          <button class="panel-btn" onclick="document.getElementById('voice-import').click()">Import</button>
+          <input type="file" id="voice-import" accept=".json" style="display:none" onchange="importVoiceConfig(event)">
+        </div>
+        <div class="panel-status" id="voice-panel-status"></div>
+      </div>
+    </div>
+
+    <a class="icon-btn" href="https://kody-w.github.io/RAR/" title="Back to RAPP">
       <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5.69l5 4.5V18h-2v-6H9v6H7v-7.81l5-4.5M12 3L2 12h3v8h6v-6h2v6h6v-8h3L12 3z"/></svg></span>
     </a>
   </div>
@@ -691,11 +889,7 @@
     <button class="starter-btn" onclick="useStarter('What do you know about me?')">What do you know about me?</button>
   </div>
   <div class="toolbar-row">
-    <div class="left">
-      <span id="chatModelLabel">GitHub Models &mdash; sign in to start chatting</span>
-      <select id="modelSelect" class="model-select" onchange="selectModel(this.value)" style="display:none"></select>
-      <div id="enabledAgentPills"></div>
-    </div>
+    <div class="left"></div>
     <div class="right">
       <button class="toolbar-link" onclick="exportChat()" title="Export transcript">
         <span class="icon"><svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M7.47 10.78a.75.75 0 001.06 0l3.75-3.75a.75.75 0 00-1.06-1.06L8.75 8.44V1.75a.75.75 0 00-1.5 0v6.69L4.78 5.97a.75.75 0 00-1.06 1.06l3.75 3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"/></svg></span>
@@ -781,6 +975,458 @@ function clearChat() {
   if (typeof chatHistory !== 'undefined') chatHistory = [];
   const chatEl = document.getElementById('chat');
   if (chatEl) chatEl.classList.remove('has-messages');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Voice mode (UI-only) — Azure Speech + ElevenLabs + browser TTS, plus
+// webkitSpeechRecognition dictation. Ported from the local brainstem, adapted
+// to be 100% client-side (no server endpoints). Settings persist in localStorage.
+// This block touches NO auth/engine state — it only reads #chatInput and speaks replies.
+// ═══════════════════════════════════════════════════════════════════════
+let voiceMode = false;
+let voiceProvider = localStorage.getItem('voice_provider') || 'browser';
+
+// Azure Speech state
+let azSpeechKey = localStorage.getItem('az_speech_key') || '';
+let azSpeechRegion = localStorage.getItem('az_speech_region') || 'eastus';
+let azVoiceName = localStorage.getItem('az_voice_name') || 'en-US-JennyNeural';
+
+// ElevenLabs state
+let elApiKey = localStorage.getItem('el_api_key') || '';
+let elVoiceId = localStorage.getItem('el_voice_id') || '';
+let elModel = localStorage.getItem('el_model') || 'eleven_multilingual_v2';
+
+let currentAudio = null;
+let _sttRecognition = null;   // webkitSpeechRecognition instance (dictation)
+let _sttActive = false;
+
+// Seed the panel inputs from saved settings once the DOM is parsed.
+function _voiceInitPanel() {
+  const p = document.getElementById('voice-provider'); if (!p) return;
+  p.value = voiceProvider;
+  document.getElementById('az-speech-key').value = azSpeechKey;
+  document.getElementById('az-speech-region').value = azSpeechRegion;
+  document.getElementById('el-api-key').value = elApiKey;
+  document.getElementById('el-model-select').value = elModel;
+  switchVoiceProvider();
+
+  document.getElementById('az-speech-key').addEventListener('change', () => {
+    const key = document.getElementById('az-speech-key').value.trim();
+    if (key) { azSpeechKey = key; loadAzureVoices(); }
+  });
+  document.getElementById('el-api-key').addEventListener('change', () => {
+    const key = document.getElementById('el-api-key').value.trim();
+    if (key) { elApiKey = key; loadElevenLabsVoices(); }
+  });
+}
+
+function switchVoiceProvider() {
+  const p = document.getElementById('voice-provider').value;
+  document.getElementById('azure-fields').style.display = p === 'azure' ? 'block' : 'none';
+  document.getElementById('elevenlabs-fields').style.display = p === 'elevenlabs' ? 'block' : 'none';
+  // Only fetch a provider's voice list when it's actually selected.
+  if (p === 'azure' && azSpeechKey) loadAzureVoices();
+  else if (p === 'elevenlabs' && elApiKey) loadElevenLabsVoices();
+}
+
+function toggleVoicePanel() {
+  document.getElementById('voice-panel').classList.toggle('open');
+}
+
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('voice-panel');
+  if (panel && !e.target.closest('.voice-wrapper') && panel.classList.contains('open')) {
+    panel.classList.remove('open');
+  }
+});
+
+// ── Azure Speech TTS ──
+async function loadAzureVoices() {
+  const key = document.getElementById('az-speech-key').value.trim() || azSpeechKey;
+  const region = document.getElementById('az-speech-region').value || azSpeechRegion;
+  const sel = document.getElementById('az-voice-select');
+  const status = document.getElementById('voice-panel-status');
+  if (!key) {
+    sel.innerHTML = '<option value="">Enter API key first</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">Loading voices...</option>';
+  try {
+    const r = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/voices/list`, {
+      headers: { 'Ocp-Apim-Subscription-Key': key }
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const voices = await r.json();
+    const neural = voices.filter(v => v.VoiceType === 'Neural')
+      .sort((a, b) => a.LocaleName.localeCompare(b.LocaleName) || a.DisplayName.localeCompare(b.DisplayName));
+    sel.innerHTML = '';
+    const enVoices = neural.filter(v => v.Locale.startsWith('en-'));
+    const otherVoices = neural.filter(v => !v.Locale.startsWith('en-'));
+    if (enVoices.length) {
+      const g = document.createElement('optgroup');
+      g.label = 'English';
+      enVoices.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.ShortName;
+        o.textContent = `${v.DisplayName} (${v.LocaleName}, ${v.Gender})`;
+        if (v.ShortName === azVoiceName) o.selected = true;
+        g.appendChild(o);
+      });
+      sel.appendChild(g);
+    }
+    if (otherVoices.length) {
+      const g = document.createElement('optgroup');
+      g.label = 'Other Languages';
+      otherVoices.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.ShortName;
+        o.textContent = `${v.DisplayName} (${v.LocaleName}, ${v.Gender})`;
+        if (v.ShortName === azVoiceName) o.selected = true;
+        g.appendChild(o);
+      });
+      sel.appendChild(g);
+    }
+    if (!sel.value && enVoices.length) sel.value = enVoices[0].ShortName;
+    status.textContent = `${neural.length} Azure voices loaded`;
+    status.style.color = '#3fb950';
+  } catch (e) {
+    sel.innerHTML = '<option value="">Failed to load</option>';
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#f85149';
+  }
+}
+
+function escapeXml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+}
+
+async function speakWithAzure(text) {
+  const locale = azVoiceName.split('-').slice(0, 2).join('-') || 'en-US';
+  const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${locale}'><voice name='${azVoiceName}'>${escapeXml(text)}</voice></speak>`;
+  const r = await fetch(`https://${azSpeechRegion}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+    method: 'POST',
+    headers: {
+      'Ocp-Apim-Subscription-Key': azSpeechKey,
+      'Content-Type': 'application/ssml+xml',
+      'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3'
+    },
+    body: ssml
+  });
+  if (!r.ok) throw new Error(`Azure Speech ${r.status}`);
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  currentAudio = new Audio(url);
+  currentAudio.onended = () => URL.revokeObjectURL(url);
+  currentAudio.play();
+}
+
+// ── ElevenLabs TTS ──
+async function loadElevenLabsVoices() {
+  const sel = document.getElementById('el-voice-select');
+  const status = document.getElementById('voice-panel-status');
+  if (!elApiKey) {
+    sel.innerHTML = '<option value="">Enter API key first</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="">Loading...</option>';
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': elApiKey }
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    sel.innerHTML = '';
+    (d.voices || []).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.voice_id;
+      opt.textContent = v.name + (v.labels?.accent ? ` (${v.labels.accent})` : '');
+      if (v.voice_id === elVoiceId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (!elVoiceId && d.voices?.length) elVoiceId = d.voices[0].voice_id;
+    status.textContent = `${d.voices.length} ElevenLabs voices loaded`;
+    status.style.color = '#3fb950';
+  } catch (e) {
+    sel.innerHTML = '<option value="">Failed to load</option>';
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#f85149';
+  }
+}
+
+async function speakWithElevenLabs(text) {
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${elVoiceId}`, {
+    method: 'POST',
+    headers: {
+      'xi-api-key': elApiKey,
+      'Content-Type': 'application/json',
+      'Accept': 'audio/mpeg'
+    },
+    body: JSON.stringify({
+      text: text.slice(0, 5000),
+      model_id: elModel,
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+    })
+  });
+  if (!r.ok) throw new Error(`ElevenLabs ${r.status}`);
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  currentAudio = new Audio(url);
+  currentAudio.onended = () => URL.revokeObjectURL(url);
+  currentAudio.play();
+}
+
+// ── Voice settings persistence (localStorage) ──
+function saveVoiceSettings() {
+  const provider = document.getElementById('voice-provider').value;
+  voiceProvider = provider;
+  localStorage.setItem('voice_provider', provider);
+  const status = document.getElementById('voice-panel-status');
+
+  if (provider === 'azure') {
+    azSpeechKey = document.getElementById('az-speech-key').value.trim();
+    azSpeechRegion = document.getElementById('az-speech-region').value;
+    azVoiceName = document.getElementById('az-voice-select').value;
+    if (azSpeechKey) localStorage.setItem('az_speech_key', azSpeechKey);
+    if (azSpeechRegion) localStorage.setItem('az_speech_region', azSpeechRegion);
+    if (azVoiceName) localStorage.setItem('az_voice_name', azVoiceName);
+    if (azSpeechKey && document.getElementById('az-voice-select').options.length <= 1) loadAzureVoices();
+    status.textContent = azSpeechKey ? 'Saved — Azure Speech active' : 'Saved — enter API key to activate';
+  } else if (provider === 'elevenlabs') {
+    elApiKey = document.getElementById('el-api-key').value.trim();
+    elVoiceId = document.getElementById('el-voice-select').value;
+    elModel = document.getElementById('el-model-select').value;
+    if (elApiKey) localStorage.setItem('el_api_key', elApiKey);
+    if (elVoiceId) localStorage.setItem('el_voice_id', elVoiceId);
+    localStorage.setItem('el_model', elModel);
+    status.textContent = elApiKey ? 'Saved — ElevenLabs active' : 'Saved — enter API key to activate';
+  } else {
+    status.textContent = 'Saved — using browser voice';
+  }
+  status.style.color = '#3fb950';
+  setTimeout(() => { status.textContent = ''; }, 3000);
+}
+
+function clearVoiceSettings() {
+  const provider = document.getElementById('voice-provider').value;
+  const status = document.getElementById('voice-panel-status');
+  if (provider === 'azure') {
+    azSpeechKey = '';
+    document.getElementById('az-speech-key').value = '';
+    document.getElementById('az-voice-select').innerHTML = '<option value="">Enter API key first</option>';
+    localStorage.removeItem('az_speech_key');
+    localStorage.removeItem('az_voice_name');
+  } else if (provider === 'elevenlabs') {
+    elApiKey = '';
+    elVoiceId = '';
+    document.getElementById('el-api-key').value = '';
+    document.getElementById('el-voice-select').innerHTML = '<option value="">Enter API key first</option>';
+    localStorage.removeItem('el_api_key');
+    localStorage.removeItem('el_voice_id');
+  }
+  status.textContent = 'Key cleared';
+  status.style.color = '#8b949e';
+}
+
+async function testVoice() {
+  saveVoiceSettings();
+  const status = document.getElementById('voice-panel-status');
+  status.textContent = 'Playing test...';
+  status.style.color = '#d29922';
+  try {
+    await speakText('Hello, I am your RAPP Brainstem assistant.', true);
+    const names = { azure: 'Azure Speech', elevenlabs: 'ElevenLabs', browser: 'browser voice' };
+    status.textContent = `Playing via ${names[voiceProvider] || 'browser voice'}`;
+    status.style.color = '#3fb950';
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#f85149';
+  }
+}
+
+// ── Speech-to-text dictation (webkitSpeechRecognition) ──
+function _startDictation() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return false;
+  const input = document.getElementById('chatInput');
+  if (!input) return false;
+  try {
+    _sttRecognition = new SR();
+    _sttRecognition.continuous = true;
+    _sttRecognition.interimResults = true;
+    _sttRecognition.lang = 'en-US';
+    let baseText = input.value ? input.value.trimEnd() + ' ' : '';
+    _sttRecognition.onresult = (ev) => {
+      let finalText = '';
+      let interim = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const t = ev.results[i][0].transcript;
+        if (ev.results[i].isFinal) finalText += t + ' '; else interim += t;
+      }
+      if (finalText) baseText += finalText;
+      input.value = (baseText + interim).replace(/\s+/g, ' ').trimStart();
+    };
+    _sttRecognition.onend = () => {
+      // Auto-restart while voice mode stays on (continuous dictation).
+      if (_sttActive && voiceMode) { try { _sttRecognition.start(); } catch (_) {} }
+    };
+    _sttRecognition.onerror = () => {};
+    _sttRecognition.start();
+    _sttActive = true;
+    return true;
+  } catch (_) { return false; }
+}
+
+function _stopDictation() {
+  _sttActive = false;
+  if (_sttRecognition) { try { _sttRecognition.stop(); } catch (_) {} _sttRecognition = null; }
+}
+
+// Mic button: toggle voice mode. ON → spoken replies + STT dictation into the input.
+function toggleVoice() {
+  voiceMode = !voiceMode;
+  try { localStorage.setItem('vb_voice_mode', voiceMode ? '1' : '0'); } catch (_) {}
+  updateVoiceBtn();
+  if (voiceMode) {
+    const sttOk = _startDictation();
+    const names = { azure: 'Azure Speech', elevenlabs: 'ElevenLabs', browser: 'browser' };
+    const name = names[voiceProvider] || 'browser';
+    const dictNote = sttOk ? ' Speak — your words appear in the input box.' : ' (Dictation unavailable in this browser.)';
+    if (typeof addChatMsg === 'function') {
+      addChatMsg('system', `<strong>Voice mode enabled</strong> — replies spoken via ${name} TTS.${dictNote} Click the gear to change voice settings.`);
+    }
+    speakText('Voice mode enabled.', true);
+  } else {
+    _stopDictation();
+    stopSpeaking();
+    if (typeof addChatMsg === 'function') addChatMsg('system', 'Voice mode disabled.');
+  }
+}
+
+function updateVoiceBtn() {
+  const btn = document.getElementById('voice-btn');
+  if (!btn) return;
+  btn.className = voiceMode ? 'icon-btn active' : 'icon-btn';
+  btn.title = voiceMode ? 'Voice mode on' : 'Voice mode off';
+}
+
+function stopSpeaking() {
+  try { window.speechSynthesis.cancel(); } catch (_) {}
+  if (currentAudio) { try { currentAudio.pause(); } catch (_) {} currentAudio = null; }
+}
+
+async function speakText(text, force) {
+  if (!text || (!voiceMode && !force)) return;
+  stopSpeaking();
+
+  const clean = text.replace(/[#*`_\[\]()>|]/g, '').trim();
+  if (!clean) return;
+
+  if (voiceProvider === 'azure' && azSpeechKey) {
+    try { await speakWithAzure(clean); return; } catch (e) {
+      console.warn('Azure Speech TTS failed, falling back to browser:', e);
+    }
+  }
+
+  if (voiceProvider === 'elevenlabs' && elApiKey && elVoiceId) {
+    try { await speakWithElevenLabs(clean); return; } catch (e) {
+      console.warn('ElevenLabs TTS failed, falling back to browser:', e);
+    }
+  }
+
+  // Browser fallback
+  const utter = new SpeechSynthesisUtterance(clean.slice(0, 300));
+  utter.rate = 1.05; utter.pitch = 1.0;
+  window.speechSynthesis.speak(utter);
+}
+
+// ── Voice export/import — plain JSON (client-side; no server) ──
+function _gatherVoiceConfig() {
+  return {
+    provider: voiceProvider,
+    azure_speech_key: azSpeechKey,
+    azure_speech_region: azSpeechRegion,
+    azure_voice_name: azVoiceName,
+    api_key: elApiKey,
+    voice_id: elVoiceId,
+    model: elModel
+  };
+}
+
+function _applyVoiceConfig(cfg) {
+  if (cfg.provider) {
+    voiceProvider = cfg.provider;
+    document.getElementById('voice-provider').value = cfg.provider;
+    localStorage.setItem('voice_provider', cfg.provider);
+  }
+  if (cfg.azure_speech_key) {
+    azSpeechKey = cfg.azure_speech_key;
+    document.getElementById('az-speech-key').value = cfg.azure_speech_key;
+    localStorage.setItem('az_speech_key', cfg.azure_speech_key);
+  }
+  if (cfg.azure_speech_region) {
+    azSpeechRegion = cfg.azure_speech_region;
+    document.getElementById('az-speech-region').value = cfg.azure_speech_region;
+    localStorage.setItem('az_speech_region', cfg.azure_speech_region);
+  }
+  if (cfg.azure_voice_name) {
+    azVoiceName = cfg.azure_voice_name;
+    localStorage.setItem('az_voice_name', cfg.azure_voice_name);
+  }
+  if (cfg.api_key) {
+    elApiKey = cfg.api_key;
+    document.getElementById('el-api-key').value = cfg.api_key;
+    localStorage.setItem('el_api_key', cfg.api_key);
+  }
+  if (cfg.voice_id) {
+    elVoiceId = cfg.voice_id;
+    localStorage.setItem('el_voice_id', cfg.voice_id);
+  }
+  if (cfg.model) {
+    elModel = cfg.model;
+    document.getElementById('el-model-select').value = cfg.model;
+    localStorage.setItem('el_model', cfg.model);
+  }
+  switchVoiceProvider();
+  if (azSpeechKey) loadAzureVoices();
+  if (elApiKey) loadElevenLabsVoices();
+}
+
+function exportVoiceConfig() {
+  const status = document.getElementById('voice-panel-status');
+  try {
+    const blob = new Blob([JSON.stringify(_gatherVoiceConfig(), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'voice-config.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    status.textContent = 'Exported voice-config.json';
+    status.style.color = '#3fb950';
+  } catch (e) {
+    status.textContent = 'Export failed: ' + e.message;
+    status.style.color = '#f85149';
+  }
+}
+
+function importVoiceConfig(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+  const status = document.getElementById('voice-panel-status');
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      _applyVoiceConfig(JSON.parse(reader.result));
+      status.textContent = 'Imported — voice config loaded';
+      status.style.color = '#3fb950';
+    } catch (e) {
+      status.textContent = 'Import failed: ' + e.message;
+      status.style.color = '#f85149';
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -4536,6 +5182,8 @@ async function sendChat() {
     const reply = msg.content || '(no response)';
     chatHistory.push({ role: 'assistant', content: reply });
     addChatMsg('assistant', renderChatMarkdown(reply));
+    // Speak the finished assistant reply when voice mode is on (TTS via selected provider).
+    if (typeof speakText === 'function' && voiceMode) speakText(reply);
 
   } catch(e) {
     removeTypingIndicator();
@@ -4560,30 +5208,30 @@ function updateGHPill() {
   const label = document.getElementById('ghLabel');
   const input = document.getElementById('chatInput');
   const send = document.getElementById('chatSend');
-  const modelLabel = document.getElementById('chatModelLabel');
-  const modelSelect = document.getElementById('modelSelect');
+  const modelLabel = document.getElementById('chatModelLabel');   // optional (footer model bar removed)
+  const modelSelect = document.getElementById('modelSelect');     // now lives in the header controls
 
   if (chatToken) {
     dot.className = 'gh-dot on';
     label.textContent = chatUser || 'Connected';
     input.disabled = false;
     send.disabled = false;
-    input.placeholder = 'Ask me anything...';
-    // Header status: "Copilot · <model>" when on Copilot, else the GitHub Models fallback.
+    input.placeholder = 'Message brainstem...';
+    // Header status dot + text: "Copilot · <model>" on Copilot, else the GitHub Models fallback.
     const shortModel = stripPublisher(chatModel || '') || chatModel || '';
-    modelLabel.textContent = usingCopilot ? ('Copilot · ' + shortModel) : 'GitHub Models · ' + shortModel;
+    if (modelLabel) modelLabel.textContent = usingCopilot ? ('Copilot · ' + shortModel) : 'GitHub Models · ' + shortModel;
     if (typeof setStatus === 'function') {
       setStatus('running', usingCopilot ? ('Copilot · ' + shortModel) : 'Signed in');
     }
-    modelSelect.style.display = '';
+    if (modelSelect) modelSelect.style.display = '';
   } else {
     dot.className = 'gh-dot off';
     label.textContent = 'Sign in';
     input.disabled = true;
     send.disabled = true;
     input.placeholder = 'Sign in with GitHub to chat...';
-    modelLabel.textContent = 'GitHub Copilot -- sign in to start chatting';
-    modelSelect.style.display = 'none';
+    if (modelLabel) modelLabel.textContent = 'GitHub Copilot -- sign in to start chatting';
+    if (modelSelect) modelSelect.style.display = 'none';
   }
 }
 
@@ -4801,44 +5449,111 @@ function toggleAgent(slug) {
 }
 
 function updateEnabledPills() {
-  // Update count badge
+  // Update count badge (built-ins + enabled registry/hot-loaded agents)
   const total = BUILTIN_AGENTS.length + enabledAgents.size;
-  document.getElementById('agentCount').textContent = total;
+  const countEl = document.getElementById('agentCount');
+  if (countEl) countEl.textContent = total;
 
-  // Update bottom-bar pills
+  // Footer enabled-agent pills were removed; keep this tolerant if the element is gone.
   const pillsEl = document.getElementById('enabledAgentPills');
-  let html = '';
-  for (const slug of enabledAgents) {
-    const agent = availableAgents.find(a => a.name === slug);
-    if (agent) {
-      html += `<span class="agent-enabled-pill" onclick="toggleAgent('${slug.replace(/'/g, "\\'")}')" title="Click to disable">${agent.display_name}</span>`;
+  if (pillsEl) {
+    let html = '';
+    for (const slug of enabledAgents) {
+      const agent = availableAgents.find(a => a.name === slug);
+      if (agent) {
+        html += `<span class="agent-enabled-pill" onclick="toggleAgent('${slug.replace(/'/g, "\\'")}')" title="Click to disable">${agent.display_name}</span>`;
+      }
     }
+    pillsEl.innerHTML = html;
   }
-  pillsEl.innerHTML = html;
 
   // Update welcome pills
   const welcomePills = document.getElementById('welcomeAgentPills');
   if (welcomePills) {
-    let whtml = '<span class="chat-agent-pill">ManageMemory</span><span class="chat-agent-pill">ContextMemory</span><span class="chat-agent-pill">HackerNews</span>';
+    let whtml = '<span class="agent-enabled-pill" style="cursor:default">ManageMemory</span><span class="agent-enabled-pill" style="cursor:default">ContextMemory</span><span class="agent-enabled-pill" style="cursor:default">HackerNews</span>';
     for (const slug of enabledAgents) {
       const agent = availableAgents.find(a => a.name === slug);
       if (agent) {
-        whtml += `<span class="chat-agent-pill">${agent.display_name}</span>`;
+        whtml += `<span class="agent-enabled-pill" style="cursor:default">${agent.display_name}</span>`;
       }
     }
     welcomePills.innerHTML = whtml;
   }
+
+  // Keep the header Agents panel (enabled-agent list) in sync if it's open.
+  const ap = document.getElementById('agents-panel');
+  if (ap && ap.classList.contains('open')) renderEnabledAgentsList();
 }
 
+// ── Agents panel (⊕): the local-brainstem .agent-list view of enabled tools ──
+function toggleAgentsPanel(e) {
+  if (e) e.stopPropagation();
+  const panel = document.getElementById('agents-panel');
+  document.getElementById('agentDropdownPanel')?.classList.remove('open');
+  const open = panel.classList.toggle('open');
+  if (open) renderEnabledAgentsList();
+}
+
+function renderEnabledAgentsList() {
+  const ul = document.getElementById('agent-list-ul');
+  if (!ul) return;
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let html = '';
+  // Always-on built-in agents (memory + Hacker News) — listed, not removable.
+  const builtinMeta = {
+    store_memory: ['ManageMemory', 'store_memory'],
+    recall_memories: ['ContextMemory', 'recall_memories'],
+    hacker_news: ['HackerNews', 'hacker_news'],
+  };
+  for (const slug of BUILTIN_AGENTS) {
+    const [title, file] = builtinMeta[slug] || [slug, slug];
+    html += `<li><div class="agent-name"><div class="agent-title">${esc(title)}</div><div class="agent-file">${esc(file)} · built-in</div></div></li>`;
+  }
+  // Enabled registry / hot-loaded agents — with download + disable controls.
+  for (const slug of enabledAgents) {
+    const agent = availableAgents.find(a => a.name === slug) || { display_name: slug, name: slug };
+    const file = (agent._file ? agent._file.split('/').pop() : slug.replace(/^@\w+\//, '') + '.py');
+    const s = slug.replace(/'/g, "\\'");
+    html += `<li>
+      <div class="agent-name"><div class="agent-title">${esc(agent.display_name)}</div><div class="agent-file">${esc(file)}</div></div>
+      <div class="agent-controls">
+        <button class="export-btn" onclick="downloadAgent('${s}')" title="Download .py">Export</button>
+        <button class="export-btn del-btn" onclick="toggleAgent('${s}')" title="Disable agent">Remove</button>
+      </div>
+    </li>`;
+  }
+  ul.innerHTML = html || '<li><span class="agent-name" style="color:#8b949e">No agents found.</span></li>';
+}
+
+// Close the Agents panel on outside click (mirrors the registry panel behavior).
+document.addEventListener('click', (e) => {
+  const p = document.getElementById('agents-panel');
+  const b = document.getElementById('agents-btn');
+  if (p && p.classList.contains('open') && !p.contains(e.target) && b && !b.contains(e.target)) {
+    p.classList.remove('open');
+  }
+});
+
 function toggleAgentDropdown(e) {
-  e.stopPropagation();
+  if (e) e.stopPropagation();
   const panel = document.getElementById('agentDropdownPanel');
+  // Registry and Agents panels are mutually exclusive (both anchor top-right).
+  document.getElementById('agents-panel')?.classList.remove('open');
   panel.classList.toggle('open');
   if (panel.classList.contains('open')) {
     panel.querySelector('.agent-dropdown-search').focus();
     populateAgentDropdown();
   }
 }
+
+// Close the registry panel on outside click (mirrors the local-brainstem behavior).
+document.addEventListener('click', (e) => {
+  const p = document.getElementById('agentDropdownPanel');
+  const b = document.getElementById('registry-btn');
+  if (p && p.classList.contains('open') && !p.contains(e.target) && b && !b.contains(e.target)) {
+    p.classList.remove('open');
+  }
+});
 
 function filterAgentDropdown(q) {
   populateAgentDropdown(q);
@@ -5171,6 +5886,11 @@ async function applySummonDeepLink() {
 
 // ── Landing page (mirrors rapp-installer) — boot terminal + launch ──
 (async function init() {
+  // Seed the voice settings panel from localStorage and reflect the mic button state.
+  try { _voiceInitPanel(); } catch (_) {}
+  // Note: voice mode always starts OFF on load (no autoplay/dictation without a user gesture).
+  try { updateVoiceBtn(); } catch (_) {}
+
   // Device-code flow needs no redirect callback; handleAuthCallback is a no-op.
   await handleAuthCallback();
 
