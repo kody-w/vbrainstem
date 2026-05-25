@@ -6601,6 +6601,116 @@ window.rapp = {
 };
 try { console.log('%c🧠 vBrainstem console ready — rapp.help()', 'color:#3fb950;font-weight:bold'); } catch (e) {}
 
+// ── Neighborhood: WebRTC tether (§5a) speaking the twin-chat protocol (§6a/§6e)
+// of rapp-neighborhood-protocol/1.0. Pair by QR or peer-id (PeerJS public broker
+// for the handshake; then direct DTLS P2P). Peers are UNIFORM — a person, a
+// brainstem, a vBrainstem, or Claude-in-the-console all speak {kind:'say',
+// payload:{text}}, which is routed into THIS tab's rapp.chat and answered
+// transparently. So a neighbor can't tell what's on the other end.
+const _hood = { peer: null, id: null, conns: {}, log: [], onmsg: null };
+let _peerjsLoading = null;
+function _myRappid() {
+  let r = localStorage.getItem('vb_rappid');
+  if (!r) { r = (crypto.randomUUID ? crypto.randomUUID() : 'vb-' + Date.now().toString(36) + Math.random().toString(36).slice(2)); localStorage.setItem('vb_rappid', r); }
+  return r;
+}
+function _loadPeerJS() {
+  if (window.Peer) return Promise.resolve();
+  if (_peerjsLoading) return _peerjsLoading;
+  _peerjsLoading = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+    s.onload = res; s.onerror = () => rej(new Error('PeerJS failed to load'));
+    document.head.appendChild(s);
+  });
+  return _peerjsLoading;
+}
+function _hoodEnsure() {
+  if (_hood.id && _hood.peer) return Promise.resolve(_hood.id);
+  return _loadPeerJS().then(() => new Promise((res, rej) => {
+    const p = new Peer();                       // PeerJS public broker assigns an id
+    _hood.peer = p;
+    p.on('open', (id) => { _hood.id = id; res(id); });
+    p.on('connection', (c) => _hoodWire(c));    // inbound neighbor
+    p.on('error', (e) => rej(e));
+  }));
+}
+function _hoodWire(conn) {
+  _hood.conns[conn.peer] = conn;
+  conn.on('data', (m) => _hoodHandle(conn, m));
+  conn.on('close', () => { delete _hood.conns[conn.peer]; });
+}
+async function _hoodHandle(conn, msg) {
+  if (!msg || msg.schema !== 'rapp-twin-chat/1.0') return;
+  _hood.log.push({ dir: 'in', msg });
+  try { if (_hood.onmsg) _hood.onmsg(msg); } catch (e) {}
+  if (msg.kind === 'say') {                     // route a neighbor's turn into our own brainstem
+    let reply;
+    try { reply = await window.rapp.chat({ user_input: (msg.payload && msg.payload.text) || '' }); }
+    catch (e) { reply = { error: e.message }; }
+    conn.send({ schema: 'rapp-twin-chat-response/1.0', channel: '5a-tether',
+      from_rappid: _myRappid(), to_rappid: msg.from_rappid, kind: 'say',
+      envelope: msg, status: (reply && reply.error) ? 502 : 200, response: reply });
+  }
+}
+window.rapp.neighborhood = {
+  async host() {                                // become reachable; returns peer-id + QR to share
+    const id = await _hoodEnsure();
+    const link = location.origin + location.pathname + '?peer=' + id;
+    const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=8&data=' + encodeURIComponent(link);
+    return { peer_id: id, rappid: _myRappid(), link, qr };
+  },
+  async join(peerId) {                          // connect to a neighbor by peer-id
+    await _hoodEnsure();
+    return new Promise((res, rej) => {
+      const c = _hood.peer.connect(peerId);
+      const t = setTimeout(() => rej(new Error('connect timeout')), 15000);
+      c.on('open', () => { clearTimeout(t); _hoodWire(c); res({ connected: peerId }); });
+      c.on('error', (e) => { clearTimeout(t); rej(e); });
+    });
+  },
+  peers() { return Object.keys(_hood.conns); },
+  async ask(peerId, user_input) {               // send a 'say' to a neighbor, await their reply (§6e)
+    if (!_hood.conns[peerId]) await this.join(peerId);
+    const c = _hood.conns[peerId];
+    const env = { schema: 'rapp-twin-chat/1.0', from_rappid: _myRappid(), to_rappid: peerId,
+      utc: new Date().toISOString(), kind: 'say', payload: { text: String(user_input) }, facets: [] };
+    return new Promise((res, rej) => {
+      const t = setTimeout(() => rej(new Error('ask timeout')), 30000);
+      const h = (m) => { if (m && m.schema === 'rapp-twin-chat-response/1.0' && m.envelope && m.envelope.utc === env.utc) { clearTimeout(t); res(m); } };
+      c.on('data', h); c.send(env);
+    });
+  },
+  onMessage(fn) { _hood.onmsg = fn; },
+  id() { return _hood.id; },
+  log() { return _hood.log; }
+};
+// QR pairing button in the header + auto-join when arriving via ?peer=…
+(function () {
+  function showQR(info) {
+    let o = document.getElementById('hood-qr');
+    if (!o) { o = document.createElement('div'); o.id = 'hood-qr';
+      o.style.cssText = 'position:fixed;right:16px;top:60px;z-index:9500;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px;text-align:center;box-shadow:0 16px 50px rgba(0,0,0,.5);font:12px -apple-system,sans-serif;color:#e6edf3';
+      document.body.appendChild(o); }
+    o.innerHTML = '<div style="font-weight:600;margin-bottom:8px">🏘 Neighborhood — scan to join</div>' +
+      '<img src="' + info.qr + '" width="200" height="200" style="border-radius:6px;background:#fff"><div style="margin-top:8px;color:#8b949e">peer-id</div>' +
+      '<code style="font-size:10px;color:#58a6ff;word-break:break-all">' + info.peer_id + '</code>' +
+      '<div style="margin-top:8px"><button onclick="this.closest(\'#hood-qr\').remove()" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:4px 12px;cursor:pointer">close</button></div>';
+  }
+  function addBtn() {
+    const c = document.querySelector('header .controls'); if (!c || document.getElementById('hood-btn')) return;
+    const b = document.createElement('button'); b.id = 'hood-btn'; b.className = 'icon-btn'; b.title = 'Neighborhood — host a WebRTC line (QR to pair)';
+    b.innerHTML = '<span class="icon" style="font-size:14px">🏘</span>';
+    b.onclick = async () => { try { showQR(await window.rapp.neighborhood.host()); } catch (e) { alert('Neighborhood error: ' + e.message); } };
+    c.insertBefore(b, c.firstChild);
+  }
+  window.addEventListener('load', () => {
+    setTimeout(addBtn, 200);
+    const peer = new URLSearchParams(location.search).get('peer');
+    if (peer) setTimeout(() => { window.rapp.neighborhood.join(peer).then(() => console.log('🏘 joined neighbor', peer)).catch(e => console.warn('join failed', e.message)); }, 1500);
+  });
+})();
+
 // ── Landing page (mirrors rapp-installer) — boot terminal + launch ──
 (async function init() {
   // Seed the voice settings panel from localStorage and reflect the mic button state.
