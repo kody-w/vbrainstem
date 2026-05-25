@@ -6521,6 +6521,60 @@ async function applySummonDeepLink() {
   history.replaceState({}, '', url.toString());
 }
 
+// ── Console API (window.rapp) — the SAME shape as vbrainstem_sdk.py, but in
+// the browser: drive the brainstem from DevTools (or automation) with no server
+// and no port. health/agents/run/eval mirror the SDK's HTTP endpoints 1:1.
+//   await rapp.run('@aibast-agents-library/account_intelligence', 'Acme Corp')
+//   await rapp.eval('import sys; print(sys.version)');  rapp.agents('fraud');  rapp.health()
+window.rapp = {
+  health() {                                                   // = GET /health
+    return { status: 'ok', agents: (availableAgents || []).length,
+             runtime: 'CPython ' + ((_pyodide && _pyodide.version) || '(pyodide/wasm)'),
+             registry: 'RAR', sdk: 'vbrainstem-console/1',
+             signed_in: !!chatToken, model: chatModel, secrets_unlocked: _secrets != null };
+  },
+  agents(grep) {                                               // = GET /agents
+    let xs = (availableAgents || []).map(a => ({ name: a.name, display_name: a.display_name,
+      description: a.description, category: a.category, requires_env: a.requires_env || [], _file: a._file }));
+    if (grep) { const q = String(grep).toLowerCase(); xs = xs.filter(a => JSON.stringify(a).toLowerCase().includes(q)); }
+    return xs;
+  },
+  async run(slug, request, args) {                             // = POST /run {slug,request,args}
+    const a = (availableAgents || []).find(x => x.name === slug)
+           || (availableAgents || []).find(x => x.name.split('/').pop() === String(slug).split('/').pop());
+    if (!a) return { executed: false, error: 'agent not found: ' + slug };
+    let source;
+    try { source = (typeof hotLoadedAgents !== 'undefined' && hotLoadedAgents[a.name]) ? hotLoadedAgents[a.name].source : await fetchAgent(a); }
+    catch (e) { return { executed: false, error: 'fetch failed: ' + (e.message || e) }; }
+    const res = await runAgentInPyodide(source, a.display_name, request);
+    return Object.assign({ agent: a.display_name, slug: a.name }, res);
+  },
+  async eval(code) {                                           // = POST /eval {code}
+    const py = await ensurePyodide();
+    py.globals.set('_rapp_console_code', String(code));
+    return { output: await py.runPythonAsync('_rapp_eval(_rapp_console_code)') };
+  },
+  // ── console-only conveniences (beyond the server shape) ──
+  summon(slug) {
+    const a = (availableAgents || []).find(x => x.name === slug); if (!a) return 'not found: ' + slug;
+    enabledAgents.add(a.name); localStorage.setItem('vb_enabled_agents', JSON.stringify([...enabledAgents]));
+    try { populateAgentDropdown(); updateEnabledPills(); } catch (e) {}
+    return 'enabled ' + a.name;
+  },
+  secrets: {
+    list() { return _secrets ? Object.keys(_secrets) : (localStorage.getItem('vb_secrets_enc') ? '(locked — rapp.secrets.unlock(passphrase))' : []); },
+    async unlock(p) { await unlockVault(p); return Object.keys(_secrets || {}); },
+    async set(k, v) { await setSecret(k, v); return 'set ' + k; }
+  },
+  help() {
+    const lines = ['rapp.health()', 'rapp.agents(grep?)', 'await rapp.run(slug, request)', 'await rapp.eval(code)',
+                   'rapp.summon(slug)', 'rapp.secrets.list() / .unlock(pass) / .set(k,v)',
+                   '— same shape as: python3 vbrainstem_sdk.py serve  (/health /agents /run /eval)'];
+    console.log('%cvBrainstem console API', 'color:#3fb950;font-weight:bold'); lines.forEach(l => console.log('  ' + l)); return lines;
+  }
+};
+try { console.log('%c🧠 vBrainstem console ready — rapp.help()', 'color:#3fb950;font-weight:bold'); } catch (e) {}
+
 // ── Landing page (mirrors rapp-installer) — boot terminal + launch ──
 (async function init() {
   // Seed the voice settings panel from localStorage and reflect the mic button state.

@@ -36,6 +36,18 @@ POST /eval   {"code":"…python…"}           → {output}
 
 Secrets: `export OPENAI_API_KEY=…` before `serve` — agents read them via `os.environ`.
 
+**Browser mirror (`window.rapp`).** The live tab exposes the **same shape** on the JS console — no server, no port. Open DevTools and call:
+
+```js
+rapp.health()                                  // = GET /health
+rapp.agents('fraud')                           // = GET /agents
+await rapp.run('@aibast-agents-library/account_intelligence', 'Acme Corp')   // = POST /run
+await rapp.eval('import sys; print(sys.version)')                            // = POST /eval
+// plus: rapp.summon(slug), rapp.secrets.list()/.unlock(pass)/.set(k,v), rapp.help()
+```
+
+So `vbrainstem_sdk.py` (headless CPython) and the browser tab (Pyodide) are **one API contract** — identical request/response shapes, two runtimes.
+
 ## UI
 
 `index.html` opens as a landing page styled to mirror
