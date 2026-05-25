@@ -6554,6 +6554,32 @@ window.rapp = {
     py.globals.set('_rapp_console_code', String(code));
     return { output: await py.runPythonAsync('_rapp_eval(_rapp_console_code)') };
   },
+  // POST /chat — same contract as vbrainstem_sdk.py / brainstem.py:
+  //   {user_input, conversation_history?, session_id?} → {response, session_id, agent_logs, voice_mode}
+  async chat(input, conversation_history) {
+    const req = (input && typeof input === 'object') ? input : { user_input: input, conversation_history };
+    const user_input = String(req.user_input || '').trim();
+    const session_id = req.session_id || (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+    if (!user_input) return { error: 'user_input is required' };
+    if (!chatToken) return { error: 'not signed in (no LLM token for routing)' };
+    const msgs = [{ role: 'system', content: buildSystemPrompt() }]
+      .concat((req.conversation_history || []).filter(m => ['user', 'assistant', 'tool'].includes(m.role)),
+              [{ role: 'user', content: user_input }]);
+    const logs = []; let m = {};
+    for (let i = 0; i < 3; i++) {                              // up to 3 tool-call rounds (brainstem parity)
+      const resp = await callGitHubModels(msgs);
+      m = resp.choices[0].message; msgs.push(m);
+      if (!m.tool_calls || !m.tool_calls.length) break;
+      for (const tc of m.tool_calls) {
+        let a = {}; try { a = JSON.parse(tc.function.arguments || '{}'); } catch (e) {}
+        let res; try { res = await executeToolCall(tc.function.name, a); } catch (e) { res = { error: e.message }; }
+        const out = (res && (res.output || res.error)) || '';
+        logs.push('[' + tc.function.name + '] ' + String(out).slice(0, 200));
+        msgs.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(res && res.output_full !== undefined ? { ...res, output_full: undefined } : res) });
+      }
+    }
+    return { response: m.content || '', session_id, agent_logs: logs.join('\n'), voice_mode: (typeof voiceMode !== 'undefined' && !!voiceMode) };
+  },
   // ── console-only conveniences (beyond the server shape) ──
   summon(slug) {
     const a = (availableAgents || []).find(x => x.name === slug); if (!a) return 'not found: ' + slug;

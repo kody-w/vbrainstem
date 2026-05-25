@@ -93,11 +93,21 @@ def install_shims():
                 self.name = name
             elif not hasattr(self, "name"):
                 self.name = "BasicAgent"
-            self.metadata = metadata or getattr(self, "metadata", {})
+            if metadata is not None:
+                self.metadata = metadata
+            elif not hasattr(self, "metadata"):
+                self.metadata = {"name": self.name, "description": "",
+                                 "parameters": {"type": "object", "properties": {}, "required": []}}
         def perform(self, **kwargs):
             return "Not implemented."
         def system_context(self):
             return None
+        def to_tool(self):
+            md = self.metadata or {}
+            return {"type": "function", "function": {
+                "name": self.name,
+                "description": md.get("description", ""),
+                "parameters": md.get("parameters", {"type": "object", "properties": {}, "required": []})}}
 
     for modname in ("basic_agent", "agents.basic_agent"):
         m = types.ModuleType(modname); m.BasicAgent = BasicAgent; sys.modules[modname] = m
@@ -223,6 +233,170 @@ def run_eval(code: str) -> dict:
         return {"output": buf.getvalue() + traceback.format_exc()}
 
 
+# ── LLM chat routing (Copilot via the rapp-auth worker; GitHub Models fallback) ──
+WORKER = "https://rapp-auth.kwildfeuer.workers.dev"
+_copilot_cache: dict = {}
+
+
+def _http_json(url, data=None, headers=None, method=None, timeout=60):
+    h = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "vbrainstem-sdk/1"}
+    h.update(headers or {})
+    body = json.dumps(data).encode() if data is not None else None
+    req = urllib.request.Request(url, data=body, headers=h, method=method or ("POST" if data is not None else "GET"))
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
+def _copilot_token(ghu):
+    import time
+    c = _copilot_cache.get(ghu)
+    if c and c["exp"] > time.time() + 60:
+        return c
+    try:
+        r = _http_json(f"{WORKER}/api/copilot/token", headers={"Authorization": f"Bearer {ghu}"}, method="GET")
+    except Exception:
+        return None
+    if not r or "token" not in r:
+        return None
+    ct = {"token": r["token"],
+          "endpoint": (r.get("endpoints") or {}).get("api", "https://api.individual.githubcopilot.com"),
+          "exp": r.get("expires_at", time.time() + 1500)}
+    _copilot_cache[ghu] = ct
+    return ct
+
+
+def _llm(token, messages, tools, model=None):
+    import urllib.parse
+    body = {"messages": messages, "tools": tools, "tool_choice": "auto", "temperature": 0.4}
+    ct = _copilot_token(token)               # 1) Copilot via worker (full catalog incl. Claude) — ghu_ tokens
+    if ct:
+        try:
+            return _http_json(f"{WORKER}/api/copilot/chat?endpoint=" + urllib.parse.quote(ct["endpoint"], safe=""),
+                              {**body, "model": model or "gpt-4o"}, {"Authorization": f"Bearer {ct['token']}"})
+        except Exception:
+            pass
+    return _http_json("https://models.github.ai/inference/chat/completions",   # 2) GitHub Models — PAT w/ models:read
+                      {**body, "model": model or "openai/gpt-4o"}, {"Authorization": f"Bearer {token}"})
+
+
+_soul_cache = None
+
+
+def load_soul() -> str:
+    """The system-prompt base — the SAME soul.md the local brainstem.py uses (override via RAPP_SOUL)."""
+    global _soul_cache
+    if _soul_cache is not None:
+        return _soul_cache
+    src = os.environ.get("RAPP_SOUL") or "https://raw.githubusercontent.com/kody-w/rapp-installer/main/rapp_brainstem/soul.md"
+    try:
+        _soul_cache = (open(src).read() if os.path.exists(src) else _fetch(src)).strip()
+    except Exception:
+        _soul_cache = "You are a helpful AI assistant."
+    return _soul_cache
+
+
+def _load_instances(slugs, registry=None) -> dict:
+    """Instantiate catalog agents → {tool_name(==self.name): {inst, slug}} — like brainstem's load_agents()."""
+    install_shims()
+    reg = load_registry(registry)
+    adir = os.path.join(DATA_DIR, "agents")
+    os.makedirs(adir, exist_ok=True)
+    if adir not in sys.path:
+        sys.path.insert(0, adir)
+    out = {}
+    for slug in (slugs or []):
+        entry = find_agent(slug, reg)
+        if not entry:
+            continue
+        try:
+            src = agent_source(entry)
+        except Exception:
+            continue
+        path = os.path.join(adir, "_load_agent.py")
+        open(path, "w").write(src)
+        ns = {"__name__": "_rapp_agent_", "__file__": path}
+        try:
+            exec(compile(src, path, "exec"), ns)
+        except Exception:
+            continue
+        cls = next((v for v in ns.values() if isinstance(v, type) and v.__name__ != "BasicAgent"
+                    and hasattr(v, "perform")
+                    and "BasicAgent" in [b.__name__ for b in getattr(v, "__mro__", [])]), None)
+        if not cls:
+            continue
+        try:
+            inst = cls()
+        except Exception:
+            continue
+        out[getattr(inst, "name", entry["name"])] = {"inst": inst, "slug": entry["name"]}
+    return out
+
+
+def chat(user_input, token, conversation_history=None, session_id=None, model=None, registry=None, agents=None) -> dict:
+    """Natural-language chat with LLM agent-routing — behavior + contract match rapp_brainstem/brainstem.py:
+      request : {user_input, conversation_history?, session_id?, agents?: [slugs]}
+      response: {response, session_id, agent_logs, voice_mode}   (or {error})
+    System prompt = soul.md (+ each loaded agent's system_context()). Tools = each agent's to_tool()
+    metadata, rebuilt on every call. Tool name == agent name; up to 3 tool-call rounds; perform(**args).
+    `agents` is the loaded set (mirrors brainstem's installed agents); empty → plain soul chat."""
+    import uuid
+    session_id = session_id or str(uuid.uuid4())
+    user_input = (user_input or "").strip()
+    if not user_input:
+        return {"error": "user_input is required"}
+    if not token:
+        return {"error": "no token — set RAPP_GH_TOKEN / GITHUB_TOKEN, pass Authorization: Bearer …, or use /run with a slug"}
+
+    instances = _load_instances(agents, registry)            # {} → plain chat (no tools), like brainstem w/ no agents
+    extra = ""
+    for rec in instances.values():
+        try:
+            ctx = rec["inst"].system_context()
+            if ctx:
+                extra += "\n" + ctx
+        except Exception:
+            pass
+    tools = [rec["inst"].to_tool() for rec in instances.values()] or None   # per-agent metadata, every call
+
+    messages = [{"role": "system", "content": load_soul() + extra}]
+    messages += [m for m in (conversation_history or []) if m.get("role") in ("user", "assistant", "tool")]
+    messages.append({"role": "user", "content": user_input})
+
+    logs, msg = [], {}
+    for _ in range(3):                                       # up to 3 tool-call rounds (brainstem parity)
+        try:
+            resp = _llm(token, messages, tools, model)
+        except Exception as e:
+            return {"error": f"LLM call failed: {e}"}
+        if not resp or "choices" not in resp:
+            return {"error": "LLM returned no choices", "detail": resp}
+        msg = resp["choices"][0]["message"]
+        messages.append(msg)
+        tcs = msg.get("tool_calls")
+        if not tcs:
+            break
+        for tc in tcs:
+            fn = tc["function"]["name"]
+            try:
+                args = json.loads(tc["function"].get("arguments") or "{}")
+            except Exception:
+                args = {}
+            rec = instances.get(fn)
+            if rec:
+                try:
+                    result = rec["inst"].perform(**args)
+                except Exception as e:
+                    result = f"Error: {e}"
+            else:
+                result = f"Agent '{fn}' not found."
+            if not isinstance(result, str):
+                result = json.dumps(result, default=str)
+            logs.append(f"[{fn}] {result}")
+            messages.append({"role": "tool", "tool_call_id": tc.get("id"), "content": result})
+    return {"response": msg.get("content") or "", "session_id": session_id,
+            "agent_logs": "\n".join(logs), "voice_mode": False}
+
+
 def list_agents(grep: str | None = None, registry: str | None = None) -> list:
     reg = load_registry(registry)
     out = []
@@ -282,6 +456,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, run_slug(slug, b.get("request"), b.get("args")))
             elif path == "/eval":
                 self._send(200, run_eval(b.get("code", "")))
+            elif path == "/chat":
+                auth = self.headers.get("Authorization", "")
+                token = auth.split(None, 1)[1] if auth.lower().startswith("bearer ") else (
+                    os.environ.get("RAPP_GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or "")
+                self._send(200, chat(b.get("user_input", ""), token, b.get("conversation_history"), b.get("session_id"), b.get("model"), agents=b.get("agents")))
             else:
                 self._send(404, {"error": "not found", "path": path})
         except Exception as e:
@@ -298,7 +477,7 @@ def serve(port: int, registry: str | None):
         print(f"vbrainstem_sdk: cannot bind port {port} ({e}). Another server (a brainstem?) is there — try --port <other>.", file=sys.stderr)
         sys.exit(1)
     print(f"vbrainstem_sdk: CPython {sys.version.split()[0]} | {len(reg.get('agents', []))} agents | http://localhost:{port}")
-    print(f"  GET /health  GET /agents  POST /run {{slug,request}}  POST /eval {{code}}")
+    print(f"  GET /health  GET /agents  POST /run {{slug,request}}  POST /eval {{code}}  POST /chat {{message}}")
     httpd.serve_forever()
 
 
@@ -310,6 +489,7 @@ def main():
     g = sub.add_parser("agents"); g.add_argument("--grep"); g.add_argument("--registry")
     r = sub.add_parser("run"); r.add_argument("slug"); r.add_argument("request", nargs="?", default=""); r.add_argument("--arg", action="append", default=[]); r.add_argument("--registry")
     e = sub.add_parser("eval"); e.add_argument("code")
+    c = sub.add_parser("chat"); c.add_argument("message"); c.add_argument("--model"); c.add_argument("--registry"); c.add_argument("--agents", help="comma-separated agent slugs to load as tools")
     a = p.parse_args()
     if a.cmd == "serve":
         serve(a.port, a.registry)
@@ -321,6 +501,10 @@ def main():
         print(json.dumps(run_slug(a.slug, a.request, args, a.registry), indent=2))
     elif a.cmd == "eval":
         print(run_eval(a.code)["output"])
+    elif a.cmd == "chat":
+        token = os.environ.get("RAPP_GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+        print(json.dumps(chat(a.message, token, None, None, a.model, a.registry,
+                              (a.agents.split(",") if a.agents else None)), indent=2))
 
 
 if __name__ == "__main__":
