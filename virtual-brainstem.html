@@ -6793,9 +6793,47 @@ window.rapp.neighborhood = {
   }
   window.addEventListener('load', () => {
     setTimeout(addBtn, 200);
-    const peer = new URLSearchParams(location.search).get('peer');
-    if (peer) setTimeout(() => { window.rapp.neighborhood.join(peer).then(() => console.log('🏘 joined neighbor', peer)).catch(e => console.warn('join failed', e.message)); }, 1500);
+    const params = new URLSearchParams(location.search);
+    const peer = params.get('peer');
+    if (peer) setTimeout(() => dialPanel(peer, params.get('op') || ''), 1200);
   });
+  // "Dial" panel — arrive via ?peer=…&op=… (e.g. by scanning a QR) and get a sealed chat
+  // box wired straight to that neighbor (the door). This is how a phone dials a brainstem
+  // across the network: join the kited neighborhood, talk end-to-end encrypted.
+  function dialPanel(peer, op) {
+    if (document.getElementById('dial-panel')) return;
+    const w = document.createElement('div'); w.id = 'dial-panel';
+    w.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;margin:0 auto;max-width:520px;background:#0d1117;border:1px solid #30363d;border-radius:14px 14px 0 0;box-shadow:0 -10px 40px rgba(0,0,0,.6);font:15px -apple-system,BlinkMacSystemFont,sans-serif;color:#e6edf3;display:flex;flex-direction:column;max-height:72vh';
+    w.innerHTML =
+      '<div style="padding:11px 14px;border-bottom:1px solid #21262d;font-weight:600">🪁 kited neighborhood'
+      + '<span id="dial-status" style="float:right;font-weight:400;color:#8b949e;font-size:12px">connecting…</span></div>'
+      + '<div id="dial-msgs" style="flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:120px"></div>'
+      + '<div style="display:flex;gap:8px;padding:10px 12px;border-top:1px solid #21262d">'
+      + '<input id="dial-in" placeholder="message your brainstem…" autocomplete="off" enterkeyhint="send" '
+      + 'style="flex:1;background:#161b22;border:1px solid #30363d;border-radius:8px;color:#e6edf3;padding:11px 12px;font-size:16px">'
+      + '<button id="dial-send" style="background:#238636;border:0;color:#fff;border-radius:8px;padding:0 16px;font-weight:600;font-size:15px">Send</button></div>';
+    document.body.appendChild(w);
+    const msgs = w.querySelector('#dial-msgs'), inp = w.querySelector('#dial-in'),
+          send = w.querySelector('#dial-send'), st = w.querySelector('#dial-status');
+    const bubble = (who, text) => { const d = document.createElement('div');
+      d.style.cssText = 'max-width:86%;padding:8px 11px;border-radius:10px;white-space:pre-wrap;word-break:break-word;font-size:15px;'
+        + (who === 'me' ? 'align-self:flex-end;background:#1f6feb;color:#fff' : who === 'them' ? 'align-self:flex-start;background:#161b22;border:1px solid #30363d' : 'align-self:center;color:#8b949e;font-size:12px');
+      d.textContent = text; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d; };
+    bubble('sys', op ? '🔒 sealed channel — end-to-end encrypted (AES-256-GCM)' : 'plaintext channel');
+    window.rapp.neighborhood.join(peer).then(() => { st.textContent = op ? '🔒 connected' : 'connected'; })
+      .catch(e => { st.textContent = 'connect failed'; bubble('sys', 'connect failed: ' + (e && e.message || e)); });
+    async function go() {
+      const text = inp.value.trim(); if (!text) return; inp.value = '';
+      bubble('me', text); const pend = bubble('sys', '…');
+      try { const r = await window.rapp.neighborhood.ask(peer, text, op || undefined);
+        pend.remove();
+        const resp = (r && r.response && (r.response.response !== undefined ? r.response.response : JSON.stringify(r.response)));
+        bubble('them', resp !== undefined ? resp : JSON.stringify(r));
+      } catch (e) { pend.remove(); bubble('sys', 'error: ' + (e && e.message || e)); }
+    }
+    send.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    try { inp.focus(); } catch (_) {}
+  }
 })();
 
 // ── Landing page (mirrors rapp-installer) — boot terminal + launch ──
