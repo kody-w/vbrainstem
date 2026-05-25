@@ -1,0 +1,41 @@
+name: canon-tools
+# Drift guard for the standalone tools/artifacts that have their own canonical repos.
+# vBrainstem keeps working copies; this fails CI if any drifts from its canonical source.
+on:
+  push:
+    paths:
+      - 'doorman.skill.md'
+      - 'doorman_selftest.sh'
+      - 'vbrainstem_sdk.py'
+      - 'vbridge.sh'
+      - 'kited_twin.js'
+      - 'kite_vtwin.js'
+      - 'claude_bridge.js'
+      - '.github/workflows/canon-tools.yml'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Working copies must match their canonical repos
+        run: |
+          set -e
+          B=https://raw.githubusercontent.com/kody-w
+          check() {
+            curl -fsSL "$2" -o /tmp/canon || { echo "::error::cannot fetch canonical $2"; exit 1; }
+            if ! diff -q "$1" /tmp/canon >/dev/null; then
+              echo "::error::$1 has drifted from canonical ($2) — sync it."; exit 1
+            fi
+            echo "  ✓ $1 ↔ $2"
+          }
+          check doorman.skill.md    "$B/rapp-doorman/main/doorman.skill.md"
+          check doorman_selftest.sh "$B/rapp-doorman/main/doorman_selftest.sh"
+          check vbrainstem_sdk.py   "$B/rapp-brainstem-sdk/main/vbrainstem_sdk.py"
+          check vbridge.sh          "$B/rapp-kite/main/vbridge.sh"
+          check kited_twin.js       "$B/rapp-kite/main/kited_twin.js"
+          check kite_vtwin.js       "$B/rapp-kite/main/kite_vtwin.js"
+          check claude_bridge.js    "$B/rapp-kite/main/claude_bridge.js"
+          echo "✅ all tooling copies match canonical"

@@ -101,6 +101,7 @@ CSS + the boot wiring in `init()`) and the absolute "Back to RAPP" link are
 > (**vTwin · Kited · Tethered · the String · Kited Neighborhood · Neighbor · Scan-to-Join · Sealed · Doorman**) and the **kite mark**.
 > Companions: [rapp-sealed](https://github.com/kody-w/rapp-sealed) (the `rapp-sealed/1.0` codec) · [kite-mark](https://github.com/kody-w/kite-mark) (the mark).
 > This repo is the **reference implementation**; the inlined codec + mark are CI-checked against canonical (`neighborhood-canon`).
+> Tools have their own repos too (working copies here are CI-synced via `canon-tools`): [rapp-doorman](https://github.com/kody-w/rapp-doorman) · [rapp-brainstem-sdk](https://github.com/kody-w/rapp-brainstem-sdk) · [rapp-kite](https://github.com/kody-w/rapp-kite). Full ecosystem map → [rapp-map](https://github.com/kody-w/rapp-map).
 
 Two brainstems — a local `brainstem.py`, a vBrainstem tab, a person, or Claude — meet as
 **uniform peers** speaking `rapp-twin-chat/1.0`; nobody can tell what's on the other end. A
