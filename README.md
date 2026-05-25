@@ -11,6 +11,31 @@ This is a standalone host for the RAPP Brainstem, kept **outside** the
 independently (e.g. from Grail trading-card QR codes). The agent **registry stays in
 RAR** — this app reads it live, so RAR remains the single source of truth.
 
+## Headless SDK — drive agents through a port (`vbrainstem_sdk.py`)
+
+A browser tab can't open a port, but the same agent runtime can run headless. `vbrainstem_sdk.py`
+is a single-file, stdlib-only server that loads the live RAR catalog and runs agents in **real
+CPython** (full stdlib, real network + filesystem — so secret/network agents work), drivable like
+`brainstem.py`:
+
+```bash
+python3 vbrainstem_sdk.py serve --port 7173      # HTTP API on a port
+python3 vbrainstem_sdk.py run @aibast-agents-library/account_intelligence "360 for Acme"
+python3 vbrainstem_sdk.py agents --grep fraud
+python3 vbrainstem_sdk.py eval "import sys; print(sys.version)"
+```
+
+HTTP (CORS-enabled — drive it from `curl`, the `rapp-brainstem` skill, an agent, or the browser):
+
+```
+GET  /health                              → {status, agents, runtime}
+GET  /agents[?grep=]                       → {agents:[…]}
+POST /run    {"slug":"@pub/agent","request":"…","args":{}}  → {executed, output|error}
+POST /eval   {"code":"…python…"}           → {output}
+```
+
+Secrets: `export OPENAI_API_KEY=…` before `serve` — agents read them via `os.environ`.
+
 ## UI
 
 `index.html` opens as a landing page styled to mirror
