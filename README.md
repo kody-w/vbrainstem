@@ -97,8 +97,10 @@ CSS + the boot wiring in `init()`) and the absolute "Back to RAPP" link are
 
 ## Neighborhood, kited twins & the sealed channel
 
-> **Canonical spec:** [`NEIGHBORHOOD_PROTOCOL.md`](NEIGHBORHOOD_PROTOCOL.md) — `rapp-neighborhood-protocol/1.0`.
-> It owns the vocabulary: **vTwin · Kited · Tethered · the String · Kited Neighborhood · Neighbor · Scan-to-Join · Sealed · Doorman**, and the **kite mark** (the Microsoft logo flown as a kite).
+> **Canonical spec:** [kody-w/rapp-neighborhood-protocol](https://github.com/kody-w/rapp-neighborhood-protocol) (`rapp-neighborhood-protocol/1.0`) — owns the vocabulary
+> (**vTwin · Kited · Tethered · the String · Kited Neighborhood · Neighbor · Scan-to-Join · Sealed · Doorman**) and the **kite mark**.
+> Companions: [rapp-sealed](https://github.com/kody-w/rapp-sealed) (the `rapp-sealed/1.0` codec) · [kite-mark](https://github.com/kody-w/kite-mark) (the mark).
+> This repo is the **reference implementation**; the inlined codec + mark are CI-checked against canonical (`neighborhood-canon`).
 
 Two brainstems — a local `brainstem.py`, a vBrainstem tab, a person, or Claude — meet as
 **uniform peers** speaking `rapp-twin-chat/1.0`; nobody can tell what's on the other end. A
