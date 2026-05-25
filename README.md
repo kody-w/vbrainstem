@@ -137,6 +137,8 @@ goes over the sealed channel, where key-possession *is* the authorization.
 | `brainstem_bridge.html` | front a local brainstem into the neighborhood (sealed) so a remote browser can drive **this** machine's brainstem |
 | `vbridge.sh <peer> <token> <ask\|eval\|run\|chat\|agents\|health> …` | CLI peer — operate a hosted tab from a shell, sealed |
 | `kited_twin.js --port <cdp> [--brainstem <url>] [--once]` | the kite string — fly a tab via CDP; `--brainstem` makes it **tethered** |
+| `doorman.skill.md` | feed its **raw URL** to a fresh Claude on another machine → it sets up and guards a sealed door to *that* machine's brainstem (Claude as the "doorman") |
+| `doorman_selftest.sh` | one command that **proves** a machine can be a sealed doorman (hosts the bridge, drives it from a separate sealed peer, asserts the real brainstem answered) |
 
 ## License
 
