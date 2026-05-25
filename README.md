@@ -97,6 +97,9 @@ CSS + the boot wiring in `init()`) and the absolute "Back to RAPP" link are
 
 ## Neighborhood, kited twins & the sealed channel
 
+> **Canonical spec:** [`NEIGHBORHOOD_PROTOCOL.md`](NEIGHBORHOOD_PROTOCOL.md) — `rapp-neighborhood-protocol/1.0`.
+> It owns the vocabulary: **vTwin · Kited · Tethered · the String · Kited Neighborhood · Neighbor · Scan-to-Join · Sealed · Doorman**, and the **kite mark** (the Microsoft logo flown as a kite).
+
 Two brainstems — a local `brainstem.py`, a vBrainstem tab, a person, or Claude — meet as
 **uniform peers** speaking `rapp-twin-chat/1.0`; nobody can tell what's on the other end. A
 *tether* is the live link between them. There are two §5a transports:
