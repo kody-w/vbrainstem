@@ -578,9 +578,36 @@
       <span class="icon icon-xl"><svg viewBox="0 0 512 512" fill="#fff"><path d="M184 0c-30.9 0-56.5 22.7-61.1 52.3C54.5 67 0 130 0 206.8c0 41.6 17.4 79.2 45.3 105.9-2 9.2-3.3 18.8-3.3 28.7 0 55.3 35.8 102.2 85.5 119C142.2 493 172.6 512 208 512h16c35.3 0 64-28.7 64-64V86c0-8.8-7.2-16-16-16h-16c-8.8 0-16 7.2-16 16v16c0 8.8-7.2 16-16 16s-16-7.2-16-16V64c0-35.3-28.7-64-64-64h40zm144 0c30.9 0 56.5 22.7 61.1 52.3C457.5 67 512 130 512 206.8c0 41.6-17.4 79.2-45.3 105.9 2 9.2 3.3 18.8 3.3 28.7 0 55.3-35.8 102.2-85.5 119C369.8 493 339.4 512 304 512h-16c-35.3 0-64-28.7-64-64V86c0-8.8 7.2-16 16-16h16c8.8 0 16 7.2 16 16v16c0 8.8 7.2 16 16 16s16-7.2 16-16V64c0-35.3 28.7-64 64-64h-40z"/></svg></span>
     </div>
     <h2>RAPP Brainstem</h2>
-    <p>Sign in with your GitHub account to chat through GitHub Models. You can also skip and run Python agents in your browser without signing in.</p>
-    <button class="login-btn" onclick="handleGHAuth()">Sign in with GitHub</button>
-    <button class="login-skip" onclick="dismissLogin()">Skip &mdash; explore without signing in</button>
+
+    <!-- step 1: kick off the GitHub device-code flow -->
+    <div id="login-step1">
+      <p>Sign in with your GitHub account to chat through GitHub Copilot (full model catalog incl. Claude Opus 4.7). You can also skip and run Python agents in your browser without signing in.</p>
+      <button class="login-btn" id="loginStartBtn" onclick="startLogin()">Sign in with GitHub</button>
+      <button class="login-skip" onclick="dismissLogin()">Skip &mdash; explore without signing in</button>
+    </div>
+
+    <!-- step 2: show the user_code + verification link, poll for authorization -->
+    <div id="login-step2" style="display:none">
+      <p>Enter this code on GitHub to authorize this device:</p>
+      <div id="login-user-code"
+        style="font-family:'SF Mono',monospace;font-size:30px;font-weight:700;letter-spacing:4px;color:#e6edf3;background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:14px 18px;margin:4px 0 14px;user-select:all">----&ndash;----</div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px">
+        <button class="icon-btn" onclick="copyUserCode()" title="Copy code">
+          <span class="icon"><svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path fill-rule="evenodd" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg></span>
+          Copy code
+        </button>
+        <a class="login-btn" id="login-open-link" href="https://github.com/login/device" target="_blank" rel="noopener"
+          style="display:inline-flex;align-items:center;text-decoration:none;padding:6px 14px;font-size:13px">Open GitHub &rarr;</a>
+      </div>
+      <p id="login-poll-status" style="margin-bottom:0;color:#8b949e;font-size:13px">Waiting for authorization&hellip;</p>
+      <button class="login-skip" id="login-retry-btn" style="display:none" onclick="startLogin()">Retry</button>
+    </div>
+
+    <!-- step 3: success -->
+    <div id="login-step3" style="display:none">
+      <div style="font-size:48px;line-height:1;margin-bottom:12px;color:#3fb950">&#10003;</div>
+      <p id="login-success-msg" style="margin-bottom:0">Signed in! Loading models&hellip;</p>
+    </div>
   </div>
 </div>
 
@@ -710,11 +737,28 @@ function useStarter(text) {
   inp.value = text;
   sendChat();
 }
-// Dismissible, non-blocking login prompt (OAuth — not device code).
+// Dismissible, non-blocking login prompt (GitHub device-code flow).
 function dismissLogin() {
   const o = document.getElementById('login-overlay');
   if (o) o.style.display = 'none';
+  if (typeof _stopLoginPoll === 'function') _stopLoginPoll();
   try { localStorage.setItem('vb_login_dismissed', '1'); } catch (_) {}
+}
+// Show which of the 3 login steps is visible (1=start, 2=code, 3=success).
+function setLoginStep(n) {
+  for (const i of [1, 2, 3]) {
+    const el = document.getElementById('login-step' + i);
+    if (el) el.style.display = (i === n) ? '' : 'none';
+  }
+}
+// Open the login card on step 1 (used by the header pill when signed out).
+function showLogin() {
+  const o = document.getElementById('login-overlay');
+  if (!o) return;
+  setLoginStep(1);
+  const btn = document.getElementById('loginStartBtn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Sign in with GitHub'; }
+  o.style.display = 'flex';
 }
 function showLoginIfNeeded() {
   // Show the (dismissible) sign-in card once, only when not signed in.
@@ -722,7 +766,9 @@ function showLoginIfNeeded() {
   try { dismissed = localStorage.getItem('vb_login_dismissed') === '1'; } catch (_) {}
   const o = document.getElementById('login-overlay');
   if (!o) return;
-  o.style.display = (typeof chatToken !== 'undefined' && chatToken) || dismissed ? 'none' : 'flex';
+  if ((typeof chatToken !== 'undefined' && chatToken) || dismissed) { o.style.display = 'none'; return; }
+  setLoginStep(1);
+  o.style.display = 'flex';
 }
 // Clear the current chat (transcript + rendered messages), restore the welcome tour.
 function clearChat() {
@@ -3507,18 +3553,201 @@ function runTests() {
 // SECTION 6: Chat Mode — GitHub Models + Built-in Agents
 // ═══════════════════════════════════════════════════════════════════════
 
-const GH_MODELS_URL = 'https://models.inference.ai.azure.com/chat/completions';   // legacy fallback (bare model ids)
-const GH_MODELS_NEW_URL = 'https://models.github.ai/inference/chat/completions';  // new GitHub Models — full account catalog
-const GH_CATALOG_URL = 'https://models.github.ai/catalog/models';                 // public model catalog
-const AUTH_CLIENT_ID = 'Ov23liuueQBIUggrH8NG';
-const AUTH_WORKER_URL = 'https://rappterbook-auth.kwildfeuer.workers.dev';
+// ── RAPP auth worker (device-code → GitHub Copilot) ──
+// Deployed, live, CORS-enabled for kody-w.github.io. This is the new auth path:
+// device-code login yields a durable ghu_ token; we exchange it for a short-lived
+// Copilot bearer and proxy models/chat through the worker (same as the local brainstem).
+const AUTH_WORKER = 'https://rapp-auth.kwildfeuer.workers.dev';
 
-let chatToken = localStorage.getItem('rb_access_token') || localStorage.getItem('gh_token') || null;
+// Legacy GitHub Models fallback (used only when the account has no Copilot).
+const GH_MODELS_URL = 'https://models.inference.ai.azure.com/chat/completions';   // legacy fallback (bare model ids)
+
+// The durable GitHub token (ghu_…) — persisted. Migrate any old key over once.
+let chatToken = localStorage.getItem('vb_gh_token')
+  || localStorage.getItem('rb_access_token')
+  || localStorage.getItem('gh_token') || null;
+if (chatToken && !localStorage.getItem('vb_gh_token')) {
+  try { localStorage.setItem('vb_gh_token', chatToken); } catch (_) {}
+}
+
+// Short-lived Copilot session — in memory only, never persisted.
+let copilotToken = null;        // the Copilot bearer
+let copilotEndpoint = null;     // e.g. https://api.individual.githubcopilot.com
+let copilotExpiresAt = 0;       // unix seconds
+let usingCopilot = false;       // true once a Copilot token was obtained (drives primary vs fallback)
+
 let chatUser = null;
-let chatModel = localStorage.getItem('vb_model') || 'openai/gpt-4o-mini';
+let chatModel = localStorage.getItem('vb_model') || 'gpt-4o';
 let availableModels = [];
 let chatHistory = [];
 let chatBusy = false;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Device-code login → durable ghu_ token (via the RAPP auth worker)
+// ═══════════════════════════════════════════════════════════════════════
+let _loginPollTimer = null;
+function _stopLoginPoll() { if (_loginPollTimer) { clearTimeout(_loginPollTimer); _loginPollTimer = null; } }
+
+function copyUserCode() {
+  const el = document.getElementById('login-user-code');
+  if (!el) return;
+  const code = el.textContent.trim();
+  navigator.clipboard?.writeText(code).then(
+    () => { try { showToast('Code copied'); } catch (_) {} },
+    () => {}
+  );
+}
+
+// Kick off the GitHub device-code flow against the worker, then poll for the token.
+async function startLogin() {
+  const startBtn = document.getElementById('loginStartBtn');
+  if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Starting…'; }
+  _stopLoginPoll();
+  try {
+    const resp = await fetch(AUTH_WORKER + '/api/auth/device', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    if (!resp.ok) throw new Error('device request failed (' + resp.status + ')');
+    const data = await resp.json();
+    if (!data.device_code || !data.user_code) throw new Error('bad device response');
+
+    // Render step 2 — the user code + verification link.
+    const codeEl = document.getElementById('login-user-code');
+    if (codeEl) codeEl.textContent = data.user_code;
+    const linkEl = document.getElementById('login-open-link');
+    if (linkEl && data.verification_uri) linkEl.href = data.verification_uri;
+    const retry = document.getElementById('login-retry-btn');
+    if (retry) retry.style.display = 'none';
+    const statusEl = document.getElementById('login-poll-status');
+    if (statusEl) statusEl.textContent = 'Waiting for authorization…';
+    setLoginStep(2);
+
+    _pollDeviceToken(data.device_code, Math.max(1, data.interval || 5), 0);
+  } catch (e) {
+    if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Sign in with GitHub'; }
+    const statusEl = document.getElementById('login-poll-status');
+    if (statusEl) statusEl.textContent = 'Could not start sign-in: ' + e.message;
+    console.error('startLogin failed:', e);
+  }
+}
+
+// Poll /api/auth/device/poll until we get an access_token (or give up).
+function _pollDeviceToken(deviceCode, intervalSec, attempt) {
+  const MAX_ATTEMPTS = 150;
+  const statusEl = document.getElementById('login-poll-status');
+  if (attempt >= MAX_ATTEMPTS) {
+    if (statusEl) statusEl.textContent = 'Sign-in timed out. Please try again.';
+    const retry = document.getElementById('login-retry-btn');
+    if (retry) retry.style.display = '';
+    return;
+  }
+  _loginPollTimer = setTimeout(async () => {
+    try {
+      const resp = await fetch(AUTH_WORKER + '/api/auth/device/poll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_code: deviceCode })
+      });
+      const data = await resp.json().catch(() => ({}));
+
+      if (data.access_token) {
+        _onDeviceAuthorized(data.access_token);
+        return;
+      }
+      const err = data.error || (resp.ok ? 'authorization_pending' : 'authorization_pending');
+      if (err === 'authorization_pending') {
+        _pollDeviceToken(deviceCode, intervalSec, attempt + 1);
+      } else if (err === 'slow_down') {
+        _pollDeviceToken(deviceCode, intervalSec + 5, attempt + 1);
+      } else if (err === 'expired_token' || err === 'access_denied') {
+        if (statusEl) statusEl.textContent = err === 'access_denied'
+          ? 'Authorization was denied. Try again.'
+          : 'The code expired. Try again.';
+        const retry = document.getElementById('login-retry-btn');
+        if (retry) retry.style.display = '';
+      } else {
+        // Unknown — keep polling (transient).
+        _pollDeviceToken(deviceCode, intervalSec, attempt + 1);
+      }
+    } catch (e) {
+      // Network blip — keep trying.
+      _pollDeviceToken(deviceCode, intervalSec, attempt + 1);
+    }
+  }, intervalSec * 1000);
+}
+
+// Got the durable ghu_ token: persist it, exchange for a Copilot token, wire up state.
+async function _onDeviceAuthorized(ghToken) {
+  _stopLoginPoll();
+  chatToken = ghToken;
+  try { localStorage.setItem('vb_gh_token', ghToken); } catch (_) {}
+
+  const successMsg = document.getElementById('login-success-msg');
+  try {
+    await getCopilotToken();   // throws on 403 / no Copilot
+    // Copilot available — full catalog.
+    if (successMsg) successMsg.textContent = 'Signed in with GitHub Copilot! Loading models…';
+    setLoginStep(3);
+    setTimeout(() => { const o = document.getElementById('login-overlay'); if (o) o.style.display = 'none'; }, 1100);
+    updateGHPill();
+    fetchGHUser();
+    fetchModels();
+  } catch (e) {
+    // No Copilot on this account → fall back to the public GitHub Models path.
+    usingCopilot = false;
+    const noCopilot = /\b403\b/.test(e.message);
+    if (noCopilot) {
+      const statusEl = document.getElementById('login-poll-status');
+      if (statusEl) {
+        statusEl.innerHTML = 'This account doesn\'t have GitHub Copilot access. ' +
+          'You can still use the public GitHub Models catalog. ' +
+          '<a href="https://github.com/github-copilot/signup" target="_blank" rel="noopener">Get Copilot &rarr;</a>';
+      }
+      // Keep the message visible briefly, then dismiss into the (fallback) signed-in state.
+      setTimeout(() => { const o = document.getElementById('login-overlay'); if (o) o.style.display = 'none'; }, 2600);
+    } else {
+      const o = document.getElementById('login-overlay'); if (o) o.style.display = 'none';
+      console.warn('Copilot token exchange failed:', e.message);
+    }
+    updateGHPill();
+    fetchGHUser();
+    fetchModels();   // fetchModels() falls back to the public catalog when usingCopilot is false
+  }
+}
+
+// ── Copilot session token (short-lived) ──
+
+// Exchange the durable ghu_ token for a Copilot bearer + endpoint. Throws on failure.
+async function getCopilotToken() {
+  if (!chatToken) throw new Error('Not signed in');
+  const resp = await fetch(AUTH_WORKER + '/api/copilot/token', {
+    headers: { 'Authorization': 'Bearer ' + chatToken }
+  });
+  if (!resp.ok) {
+    // 403 → account has no Copilot. Surface the status code in the message.
+    throw new Error('Copilot token exchange failed (' + resp.status + ')');
+  }
+  const data = await resp.json();
+  if (!data.token) throw new Error('Copilot token exchange returned no token');
+  copilotToken = data.token;
+  copilotEndpoint = (data.endpoints && data.endpoints.api) || copilotEndpoint;
+  copilotExpiresAt = data.expires_at || (Math.floor(Date.now() / 1000) + 1500);
+  usingCopilot = true;
+  return data;
+}
+
+// Ensure a fresh Copilot token before any models/chat call. Re-exchanges using the
+// stored ghu_ when missing or within 60s of expiry. Throws if no Copilot (caller falls back).
+async function ensureCopilotToken() {
+  if (!chatToken) throw new Error('Not signed in');
+  const now = Math.floor(Date.now() / 1000);
+  if (!copilotToken || now >= (copilotExpiresAt - 60)) {
+    await getCopilotToken();
+  }
+  return copilotToken;
+}
 
 let availableAgents = [];  // All agents — registry + hot-loaded
 let enabledAgents = new Set(JSON.parse(localStorage.getItem('vb_enabled_agents') || '[]'));
@@ -4003,45 +4232,67 @@ class <ClassName>Agent(BasicAgent):
 
 function _handleAuthExpired() {
   chatToken = null;
+  copilotToken = null; copilotEndpoint = null; copilotExpiresAt = 0; usingCopilot = false;
+  localStorage.removeItem('vb_gh_token');
   localStorage.removeItem('rb_access_token');
   localStorage.removeItem('gh_token');
   updateGHPill();
 }
 
-// 'openai/gpt-4o' -> 'gpt-4o' — the legacy endpoint uses bare model names.
+// 'openai/gpt-4o' -> 'gpt-4o' — the legacy fallback endpoint uses bare model names.
 function stripPublisher(model) {
   return (model && model.includes('/')) ? model.split('/').pop() : model;
 }
 
 // Does the selected model advertise tool-calling? Agent routing needs it.
+// o1 family never supports tools; unknown → assume yes (old behavior).
 function modelSupportsTools(id) {
+  if (/\bo1(-mini|-preview)?\b/.test(String(id))) return false;
   const m = availableModels.find(x => (x.id || x) === id);
-  if (!m || !m.capabilities) return true; // unknown — assume yes (old behavior)
+  if (!m || !m.capabilities || !m.capabilities.length) return true;
   return m.capabilities.includes('tool-calling');
 }
 
-// POST a chat-completions body to GitHub Models. Tries the new models.github.ai
-// endpoint first (the full account catalog: GPT-5/o-series, Llama, Mistral,
-// DeepSeek, Phi, Grok, Cohere…) and falls back to the legacy Azure inference
-// endpoint (bare model id) if the new API rejects this token.
+// POST a chat-completions body. PRIMARY path is GitHub Copilot via the worker
+// (full catalog incl. Claude Opus 4.7). If the account has no Copilot, we fall
+// back to the legacy public GitHub Models endpoint (bare model id, ghu_ token).
 async function ghChatCompletions(body) {
   if (!chatToken) throw new Error('Not signed in');
-  const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatToken}` };
 
-  // 1) New GitHub Models API — full 'publisher/model' id.
-  try {
-    const resp = await fetch(GH_MODELS_NEW_URL, { method: 'POST', headers, body: JSON.stringify(body) });
-    if (resp.ok) return resp.json();
-    if (resp.status === 401) { _handleAuthExpired(); throw new Error('Token expired -- please sign in again'); }
-    // other statuses → try legacy (this token/model may not be on the new API)
-  } catch (e) {
-    if (/Token expired/.test(e.message)) throw e;
-    // network/CORS error → fall through to legacy
+  // 1) PRIMARY — GitHub Copilot through the worker.
+  if (usingCopilot || copilotToken) {
+    try {
+      await ensureCopilotToken();
+      const url = AUTH_WORKER + '/api/copilot/chat?endpoint=' + encodeURIComponent(copilotEndpoint || '');
+      let resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + copilotToken },
+        body: JSON.stringify(body)
+      });
+      // 401 → refresh the Copilot token once and retry.
+      if (resp.status === 401) {
+        copilotToken = null; copilotExpiresAt = 0;
+        await ensureCopilotToken();
+        resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + copilotToken },
+          body: JSON.stringify(body)
+        });
+      }
+      if (resp.ok) return resp.json();
+      const errText = await resp.text();
+      throw new Error(`Copilot (${resp.status}): ${errText.slice(0, 200)}`);
+    } catch (e) {
+      // If the ghu_ itself is dead, surface a sign-in prompt; otherwise rethrow.
+      if (/\b401\b/.test(e.message)) { _handleAuthExpired(); throw new Error('Session expired -- please sign in again'); }
+      throw e;
+    }
   }
 
-  // 2) Legacy Azure inference endpoint — strip the publisher prefix.
+  // 2) FALLBACK — legacy public GitHub Models (no Copilot on this account).
   const resp2 = await fetch(GH_MODELS_URL, {
-    method: 'POST', headers,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${chatToken}` },
     body: JSON.stringify({ ...body, model: stripPublisher(body.model) })
   });
   if (!resp2.ok) {
@@ -4318,7 +4569,12 @@ function updateGHPill() {
     input.disabled = false;
     send.disabled = false;
     input.placeholder = 'Ask me anything...';
-    modelLabel.textContent = 'Model:';
+    // Header status: "Copilot · <model>" when on Copilot, else the GitHub Models fallback.
+    const shortModel = stripPublisher(chatModel || '') || chatModel || '';
+    modelLabel.textContent = usingCopilot ? ('Copilot · ' + shortModel) : 'GitHub Models · ' + shortModel;
+    if (typeof setStatus === 'function') {
+      setStatus('running', usingCopilot ? ('Copilot · ' + shortModel) : 'Signed in');
+    }
     modelSelect.style.display = '';
   } else {
     dot.className = 'gh-dot off';
@@ -4326,7 +4582,7 @@ function updateGHPill() {
     input.disabled = true;
     send.disabled = true;
     input.placeholder = 'Sign in with GitHub to chat...';
-    modelLabel.textContent = 'GitHub Models -- sign in to start chatting';
+    modelLabel.textContent = 'GitHub Copilot -- sign in to start chatting';
     modelSelect.style.display = 'none';
   }
 }
@@ -4345,21 +4601,61 @@ function extractModelName(raw) {
   return raw;
 }
 
+// Normalize one raw Copilot/GitHub-Models entry into the shape the UI expects.
+function _normModel(m) {
+  const id = m.id || m.model || m.name;
+  let caps = m.capabilities;
+  if (caps && !Array.isArray(caps)) {
+    // Copilot capabilities can be an object like { supports: { tool_calls: true } }.
+    const supports = caps.supports || caps;
+    caps = [];
+    if (supports && (supports.tool_calls || supports.tool_calling || supports.tools)) caps.push('tool-calling');
+    if (supports && supports.streaming) caps.push('streaming');
+  }
+  if (!Array.isArray(caps)) caps = [];
+  if (/\bo1(-mini|-preview)?\b/.test(String(id))) caps = caps.filter(c => c !== 'tool-calling'); // o1 → no tools
+  return {
+    id,
+    name: m.name || id,
+    publisher: m.vendor || m.publisher || (String(id).includes('/') ? String(id).split('/')[0] : 'Copilot'),
+    capabilities: caps
+  };
+}
+
 async function fetchModels() {
-  // The public GitHub Models catalog — the full set the account can use.
-  // Listing needs no token; the token is only used at completion time.
+  // PRIMARY: GitHub Copilot catalog (full set incl. Claude Opus 4.7) via the worker.
+  if (chatToken) {
+    try {
+      await ensureCopilotToken();
+      const url = AUTH_WORKER + '/api/copilot/models?endpoint=' + encodeURIComponent(copilotEndpoint || '');
+      const resp = await fetch(url, { headers: { 'Authorization': 'Bearer ' + copilotToken } });
+      if (!resp.ok) throw new Error('copilot models ' + resp.status);
+      const raw = await resp.json();
+      const list = Array.isArray(raw) ? raw : (raw.data || []);
+      if (list.length) console.log('[vBrainstem] first Copilot model:', list[0]);
+      const models = list.map(_normModel)
+        .filter(m => m.id)
+        .sort((a, b) => (a.publisher + a.id).localeCompare(b.publisher + b.id));
+      if (!models.length) throw new Error('empty copilot catalog');
+      availableModels = models;
+      populateModelSelect(models);
+      updateGHPill();
+      return;
+    } catch (e) {
+      console.warn('Copilot model list failed, falling back to public catalog:', e.message);
+      usingCopilot = false;  // ensure chat takes the fallback path too
+    }
+  }
+
+  // FALLBACK: public GitHub Models catalog via the worker (no token, CORS+cached).
   try {
-    const resp = await fetch(GH_CATALOG_URL, { headers: { 'Accept': 'application/json' } });
+    const resp = await fetch(AUTH_WORKER + '/api/models', { headers: { 'Accept': 'application/json' } });
     if (!resp.ok) throw new Error('catalog ' + resp.status);
     const list = await resp.json();
     const models = (Array.isArray(list) ? list : (list.data || []))
-      .filter(m => (m.supported_output_modalities || []).includes('text')) // chat models only (drops embeddings)
-      .map(m => ({
-        id: m.id,
-        name: m.name || m.id,
-        publisher: m.publisher || (m.id || '').split('/')[0],
-        capabilities: m.capabilities || []
-      }))
+      .filter(m => !m.supported_output_modalities || (m.supported_output_modalities || []).includes('text'))
+      .map(_normModel)
+      .filter(m => m.id)
       .sort((a, b) => (a.publisher + a.id).localeCompare(b.publisher + b.id));
     if (!models.length) throw new Error('empty catalog');
     availableModels = models;
@@ -4373,15 +4669,18 @@ async function fetchModels() {
     ];
     populateModelSelect(availableModels);
   }
+  updateGHPill();
 }
 
 function populateModelSelect(models) {
   const select = document.getElementById('modelSelect');
   const ids = models.map(m => m.id);
   // Reconcile the saved/selected model with what's available
-  // (tolerates a legacy bare name like 'gpt-4o-mini' by matching the suffix).
+  // (tolerates a legacy bare/prefixed name by matching the suffix);
+  // default to gpt-4o if present, else the first model.
   if (!ids.includes(chatModel)) {
-    const match = ids.find(id => stripPublisher(id) === stripPublisher(chatModel));
+    const match = ids.find(id => stripPublisher(id) === stripPublisher(chatModel))
+      || ids.find(id => stripPublisher(id) === 'gpt-4o');
     chatModel = match || ids[0] || chatModel;
     localStorage.setItem('vb_model', chatModel);
   }
@@ -4407,65 +4706,43 @@ function selectModel(model) {
 async function fetchGHUser() {
   if (!chatToken) return;
   try {
-    const resp = await fetch('https://api.github.com/user', {
+    // Worker proxies GitHub's /user using the ghu_ token (for the username pill).
+    const resp = await fetch(AUTH_WORKER + '/api/user', {
       headers: { 'Authorization': `Bearer ${chatToken}` }
     });
     if (resp.ok) {
       const data = await resp.json();
-      chatUser = data.login;
-    } else {
-      chatToken = null;
-      localStorage.removeItem('rb_access_token');
-      localStorage.removeItem('gh_token');
+      chatUser = data.login || data.name || chatUser;
+    } else if (resp.status === 401) {
+      _handleAuthExpired();
     }
   } catch(e) { /* offline, keep token */ }
   updateGHPill();
 }
 
+// Header pill: signed in → sign out; signed out → open the device-code login card.
 function handleGHAuth() {
   if (chatToken) {
-    // Already signed in — sign out
     if (confirm('Sign out of GitHub?')) {
       chatToken = null;
       chatUser = null;
+      copilotToken = null; copilotEndpoint = null; copilotExpiresAt = 0; usingCopilot = false;
+      localStorage.removeItem('vb_gh_token');
       localStorage.removeItem('rb_access_token');
       localStorage.removeItem('gh_token');
       updateGHPill();
+      if (typeof setStatus === 'function') setStatus('idle', 'Idle');
     }
   } else {
-    // OAuth redirect
-    const redirect = window.location.origin + window.location.pathname;
-    const url = `https://github.com/login/oauth/authorize?client_id=${AUTH_CLIENT_ID}&scope=public_repo&redirect_uri=${encodeURIComponent(redirect)}`;
-    window.location.href = url;
+    // Device-code flow — open the login card and start immediately.
+    try { localStorage.removeItem('vb_login_dismissed'); } catch (_) {}
+    showLogin();
+    startLogin();
   }
 }
 
-async function handleAuthCallback() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  if (!code) return;
-
-  // Clean URL
-  const cleanUrl = window.location.href.split('?')[0] + (window.location.hash || '');
-  window.history.replaceState({}, '', cleanUrl);
-
-  try {
-    const resp = await fetch(AUTH_WORKER_URL + '/api/auth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code })
-    });
-    const data = await resp.json();
-    if (data.access_token) {
-      chatToken = data.access_token;
-      localStorage.setItem('rb_access_token', chatToken);
-      await fetchGHUser();
-      fetchModels();
-    }
-  } catch(e) {
-    console.error('Auth failed:', e);
-  }
-}
+// Device flow needs no redirect; kept as a harmless no-op so old references don't crash.
+async function handleAuthCallback() { /* no-op: replaced by device-code flow */ }
 
 
 // ── Agent Dropdown ──
@@ -4894,13 +5171,14 @@ async function applySummonDeepLink() {
 
 // ── Landing page (mirrors rapp-installer) — boot terminal + launch ──
 (async function init() {
-  // Handle OAuth callback if present
+  // Device-code flow needs no redirect callback; handleAuthCallback is a no-op.
   await handleAuthCallback();
 
-  // Check existing token
+  // Restored a durable ghu_ token? Verify it, then load the Copilot catalog
+  // (fetchModels() exchanges for a Copilot token and sets usingCopilot, or falls back).
   if (chatToken) {
-    await fetchGHUser();
-    fetchModels(); // non-blocking — populates dropdown in background
+    fetchGHUser();      // non-blocking — username pill
+    fetchModels();      // non-blocking — primary Copilot catalog (fallback to public)
   }
   updateGHPill();
 
