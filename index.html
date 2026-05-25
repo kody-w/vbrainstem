@@ -6,598 +6,735 @@
 <title>RAPP Brainstem — Summon</title>
 <meta name="description" content="Browser-native agent runtime — run any RAPP agent in a LisPy VM, no server required. This variant accepts ?agent=@pub/slug deep-links from QR scans.">
 <style>
-:root {
-  --bg: #0d1117;
-  --surface: #161b22;
-  --surface2: #21262d;
-  --surface3: #30363d;
-  --border: #30363d;
-  --border-hover: #484f58;
-  --text: #e6edf3;
-  --text-dim: #8b949e;
-  --text-muted: #656d76;
-  --accent: #58a6ff;
-  --accent-bg: rgba(88,166,255,.1);
-  --green: #3fb950;
-  --green-bg: rgba(63,185,80,.12);
-  --orange: #d29922;
-  --orange-bg: rgba(210,153,34,.12);
-  --purple: #bc8cff;
-  --purple-bg: rgba(188,140,255,.12);
-  --red: #f85149;
-  --red-bg: rgba(248,81,73,.12);
-  --yellow: #e3b341;
-  --gold: #ffd700;
-  --shadow: 0 3px 12px rgba(0,0,0,.4);
-  --shadow-lg: 0 8px 30px rgba(0,0,0,.5);
-  --radius: 10px;
-  --radius-lg: 14px;
-}
-* { margin:0; padding:0; box-sizing:border-box; }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-  background: var(--bg); color: var(--text);
-  min-height:100vh; min-height:100dvh; /* dvh tracks iOS toolbar; vh is the fallback */
-}
-/* View modes: landing mirrors rapp-installer; app is the running brainstem */
-body.mode-app { display:flex; flex-direction:column; }
-body.mode-app #landingView { display:none; }
-body.mode-app #appView { flex:1; min-height:0; display:flex; flex-direction:column; }
-body.mode-landing { display:flex; flex-direction:column; align-items:center; padding:48px 24px 72px; }
-body.mode-landing #appView { display:none; }
-a { color: var(--accent); text-decoration:none; }
-code, .mono { font-family: 'SF Mono','Fira Code',Consolas,'Liberation Mono',Menlo,monospace; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    height: 100vh; height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  a { color: #58a6ff; text-decoration: none; }
 
-/* Header */
-.bs-header {
-  background: var(--surface); border-bottom:1px solid var(--border);
-  padding:12px 24px; padding-top:calc(12px + env(safe-area-inset-top));
-  padding-left:calc(24px + env(safe-area-inset-left)); padding-right:calc(24px + env(safe-area-inset-right));
-  display:flex; align-items:center; justify-content:space-between;
-  flex-shrink:0;
-}
-.bs-logo { display:flex; align-items:center; gap:10px; font-size:1.1rem; font-weight:700; }
-.bs-logo-mark {
-  background: linear-gradient(135deg, var(--green), var(--accent));
-  color:#fff; width:30px; height:30px; border-radius:7px;
-  display:flex; align-items:center; justify-content:center;
-  font-size:.75rem; font-weight:800;
-}
-.bs-status {
-  display:inline-flex; align-items:center; gap:6px;
-  padding:4px 12px; border-radius:12px; font-size:.8rem; font-weight:600;
-}
-.bs-status.idle { background:var(--surface2); color:var(--text-dim); }
-.bs-status.loading { background:var(--orange-bg); color:var(--orange); }
-.bs-status.running { background:var(--green-bg); color:var(--green); }
-.bs-status.error { background:var(--red-bg); color:var(--red); }
-.bs-status-dot {
-  width:8px; height:8px; border-radius:50%; background:currentColor;
-}
-.bs-status.running .bs-status-dot { animation: pulse 1.2s infinite; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-.bs-header-right { display:flex; align-items:center; gap:10px; }
-.bs-btn {
-  background:var(--surface2); border:1px solid var(--border); color:var(--text);
-  padding:6px 14px; border-radius:7px; cursor:pointer; font-size:.82rem; transition:all .15s;
-}
-.bs-btn:hover { border-color:var(--border-hover); background:var(--surface3); }
-.bs-btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-.bs-btn.primary:hover { opacity:.85; }
-.bs-btn.green { background:var(--green); border-color:var(--green); color:#fff; }
-.bs-btn.green:hover { opacity:.85; }
+  /* ── Inline SVG icon helper ── */
+  .icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px; height: 16px;
+    flex-shrink: 0;
+  }
+  .icon svg { width: 100%; height: 100%; fill: currentColor; }
+  .icon-lg { width: 20px; height: 20px; }
+  .icon-xl { width: 40px; height: 40px; }
 
-/* GitHub auth */
-.gh-pill {
-  display:flex; align-items:center; gap:6px; padding:5px 12px;
-  background:var(--surface2); border:1px solid var(--border); border-radius:7px;
-  font-size:.8rem; cursor:pointer; color:var(--text); transition:all .15s;
-}
-.gh-pill:hover { border-color:var(--border-hover); }
-.gh-pill .gh-avatar {
-  width:20px; height:20px; border-radius:50%; background:var(--surface3);
-}
-.gh-pill .gh-dot {
-  width:6px; height:6px; border-radius:50%;
-}
-.gh-pill .gh-dot.on { background:var(--green); }
-.gh-pill .gh-dot.off { background:var(--red); }
+  header {
+    padding: 12px 24px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    border-bottom: 1px solid #21262d;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #161b22;
+    flex-shrink: 0;
+  }
+  header .logo {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    background: linear-gradient(135deg, #3fb950, #1f6feb);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; flex-shrink: 0;
+  }
+  header .logo .icon { width: 18px; height: 18px; }
+  header h1 { font-size: 15px; font-weight: 600; color: #e6edf3; cursor: default; }
+  header .controls {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #8b949e;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #3fb950;
+    animation: pulse 2s infinite;
+  }
+  .dot.offline { background: #f85149; animation: none; }
+  .dot.pending { background: #d29922; animation: pulse 1s infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
 
-/* Chat */
-.chat-wrap { display:flex; flex-direction:column; flex:1; overflow:hidden; position:relative; }
-.chat-messages {
-  flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:20px; max-width:820px; width:100%; margin:0 auto;
-}
-.chat-msg { display:flex; gap:10px; margin-bottom:18px; align-items:flex-start; }
-.chat-msg.user { flex-direction:row-reverse; }
-.chat-avatar {
-  width:30px; height:30px; border-radius:50%; display:flex; align-items:center;
-  justify-content:center; font-size:.65rem; font-weight:700; flex-shrink:0;
-}
-.chat-msg.user .chat-avatar { background:var(--accent); color:#fff; }
-.chat-msg.assistant .chat-avatar { background:var(--green); color:var(--bg); }
-.chat-bubble {
-  max-width:72%; padding:10px 14px; border-radius:14px; font-size:.85rem; line-height:1.55;
-  word-wrap:break-word; white-space:pre-wrap;
-}
-.chat-msg.user .chat-bubble {
-  background:var(--accent); color:#fff; border-bottom-right-radius:4px;
-}
-.chat-msg.assistant .chat-bubble {
-  background:var(--surface); border:1px solid var(--border); border-bottom-left-radius:4px;
-  color:var(--text);
-}
-.chat-bubble table { border-collapse:collapse; margin:6px 0; width:auto; }
-.chat-bubble th, .chat-bubble td {
-  border:1px solid var(--border); padding:3px 10px; text-align:left; font-size:.8rem;
-}
-.chat-bubble th { background:var(--surface2); color:var(--accent); font-weight:600; }
-.chat-bubble strong { color:inherit; font-weight:700; }
-.chat-bubble a { color:var(--accent); text-decoration:underline; }
-.chat-bubble code {
-  background:var(--surface2); padding:1px 5px; border-radius:3px; font-size:.8rem;
-}
-.chat-activity {
-  text-align:center; margin:10px 0; font-size:.75rem; color:var(--text-muted);
-  font-family:'SF Mono',monospace;
-}
-.chat-activity-pill {
-  display:inline-flex; align-items:center; gap:6px; padding:4px 12px;
-  background:var(--surface); border:1px dashed var(--border); border-radius:12px;
-}
-.chat-activity-dot {
-  width:5px; height:5px; border-radius:50%; background:var(--green);
-  animation: pulse 1s infinite;
-}
-.chat-input-bar {
-  display:flex; gap:8px; padding:12px 20px;
-  padding-bottom:calc(12px + env(safe-area-inset-bottom));
-  border-top:1px solid var(--border);
-  background:var(--surface); max-width:820px; width:100%; margin:0 auto;
-}
-.chat-input {
-  flex:1; padding:10px 14px; background:var(--bg); border:1px solid var(--border);
-  border-radius:10px; color:var(--text); font-size:.85rem; outline:none;
-  font-family:inherit; resize:none;
-}
-.chat-input:focus { border-color:var(--accent); }
-.chat-input::placeholder { color:var(--text-muted); }
-.chat-send {
-  padding:10px 18px; background:var(--accent); color:#fff; border:none;
-  border-radius:10px; cursor:pointer; font-size:.85rem; font-weight:600; transition:all .15s;
-}
-.chat-send:hover { opacity:.85; }
-.chat-send:disabled { opacity:.4; cursor:not-allowed; }
+  /* Engine status pill (#vmStatus) — rendered as a slim dot + text to match the local header */
+  #vmStatus {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: #8b949e;
+  }
+  #vmStatus .bs-status-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #3fb950;
+    animation: pulse 2s infinite;
+  }
+  #vmStatus.idle .bs-status-dot { background: #8b949e; animation: none; }
+  #vmStatus.loading .bs-status-dot { background: #d29922; animation: pulse 1s infinite; }
+  #vmStatus.running .bs-status-dot { background: #3fb950; }
+  #vmStatus.error .bs-status-dot { background: #f85149; animation: none; }
 
-.chat-welcome-box {
-  text-align:center; padding:60px 24px 40px; max-width:560px; margin:0 auto;
-}
-.chat-welcome-box h2 { font-size:1.3rem; margin-bottom:8px; }
-.chat-welcome-box p { color:var(--text-dim); line-height:1.6; margin-bottom:16px; }
-.chat-agent-pills {
-  display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-bottom:20px;
-}
-.chat-agent-pill {
-  padding:4px 12px; background:var(--surface); border:1px solid var(--border);
-  border-radius:12px; font-size:.75rem; color:var(--green); font-weight:600;
-}
-.chat-suggestions {
-  display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px;
-}
-.chat-suggestion {
-  padding:8px 14px; background:var(--surface); border:1px solid var(--border);
-  border-radius:10px; font-size:.8rem; color:var(--text-dim); cursor:pointer;
-  transition:all .15s;
-}
-.chat-suggestion:hover { border-color:var(--accent); color:var(--accent); background:var(--accent-bg); }
+  .icon-btn {
+    background: none;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 4px 7px;
+    cursor: pointer;
+    color: #8b949e;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    transition: all 0.15s;
+    text-decoration: none;
+  }
+  .icon-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+  .icon-btn.active { border-color: #3fb950; color: #3fb950; background: rgba(63,185,80,0.08); }
 
-.typing-indicator { display:flex; gap:4px; padding:4px 0; }
-.typing-dot {
-  width:6px; height:6px; border-radius:50%; background:var(--text-muted);
-  animation:typeBounce .6s infinite alternate;
-}
-.typing-dot:nth-child(2) { animation-delay:.15s; }
-.typing-dot:nth-child(3) { animation-delay:.3s; }
-@keyframes typeBounce { from{opacity:.3;transform:translateY(0)} to{opacity:1;transform:translateY(-3px)} }
+  /* ── GitHub auth pill (engine IDs: ghPill/ghDot/ghLabel) ── */
+  .gh-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: none; border: 1px solid #30363d; border-radius: 6px;
+    padding: 4px 9px; cursor: pointer; color: #8b949e;
+    font-size: 11px; transition: all 0.15s;
+  }
+  .gh-pill:hover { border-color: #58a6ff; color: #58a6ff; }
+  .gh-pill .gh-avatar { width: 16px; height: 16px; border-radius: 50%; background: #30363d; }
+  .gh-pill .gh-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .gh-pill .gh-dot.on { background: #3fb950; }
+  .gh-pill .gh-dot.off { background: #f85149; }
 
-.chat-model-bar {
-  padding:6px 20px; font-size:.7rem; color:var(--text-muted); text-align:center;
-  border-top:1px solid var(--border); display:flex; align-items:center; justify-content:center;
-  gap:8px; flex-wrap:wrap; row-gap:6px;
-}
-.agent-enabled-pills { justify-content:center; }
-.agent-enabled-pill {
-  max-width:60vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-}
-.model-select {
-  background:var(--surface2); border:1px solid var(--border); color:var(--text-dim);
-  padding:2px 8px; border-radius:5px; font-size:.7rem; cursor:pointer; outline:none;
-  max-width:260px;
-}
-.model-select:focus { border-color:var(--accent); }
-.model-select option { background:var(--surface); color:var(--text); }
+  /* ── Login overlay ── */
+  #login-overlay {
+    position: fixed; inset: 0;
+    background: rgba(13,17,23,0.95);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .login-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    max-width: 420px;
+    position: relative;
+  }
+  .login-card .login-icon {
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #3fb950, #1f6feb);
+    margin: 0 auto 20px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+  }
+  .login-card h2 { font-size: 20px; margin-bottom: 8px; }
+  .login-card p { color: #8b949e; font-size: 14px; margin-bottom: 24px; }
+  .login-btn {
+    background: #238636; color: #fff; border: none; border-radius: 8px;
+    padding: 12px 24px; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .login-btn:hover { background: #2ea043; }
+  .login-btn:disabled { opacity: 0.5; cursor: default; }
+  .login-skip {
+    display: block; margin-top: 16px; color: #8b949e; font-size: 13px;
+    background: none; border: none; cursor: pointer; width: 100%;
+  }
+  .login-skip:hover { color: #e6edf3; }
 
-/* Agent dropdown */
-.agent-dropdown-wrap {
-  position:relative; display:inline-block;
-}
-.agent-dropdown-btn {
-  background:var(--surface2); border:1px solid var(--border); color:var(--text-dim);
-  padding:2px 8px; border-radius:5px; font-size:.7rem; cursor:pointer; outline:none;
-  transition:all .15s;
-}
-.agent-dropdown-btn:hover { border-color:var(--border-hover); color:var(--text); }
-.agent-dropdown-btn .agent-count {
-  background:var(--green); color:#fff; padding:0 5px; border-radius:8px;
-  font-size:.65rem; margin-left:4px; font-weight:700;
-}
-.agent-dropdown-panel {
-  display:none; position:absolute; bottom:100%; left:0;
-  margin-bottom:6px; background:var(--surface); border:1px solid var(--border);
-  border-radius:10px; width:320px; max-height:400px; overflow:hidden;
-  box-shadow:var(--shadow-lg); z-index:100;
-}
-.agent-dropdown-panel.open { display:block; }
-.agent-dropdown-search {
-  width:100%; background:var(--bg); border:none; border-bottom:1px solid var(--border);
-  padding:10px 12px; color:var(--text); font-size:.82rem; outline:none;
-}
-.agent-dropdown-list {
-  max-height:320px; overflow-y:auto; padding:4px;
-}
-.agent-dropdown-item {
-  display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px;
-  cursor:pointer; transition:background .1s; font-size:.8rem;
-}
-.agent-dropdown-item:hover { background:var(--surface2); }
-.agent-dropdown-item .agent-check {
-  width:16px; height:16px; border:1.5px solid var(--border); border-radius:4px;
-  flex-shrink:0; display:flex; align-items:center; justify-content:center;
-  transition:all .15s; font-size:.65rem; color:transparent;
-}
-.agent-dropdown-item.enabled .agent-check {
-  background:var(--green); border-color:var(--green); color:#fff;
-}
-.agent-dropdown-item-info { flex:1; min-width:0; }
-.agent-dropdown-item-name { font-weight:600; color:var(--text); }
-.agent-dropdown-item-desc {
-  font-size:.72rem; color:var(--text-muted); white-space:nowrap;
-  overflow:hidden; text-overflow:ellipsis;
-}
-.agent-enabled-pills {
-  display:flex; gap:4px; flex-wrap:wrap; padding:0 4px;
-}
-.agent-enabled-pill {
-  padding:1px 8px; background:var(--green-bg); border:1px solid rgba(63,185,80,.3);
-  border-radius:10px; font-size:.65rem; color:var(--green); font-weight:600;
-  cursor:pointer; transition:all .15s;
-}
-.agent-enabled-pill:hover { border-color:var(--red); color:var(--red); background:var(--red-bg); }
+  /* ── Chat ── */
+  #chat {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 24px;
+    display: flex; flex-direction: column; gap: 16px;
+    position: relative;
+  }
+  .msg, .chat-msg { display: flex; gap: 12px; max-width: 760px; width: 100%; margin: 0 auto; z-index: 2; align-items: flex-start; }
+  .msg.user, .chat-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.system, .chat-msg.system { align-self: center; }
+  /* engine appends .chat-msg directly to #chat; center the column like .msg */
+  .chat-msg { margin-bottom: 0; }
 
-/* Drop zone overlay */
-.chat-drop-overlay {
-  display:none; position:absolute; inset:0; z-index:90;
-  background:rgba(13,17,23,.85); backdrop-filter:blur(4px);
-  flex-direction:column; align-items:center; justify-content:center; gap:12px;
-  border:3px dashed var(--accent); border-radius:12px; margin:8px;
-  pointer-events:none;
-}
-.chat-drop-overlay.active { display:flex; }
-.chat-drop-overlay .drop-icon { font-size:2.5rem; opacity:.7; }
-.chat-drop-overlay .drop-text { font-size:1rem; color:var(--accent); font-weight:600; }
-.chat-drop-overlay .drop-hint { font-size:.8rem; color:var(--text-muted); }
+  /* Chat Watermark */
+  #chat-watermark {
+    position: absolute; bottom: 24px; right: 24px;
+    color: #30363d; font-size: 14px; font-weight: 500; text-align: right;
+    pointer-events: none; z-index: 1; user-select: none;
+    display: flex; flex-direction: row; align-items: center; gap: 8px;
+    opacity: 0.6;
+  }
+  #chat-watermark svg { width: 20px; height: 20px; fill: #30363d; }
+  /* Hide the empty-state hint once a real conversation begins */
+  #chat.has-messages #chat-watermark { display: none; }
 
-/* Toast notification */
-.vb-toast {
-  position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
-  background:var(--green); color:#fff; padding:10px 20px; border-radius:8px;
-  font-size:.85rem; font-weight:600; z-index:200; box-shadow:var(--shadow-lg);
-  animation: toastIn .3s ease-out;
-}
-@keyframes toastIn { from{opacity:0;transform:translateX(-50%) translateY(10px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+  .avatar, .chat-avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; color: #8b949e; background: #21262d;
+    font-size: 11px; font-weight: 700;
+  }
+  .avatar .icon { width: 18px; height: 18px; }
+  .msg.user .avatar, .chat-msg.user .chat-avatar { background: #1f6feb; color: #fff; }
+  .msg.assistant .avatar, .chat-msg.assistant .chat-avatar { background: #161b22; border: 1px solid #30363d; color: #58a6ff; }
 
-/* Agent download button in dropdown */
-.agent-dl-btn {
-  flex-shrink:0; width:24px; height:24px; border:none; background:none;
-  color:var(--text-muted); cursor:pointer; border-radius:4px; font-size:.75rem;
-  display:flex; align-items:center; justify-content:center; transition:all .15s;
-}
-.agent-dl-btn:hover { background:var(--accent); color:#fff; }
+  .bubble, .chat-bubble {
+    padding: 12px 16px; border-radius: 12px;
+    font-size: 14px; line-height: 1.6;
+    max-width: 780px; word-break: break-word;
+  }
+  .msg.assistant .bubble, .chat-msg.assistant .chat-bubble {
+    background: #161b22; border: 1px solid #21262d;
+    border-radius: 4px 12px 12px 12px;
+    color: #e6edf3;
+  }
+  .bubble a, .chat-bubble a { color: #58a6ff; text-decoration: none; }
+  .bubble a:hover, .chat-bubble a:hover { text-decoration: underline; }
+  .bubble strong, .chat-bubble strong { color: #e6edf3; }
+  .bubble ol, .bubble ul, .chat-bubble ol, .chat-bubble ul { padding-left: 20px; margin: 8px 0; }
+  .bubble li, .chat-bubble li { margin: 6px 0; }
+  .bubble p, .chat-bubble p { margin: 6px 0; }
+  .bubble p:first-child, .chat-bubble p:first-child { margin-top: 0; }
+  .bubble p:last-child, .chat-bubble p:last-child { margin-bottom: 0; }
+  .bubble code, .chat-bubble code {
+    background: #0d1117; padding: 2px 6px; border-radius: 4px;
+    font-family: "SF Mono", monospace; font-size: 12px;
+  }
+  .bubble pre, .chat-bubble pre {
+    background: #0d1117; padding: 10px; border-radius: 6px;
+    overflow-x: auto; margin: 8px 0;
+  }
+  .bubble pre code, .chat-bubble pre code { padding: 0; background: none; }
+  .bubble table, .chat-bubble table {
+    border-collapse: collapse; width: 100%; margin: 10px 0;
+    font-size: 13px;
+  }
+  .bubble th, .bubble td, .chat-bubble th, .chat-bubble td {
+    border: 1px solid #30363d; padding: 8px 12px; text-align: left;
+    vertical-align: top;
+  }
+  .bubble th, .chat-bubble th {
+    background: #0d1117; color: #e6edf3; font-weight: 600;
+    white-space: nowrap;
+  }
+  .bubble tr:nth-child(even), .chat-bubble tr:nth-child(even) { background: rgba(13,17,23,0.4); }
+  .bubble h1, .bubble h2, .bubble h3 {
+    margin: 14px 0 8px 0; color: #e6edf3; line-height: 1.3;
+  }
+  .bubble h1 { font-size: 18px; }
+  .bubble h2 { font-size: 16px; }
+  .bubble h3 { font-size: 14px; }
+  .bubble h1:first-child, .bubble h2:first-child, .bubble h3:first-child { margin-top: 0; }
+  .bubble blockquote {
+    border-left: 3px solid #30363d; margin: 8px 0; padding: 4px 12px;
+    color: #8b949e;
+  }
+  .bubble hr { border: none; border-top: 1px solid #21262d; margin: 12px 0; }
+  .msg.user .bubble, .chat-msg.user .chat-bubble {
+    background: #1f6feb; color: #fff; border-radius: 12px 4px 12px 12px;
+    white-space: pre-wrap;
+  }
+  .msg.system .bubble {
+    background: transparent; color: #8b949e;
+    font-size: 13px; border: none; padding: 4px 8px;
+  }
+  .msg.system .bubble h2 { color: #e6edf3; font-size: 16px; margin-bottom: 8px; }
+  .msg.system .bubble ul { padding-left: 20px; margin: 12px 0; }
+  .msg.system .bubble li { margin-bottom: 6px; }
+  .msg.system .bubble code { background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; }
+  .msg.system .bubble strong { color: #c9d1d9; }
 
-/* Chat toolbar (export/import/clear) */
-.chat-toolbar {
-  display:flex; gap:4px; align-items:center; margin-left:auto;
-}
-.chat-toolbar-btn {
-  padding:2px 8px; background:var(--surface2); border:1px solid var(--border);
-  border-radius:6px; color:var(--text-muted); font-size:.65rem; cursor:pointer;
-  transition:all .15s; white-space:nowrap;
-}
-.chat-toolbar-btn:hover { border-color:var(--accent); color:var(--accent); }
+  /* ── Agent activity indicator (engine emits .chat-activity / .chat-activity-pill) ── */
+  .chat-activity {
+    align-self: center; max-width: 760px; width: 100%; z-index: 2;
+    text-align: center; margin: 2px auto; font-size: 11px; color: #8b949e;
+    font-family: "SF Mono", monospace;
+  }
+  .chat-activity-pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px;
+    background: #161b22; border: 1px dashed #30363d; border-radius: 999px;
+    color: #8b949e;
+  }
+  .chat-activity-dot {
+    width: 5px; height: 5px; border-radius: 50%; background: #3fb950;
+    animation: pulse 1s infinite;
+  }
+  .vb-agent-output { max-width: 760px; margin: 4px auto 0; width: 100%; }
 
-/* Responsive */
-@media (max-width:768px) {
-  .bs-header { padding:10px 16px; padding-top:calc(10px + env(safe-area-inset-top)); }
-  .chat-bubble { max-width:88%; }
-  .chat-input-bar { padding:10px 12px; padding-bottom:calc(10px + env(safe-area-inset-bottom)); }
-  .chat-model-bar { padding:6px 10px; }
-  .chat-messages { padding:16px 12px; }
-}
+  .typing, .typing-indicator { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
+  .typing span, .typing-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #8b949e; animation: bounce 1.2s infinite;
+  }
+  .typing span:nth-child(2), .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3), .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-6px); }
+  }
 
-/* ─── Summon toast (variant-only) ────────────────────────── */
-.summon-toast {
-  position: fixed; left: 50%; bottom: 24px;
-  transform: translate(-50%, 120%);
-  background: linear-gradient(135deg, #58a6ff, #bc8cff);
-  color: #fff; padding: 12px 22px; border-radius: 999px;
-  font-size: .9rem; font-weight: 600; letter-spacing: .2px;
-  box-shadow: 0 12px 40px rgba(88,166,255,.35), 0 0 0 1px rgba(255,255,255,.15) inset;
-  z-index: 10000; opacity: 0;
-  transition: transform .35s cubic-bezier(.2,.9,.3,1.2), opacity .35s ease;
-  max-width: calc(100vw - 32px); text-align: center;
-  pointer-events: none;
-}
-.summon-toast.show { transform: translate(-50%, 0); opacity: 1; }
-.summon-toast b { font-weight: 800; }
+  /* ── Footer ── */
+  footer {
+    padding: 16px 24px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    border-top: 1px solid #21262d;
+    background: #161b22;
+    flex-shrink: 0;
+  }
+  .input-row {
+    display: flex; gap: 10px;
+    max-width: 760px; margin: 0 auto;
+  }
+  #input {
+    flex: 1; background: #0d1117;
+    border: 1px solid #30363d; border-radius: 8px;
+    color: #e6edf3; font-size: 14px;
+    padding: 10px 14px; resize: none; outline: none;
+    line-height: 1.5; max-height: 120px;
+    font-family: inherit;
+    transition: border-color 0.15s;
+  }
+  #input:focus { border-color: #1f6feb; }
+  #input::placeholder { color: #484f58; }
+  #input:disabled { opacity: 0.6; }
+  #send {
+    background: #1f6feb; color: #fff; border: none; border-radius: 8px;
+    padding: 10px 18px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s, opacity 0.15s;
+    align-self: flex-end;
+  }
+  #send:hover { background: #388bfd; }
+  #send:disabled { opacity: 0.4; cursor: default; }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   Landing page — mirrors kody-w/rapp-installer index.html.
-   Pure presentation; the runtime engine below is unchanged.
-   ═══════════════════════════════════════════════════════════════════════ */
-#landingView { width:100%; max-width:640px; display:flex; flex-direction:column; align-items:center; }
+  .toolbar-row {
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: 760px; margin: 0 auto 8px;
+    font-size: 11px; color: #484f58;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .toolbar-row .left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .toolbar-row .right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .toolbar-link {
+    background: none; border: none; color: #484f58;
+    cursor: pointer; font-size: 11px;
+    display: inline-flex; align-items: center; gap: 3px;
+    text-decoration: none; transition: color 0.15s;
+  }
+  .toolbar-link:hover { color: #8b949e; }
 
-/* Hero */
-.lp-hero { text-align:center; max-width:620px; margin-bottom:40px; }
-.lp-hero .lp-logo { font-size:64px; line-height:1; margin-bottom:16px; filter:drop-shadow(0 6px 22px rgba(88,166,255,.35)); }
-.lp-hero h1 { font-size:36px; font-weight:700; margin-bottom:10px; letter-spacing:-.5px; }
-.lp-hero p { color:var(--text-dim); font-size:16px; line-height:1.6; }
-.lp-hero p strong { color:var(--text); }
-.lp-hero .lp-tagline { color:var(--accent); font-weight:600; font-size:12px; margin-top:14px; text-transform:uppercase; letter-spacing:1px; }
+  /* Enabled-agent pills shown in the toolbar (engine: #enabledAgentPills) */
+  #enabledAgentPills { display: flex; gap: 4px; flex-wrap: wrap; }
+  .agent-enabled-pill {
+    padding: 1px 8px; background: rgba(63,185,80,0.12);
+    border: 1px solid rgba(63,185,80,0.3);
+    border-radius: 10px; font-size: 10px; color: #3fb950; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; max-width: 160px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .agent-enabled-pill:hover { border-color: #f85149; color: #f85149; background: rgba(248,81,73,0.12); }
 
-/* Boot terminal — mirrors the install-widget */
-.lp-boot {
-  width:100%; max-width:620px; margin-bottom:36px;
-  background:var(--surface); border:2px solid var(--green); border-radius:12px;
-  overflow:hidden; box-shadow:0 14px 44px rgba(0,0,0,.45);
-}
-.lp-boot-bar {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:0 14px; height:40px; border-bottom:1px solid var(--border); background:var(--surface2);
-}
-.lp-boot-bar-left { display:flex; align-items:center; gap:12px; }
-.lp-dots { display:flex; gap:6px; }
-.lp-dots span { width:11px; height:11px; border-radius:50%; }
-.lp-dots span:nth-child(1){ background:#f85149; }
-.lp-dots span:nth-child(2){ background:#d29922; }
-.lp-dots span:nth-child(3){ background:#3fb950; }
-.lp-boot-title { font-family:'SF Mono','Fira Code',monospace; font-size:12px; color:var(--text-muted); }
-.lp-boot-tag {
-  font-family:'SF Mono','Fira Code',monospace; font-size:11px; font-weight:600;
-  color:var(--orange); padding:3px 9px; border-radius:11px; background:var(--orange-bg);
-}
-.lp-boot-tag.ready { color:var(--green); background:var(--green-bg); }
-.lp-boot-body {
-  padding:16px 18px; min-height:120px; max-height:210px; overflow-y:auto;
-  font-family:'SF Mono','Fira Code',monospace; font-size:13px; line-height:1.9;
-}
-.lp-line { display:flex; gap:9px; white-space:pre-wrap; word-break:break-word; }
-.lp-line .lp-mark { flex-shrink:0; }
-.lp-line.cmd { color:var(--text); }      .lp-line.cmd .lp-mark { color:var(--text-muted); }
-.lp-line.run { color:var(--text-dim); }  .lp-line.run .lp-mark { color:var(--accent); }
-.lp-line.ok  { color:var(--text); }       .lp-line.ok  .lp-mark { color:var(--green); }
-.lp-boot-foot { padding:0 18px 16px; }
-.lp-launch {
-  width:100%; background:var(--green); color:#fff; border:none; border-radius:8px;
-  padding:12px 18px; font-size:14px; font-weight:700; cursor:pointer; transition:all .15s; font-family:inherit;
-}
-.lp-launch:hover:not(:disabled) { background:#2ea043; transform:translateY(-1px); }
-.lp-launch:disabled { opacity:.4; cursor:default; }
+  /* ── Model selector (engine: #modelSelect) ── */
+  #model-select, #modelSelect, .model-select {
+    background: #0d1117; color: #e6edf3;
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 4px 8px; font-size: 12px;
+    font-family: "SF Mono", monospace;
+    cursor: pointer; outline: none; transition: border-color 0.15s;
+    max-width: 240px;
+  }
+  #model-select:hover, #modelSelect:hover, .model-select:hover { border-color: #58a6ff; }
+  #model-select:focus, #modelSelect:focus, .model-select:focus { border-color: #1f6feb; }
+  #modelSelect option, .model-select option { background: #161b22; color: #e6edf3; }
+  #chatModelLabel { color: #8b949e; font-size: 11px; }
 
-/* Tier cards — mirror rapp-installer */
-.lp-tiers { width:100%; max-width:620px; }
-.lp-tier { background:var(--surface); border:1px solid var(--border); border-radius:12px; margin-bottom:16px; overflow:hidden; transition:border-color .15s; }
-.lp-tier:hover { border-color:var(--border-hover); }
-.lp-tier-head { padding:18px 20px; display:flex; align-items:center; gap:15px; cursor:pointer; user-select:none; }
-.lp-tier-icon { font-size:28px; flex-shrink:0; }
-.lp-tier-title h2 { font-size:16px; font-weight:600; margin-bottom:2px; }
-.lp-tier-title .lp-sub { font-size:13px; color:var(--text-dim); }
-.lp-tier-badge { margin-left:auto; font-size:10px; font-weight:700; padding:4px 10px; border-radius:11px; flex-shrink:0; text-transform:uppercase; letter-spacing:.5px; }
-.lp-tier-badge.start { background:var(--green); color:#fff; }
-.lp-tier-badge.info  { background:var(--accent-bg); color:var(--accent); border:1px solid var(--accent); }
-.lp-tier-badge.adv   { background:var(--purple-bg); color:var(--purple); border:1px solid var(--purple); }
-.lp-tier-arrow { color:var(--text-muted); font-size:15px; transition:transform .2s; flex-shrink:0; }
-.lp-tier.open .lp-tier-arrow { transform:rotate(90deg); }
-.lp-tier-body { display:none; padding:2px 20px 20px; }
-.lp-tier.open .lp-tier-body { display:block; }
-.lp-tier-body p { color:var(--text-dim); font-size:13.5px; line-height:1.65; margin-top:12px; }
-.lp-tier-body .lp-em { color:var(--purple); font-style:italic; }
-.lp-tier-body code { background:var(--surface2); padding:1px 6px; border-radius:4px; font-family:'SF Mono',monospace; font-size:12px; color:var(--accent); }
-.lp-tier-body a { color:var(--accent); }
+  /* ── Agent dropdown (engine IDs: agentDropdownPanel / agentDropdownList / agentCount) ── */
+  .agents-wrapper { position: relative; }
+  #agents-panel, #agentDropdownPanel {
+    display: none;
+    position: absolute; top: 100%; right: 0; margin-top: 6px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px; width: 320px; z-index: 50;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    font-size: 13px;
+    max-height: 440px; overflow-y: auto; overflow-x: hidden;
+  }
+  #agents-panel.open, #agentDropdownPanel.open { display: block; }
+  #agents-panel h3 {
+    font-size: 13px; font-weight: 600; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .agent-dropdown-search {
+    width: 100%; box-sizing: border-box;
+    background: #0d1117; color: #e6edf3;
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 6px 8px; font-size: 12px; outline: none; margin-bottom: 8px;
+    transition: border-color 0.15s;
+  }
+  .agent-dropdown-search:focus { border-color: #1f6feb; }
+  .agent-dropdown-list { display: flex; flex-direction: column; }
+  .agent-dropdown-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid #21262d;
+    font-size: 12px; cursor: pointer;
+  }
+  .agent-dropdown-item:last-child { border-bottom: none; }
+  .agent-dropdown-item:hover { background: rgba(255,255,255,0.02); }
+  .agent-dropdown-item .agent-check {
+    width: 16px; height: 16px; border: 1.5px solid #30363d; border-radius: 4px;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; font-size: 10px; color: transparent; margin-top: 1px;
+  }
+  .agent-dropdown-item.enabled .agent-check { background: #238636; border-color: #238636; color: #fff; }
+  .agent-dropdown-item-info { flex: 1; min-width: 0; }
+  .agent-dropdown-item-name { color: #e6edf3; font-weight: 600; word-break: break-word; line-height: 1.4; }
+  .agent-dropdown-item-desc {
+    color: #8b949e; font-size: 10px; line-height: 1.35; margin-top: 2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .agent-dl-btn {
+    flex-shrink: 0; width: 24px; height: 24px; border: 1px solid #30363d;
+    background: #21262d; color: #8b949e; cursor: pointer; border-radius: 4px;
+    font-size: 11px; display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .agent-dl-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+  .agent-count {
+    background: #238636; color: #fff; padding: 0 6px; border-radius: 9px;
+    font-size: 10px; margin-left: 4px; font-weight: 700; vertical-align: middle;
+  }
 
-/* Status bar + footer links */
-.lp-status { width:100%; max-width:620px; margin-top:20px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px 24px; text-align:center; }
-.lp-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:8px; vertical-align:middle; background:var(--text-muted); }
-.lp-dot.checking { background:var(--orange); animation:pulse 1s infinite; }
-.lp-dot.ready { background:var(--green); }
-.lp-status-label { font-size:14px; vertical-align:middle; color:var(--text-dim); }
-.lp-status .lp-launch { margin-top:12px; width:auto; padding:10px 26px; }
-.lp-links { margin-top:30px; text-align:center; font-size:13px; color:var(--text-muted); }
-.lp-links a { margin:0 11px; color:var(--text-dim); }
-.lp-links a:hover { color:var(--accent); }
+  /* ── Drag & Drop Overlay (engine: #dropOverlay) ── */
+  #drop-overlay, #dropOverlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(35,134,54,0.9); z-index: 200;
+    align-items: center; justify-content: center; flex-direction: column;
+    color: #fff; font-size: 24px; font-weight: 600;
+    border: 6px dashed rgba(255,255,255,0.5); border-radius: 16px; margin: 16px;
+    pointer-events: none; text-align: center; padding: 24px;
+  }
+  #dropOverlay.active { display: flex; }
+  #drop-overlay .icon { width: 64px; height: 64px; margin-bottom: 16px; }
+  #dropOverlay .drop-icon { font-size: 48px; margin-bottom: 12px; }
+  #dropOverlay .drop-text { font-size: 22px; }
+  #dropOverlay .drop-hint { font-size: 13px; opacity: 0.85; margin-top: 8px; font-weight: 400; }
 
-@media (max-width:768px) {
-  body.mode-landing { padding:32px 16px 56px; }
-  .lp-hero h1 { font-size:30px; }
-  .lp-hero .lp-logo { font-size:54px; }
-}
+  /* ── Starter Prompts ── */
+  #starter-prompts {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+    max-width: 760px; margin: 0 auto 16px; padding: 0 24px;
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .starter-btn {
+    background: #161b22; color: #58a6ff; border: 1px solid #30363d;
+    border-radius: 20px; padding: 8px 16px; font-size: 13px;
+    cursor: pointer; transition: all 0.2s; white-space: nowrap;
+    font-family: inherit;
+  }
+  .starter-btn:hover {
+    background: #21262d; border-color: #58a6ff; transform: translateY(-1px);
+  }
+
+  /* ── Toasts ── */
+  .vb-toast {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: #238636; color: #fff; padding: 10px 20px; border-radius: 8px;
+    font-size: 14px; font-weight: 600; z-index: 250; box-shadow: 0 8px 30px rgba(0,0,0,.5);
+    animation: toastIn .3s ease-out;
+  }
+  @keyframes toastIn { from{opacity:0;transform:translateX(-50%) translateY(10px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
+
+  /* ─── Summon toast (variant-only) ────────────────────────── */
+  .summon-toast {
+    position: fixed; left: 50%; bottom: 24px;
+    transform: translate(-50%, 120%);
+    background: linear-gradient(135deg, #58a6ff, #bc8cff);
+    color: #fff; padding: 12px 22px; border-radius: 999px;
+    font-size: .9rem; font-weight: 600; letter-spacing: .2px;
+    box-shadow: 0 12px 40px rgba(88,166,255,.35), 0 0 0 1px rgba(255,255,255,.15) inset;
+    z-index: 10000; opacity: 0;
+    transition: transform .35s cubic-bezier(.2,.9,.3,1.2), opacity .35s ease;
+    max-width: calc(100vw - 32px); text-align: center;
+    pointer-events: none;
+  }
+  .summon-toast.show { transform: translate(-50%, 0); opacity: 1; }
+  .summon-toast b { font-weight: 800; }
+
+  @media (max-width: 768px) {
+    header { padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top)); }
+    #chat { padding: 16px 12px; }
+    .bubble, .chat-bubble { max-width: 100%; }
+    #agents-panel, #agentDropdownPanel { width: min(320px, calc(100vw - 32px)); }
+    footer { padding: 12px 14px; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  }
+
+  /* ── Light Mode Overrides ── */
+  body.light-mode {
+    background: #ffffff;
+    color: #24292e;
+  }
+  body.light-mode header {
+    background: #f6f8fa;
+    border-bottom-color: #d0d7de;
+  }
+  body.light-mode header h1, body.light-mode .msg.assistant .bubble strong, body.light-mode .chat-bubble strong {
+    color: #24292e;
+  }
+  body.light-mode .icon-btn, body.light-mode .gh-pill, body.light-mode header .controls, body.light-mode #vmStatus, body.light-mode .avatar, body.light-mode .chat-avatar {
+    color: #57606a;
+    border-color: #d0d7de;
+  }
+  body.light-mode .avatar, body.light-mode .chat-avatar {
+    background: #eaeef2;
+  }
+  body.light-mode .icon-btn:hover, body.light-mode .gh-pill:hover {
+    border-color: #0969da;
+    color: #0969da;
+  }
+  body.light-mode .msg.system .bubble h2 { color: #24292e; }
+  body.light-mode .msg.system .bubble strong { color: #24292e; }
+  body.light-mode .msg.assistant .bubble, body.light-mode .chat-msg.assistant .chat-bubble {
+    background: #f6f8fa;
+    border-color: #d0d7de;
+    color: #24292e;
+  }
+  body.light-mode .bubble h1, body.light-mode .bubble h2, body.light-mode .bubble h3 {
+    color: #24292e;
+  }
+  body.light-mode .bubble code, body.light-mode .chat-bubble code {
+    background: rgba(175, 184, 193, 0.2);
+  }
+  body.light-mode .bubble pre, body.light-mode .chat-bubble pre {
+    background: #f6f8fa; border: 1px solid #d0d7de;
+  }
+  body.light-mode .bubble th, body.light-mode .bubble td,
+  body.light-mode .chat-bubble th, body.light-mode .chat-bubble td { border-color: #d0d7de; }
+  body.light-mode .bubble th, body.light-mode .chat-bubble th { background: #eaeef2; color: #24292e; }
+  body.light-mode .bubble tr:nth-child(even), body.light-mode .chat-bubble tr:nth-child(even) { background: #eef1f4; }
+  body.light-mode .msg.assistant .avatar, body.light-mode .chat-msg.assistant .chat-avatar {
+    background: #f6f8fa; border-color: #d0d7de; color: #0969da;
+  }
+  body.light-mode .chat-activity-pill { background: #f6f8fa; border-color: #d0d7de; color: #57606a; }
+  body.light-mode .vb-ao-box { background: #f6f8fa !important; border-color: #d0d7de !important; color: #24292e !important; }
+  body.light-mode footer { background: #f6f8fa; border-top-color: #d0d7de; }
+  body.light-mode #input {
+    background: #ffffff; border-color: #d0d7de; color: #24292e;
+  }
+  body.light-mode #input::placeholder { color: #57606a; }
+  body.light-mode .starter-btn {
+    background: #ffffff; border: 1px solid #d0d7de; color: #57606a;
+  }
+  body.light-mode .starter-btn:hover {
+    background: rgba(9, 105, 218, 0.08); color: #0969da; border-color: #0969da;
+  }
+  body.light-mode #chat-watermark { color: #57606a; }
+  body.light-mode #chat-watermark svg { fill: #57606a; }
+  body.light-mode #agents-panel, body.light-mode #agentDropdownPanel {
+    background: #ffffff; border-color: #d0d7de; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  }
+  body.light-mode #agents-panel h3 { color: #24292e; }
+  body.light-mode .agent-dropdown-item { border-color: #d0d7de; }
+  body.light-mode .agent-dropdown-item:hover { background: #f6f8fa; }
+  body.light-mode .agent-dropdown-item-name { color: #24292e; }
+  body.light-mode .agent-dropdown-item-desc { color: #57606a; }
+  body.light-mode .agent-dropdown-search { background: #ffffff; color: #24292e; border-color: #d0d7de; }
+  body.light-mode .agent-dropdown-search:focus { border-color: #0969da; }
+  body.light-mode .agent-dl-btn { background: #f6f8fa; color: #57606a; border-color: #d0d7de; }
+  body.light-mode .agent-dl-btn:hover { border-color: #0969da; color: #0969da; }
+  body.light-mode #model-select, body.light-mode #modelSelect, body.light-mode .model-select {
+    background: #ffffff; color: #24292e; border-color: #d0d7de;
+  }
+  body.light-mode #modelSelect option, body.light-mode .model-select option { background: #ffffff; color: #24292e; }
+  body.light-mode #modelSelect:hover, body.light-mode .model-select:hover { border-color: #0969da; }
+  body.light-mode #chatModelLabel, body.light-mode #vmStatus { color: #57606a; }
+  body.light-mode .login-card { background: #f6f8fa; border-color: #d0d7de; }
+  body.light-mode .login-card p { color: #57606a; }
+  body.light-mode #login-overlay { background: rgba(255, 255, 255, 0.95); }
+  body.light-mode .login-skip { color: #57606a; }
+  body.light-mode .login-skip:hover { color: #24292e; }
+  body.light-mode .toolbar-link { color: #57606a; }
+  body.light-mode .toolbar-link:hover { color: #24292e; }
 </style>
 </head>
-<body class="mode-landing">
+<body>
 
-<!-- ═══════════════ Landing (mirrors rapp-installer index.html) ═══════════════ -->
-<div id="landingView">
-
-  <div class="lp-hero">
-    <div class="lp-logo">🧠</div>
-    <h1>RAPP Brainstem</h1>
-    <p>A local-first AI agent server that runs <strong>entirely in your browser</strong>.<br>Real CPython via Pyodide — no install, no server, no API keys to start.</p>
-    <div class="lp-tagline">Virtual brainstem · runs on WebAssembly</div>
-  </div>
-
-  <div class="lp-boot" id="lpBoot">
-    <div class="lp-boot-bar">
-      <div class="lp-boot-bar-left">
-        <div class="lp-dots"><span></span><span></span><span></span></div>
-        <span class="lp-boot-title">brainstem — wasm</span>
-      </div>
-      <span class="lp-boot-tag" id="lpBootTag">booting…</span>
-    </div>
-    <div class="lp-boot-body" id="lpBootBody"></div>
-    <div class="lp-boot-foot">
-      <button class="lp-launch" id="lpLaunch" onclick="launchBrainstem()" disabled>Launch Brainstem ▶</button>
-    </div>
-  </div>
-
-  <div class="lp-tiers">
-    <div class="lp-tier" onclick="toggleTier(event, this)">
-      <div class="lp-tier-head">
-        <div class="lp-tier-icon">🧠</div>
-        <div class="lp-tier-title">
-          <h2>Run agents in your browser</h2>
-          <div class="lp-sub">The survival basics — a brainstem with no server</div>
-        </div>
-        <span class="lp-tier-badge start">Start here</span>
-        <span class="lp-tier-arrow">▶</span>
-      </div>
-      <div class="lp-tier-body">
-        <p>Chat naturally and the brainstem routes to the right agent, then executes it locally in a real CPython sandbox (<code>Pyodide</code>, compiled to WebAssembly). No backend, no keys — nothing leaves your machine.</p>
-        <p><span class="lp-em">The biological brainstem keeps you alive without thinking about it. This one keeps your agents running — right here in the tab.</span></p>
-      </div>
-    </div>
-    <div class="lp-tier" onclick="toggleTier(event, this)">
-      <div class="lp-tier-head">
-        <div class="lp-tier-icon">💾</div>
-        <div class="lp-tier-title">
-          <h2>Memory, tools &amp; hot-loading</h2>
-          <div class="lp-sub">Persists in your browser — drag in new skills</div>
-        </div>
-        <span class="lp-tier-badge info">How it works</span>
-        <span class="lp-tier-arrow">▶</span>
-      </div>
-      <div class="lp-tier-body">
-        <p>Built-in <code>ManageMemory</code> and <code>ContextMemory</code> agents persist to a localStorage-backed virtual filesystem. Drop any <code>agent.py</code> onto the chat to hot-load it instantly. Sign in with GitHub to chat through GitHub Models — your Copilot subscription is the engine.</p>
-      </div>
-    </div>
-    <div class="lp-tier" onclick="toggleTier(event, this)">
-      <div class="lp-tier-head">
-        <div class="lp-tier-icon">🔌</div>
-        <div class="lp-tier-title">
-          <h2>Live RAR registry</h2>
-          <div class="lp-sub">Every public agent, streamed on demand</div>
-        </div>
-        <span class="lp-tier-badge adv">Advanced</span>
-        <span class="lp-tier-arrow">▶</span>
-      </div>
-      <div class="lp-tier-body">
-        <p>Agents stream live from the <a href="https://github.com/kody-w/RAR">kody-w/RAR</a> registry. Scan a Grail card QR — a <code>?agent=@publisher/slug</code> deep-link — to summon a specific agent straight into the dropdown. Want a server-grade brainstem with persistent memory and Azure deploy? <a href="https://kody-w.github.io/rapp-installer/">Install the local one</a>.</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="lp-status">
-    <span class="lp-dot checking" id="lpDot"></span>
-    <span class="lp-status-label" id="lpStatus">Booting virtual brainstem…</span>
-    <br>
-    <button class="lp-launch" id="lpLaunch2" onclick="launchBrainstem()" disabled>Enter the Brainstem</button>
-  </div>
-
-  <div class="lp-links">
-    <a href="https://github.com/kody-w/vbrainstem">GitHub</a>
-    <a href="https://kody-w.github.io/RAR/">RAPP Store</a>
-    <a href="https://github.com/kody-w/RAR">Registry</a>
-    <a href="https://kody-w.github.io/rapp-installer/">Local Brainstem</a>
-  </div>
-
+<div id="dropOverlay" class="chat-drop-overlay">
+  <div class="drop-icon">&#128230;</div>
+  <div class="drop-text">Drop .py agent file to install</div>
+  <div class="drop-hint">The agent will be parsed, enabled, and ready to use instantly</div>
 </div>
 
-<!-- ═══════════════ Running app — revealed on Launch (engine unchanged) ═══════════════ -->
-<div id="appView">
-
-<!-- Header -->
-<div class="bs-header">
-  <div class="bs-logo">
-    <div class="bs-logo-mark">RB</div>
-    <span>RAPP Brainstem</span>
+<div id="login-overlay" style="display:none">
+  <div class="login-card">
+    <a href="#" onclick="dismissLogin(); return false;" style="position:absolute;top:12px;right:16px;color:#8b949e;font-size:18px;text-decoration:none;line-height:1" title="Dismiss">&times;</a>
+    <div class="login-icon">
+      <span class="icon icon-xl"><svg viewBox="0 0 512 512" fill="#fff"><path d="M184 0c-30.9 0-56.5 22.7-61.1 52.3C54.5 67 0 130 0 206.8c0 41.6 17.4 79.2 45.3 105.9-2 9.2-3.3 18.8-3.3 28.7 0 55.3 35.8 102.2 85.5 119C142.2 493 172.6 512 208 512h16c35.3 0 64-28.7 64-64V86c0-8.8-7.2-16-16-16h-16c-8.8 0-16 7.2-16 16v16c0 8.8-7.2 16-16 16s-16-7.2-16-16V64c0-35.3-28.7-64-64-64h40zm144 0c30.9 0 56.5 22.7 61.1 52.3C457.5 67 512 130 512 206.8c0 41.6-17.4 79.2-45.3 105.9 2 9.2 3.3 18.8 3.3 28.7 0 55.3-35.8 102.2-85.5 119C369.8 493 339.4 512 304 512h-16c-35.3 0-64-28.7-64-64V86c0-8.8 7.2-16 16-16h16c8.8 0 16 7.2 16 16v16c0 8.8 7.2 16 16 16s16-7.2 16-16V64c0-35.3 28.7-64 64-64h-40z"/></svg></span>
+    </div>
+    <h2>RAPP Brainstem</h2>
+    <p>Sign in with your GitHub account to chat through GitHub Models. You can also skip and run Python agents in your browser without signing in.</p>
+    <button class="login-btn" onclick="handleGHAuth()">Sign in with GitHub</button>
+    <button class="login-skip" onclick="dismissLogin()">Skip &mdash; explore without signing in</button>
   </div>
-  <div id="vmStatus" class="bs-status idle"><div class="bs-status-dot"></div><span>Idle</span></div>
-  <div class="bs-header-right">
-    <div class="gh-pill" id="ghPill" onclick="handleGHAuth()">
+</div>
+
+<header>
+  <div class="logo">
+    <span class="icon"><svg viewBox="0 0 512 512" fill="#fff"><path d="M184 0c-30.9 0-56.5 22.7-61.1 52.3C54.5 67 0 130 0 206.8c0 41.6 17.4 79.2 45.3 105.9-2 9.2-3.3 18.8-3.3 28.7 0 55.3 35.8 102.2 85.5 119C142.2 493 172.6 512 208 512h16c35.3 0 64-28.7 64-64V86c0-8.8-7.2-16-16-16h-16c-8.8 0-16 7.2-16 16v16c0 8.8-7.2 16-16 16s-16-7.2-16-16V64c0-35.3-28.7-64-64-64h40zm144 0c30.9 0 56.5 22.7 61.1 52.3C457.5 67 512 130 512 206.8c0 41.6-17.4 79.2-45.3 105.9 2 9.2 3.3 18.8 3.3 28.7 0 55.3-35.8 102.2-85.5 119C369.8 493 339.4 512 304 512h-16c-35.3 0-64-28.7-64-64V86c0-8.8 7.2-16 16-16h16c8.8 0 16 7.2 16 16v16c0 8.8 7.2 16 16 16s16-7.2 16-16V64c0-35.3 28.7-64 64-64h-40z"/></svg></span>
+  </div>
+  <h1>RAPP Brainstem <span id="version-tag" style="font-size:11px;font-weight:400;color:#8b949e;vertical-align:middle">virtual</span></h1>
+  <div class="controls">
+    <div id="vmStatus" class="bs-status idle"><div class="bs-status-dot"></div><span>Idle</span></div>
+
+    <div class="gh-pill" id="ghPill" onclick="handleGHAuth()" title="Sign in / out of GitHub">
       <div class="gh-dot off" id="ghDot"></div>
       <span id="ghLabel">Sign in</span>
     </div>
-    <a href="https://kody-w.github.io/RAR/" class="bs-btn">Back to RAPP</a>
-  </div>
-</div>
 
-<!-- Chat Mode (default) -->
-<div id="chatMode" class="chat-wrap"
+    <button class="icon-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">
+      <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0a.996.996 0 000-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/></svg></span>
+    </button>
+
+    <div class="agents-wrapper">
+      <button class="icon-btn" id="agents-btn" onclick="toggleAgentDropdown(event)" title="Browse & manage agents">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v4h4v2h-4v4h-2v-4H7v-2h4z"/></svg></span>
+        Agents <span class="agent-count" id="agentCount">3</span>
+      </button>
+      <div id="agentDropdownPanel">
+        <h3>
+          <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v4h4v2h-4v4h-2v-4H7v-2h4z"/></svg></span>
+          Agent Registry
+        </h3>
+        <input class="agent-dropdown-search" type="text" placeholder="Search the RAR agent registry…" oninput="filterAgentDropdown(this.value)" autocomplete="off" spellcheck="false">
+        <div class="agent-dropdown-list" id="agentDropdownList"></div>
+        <div style="font-size:10px; color:#8b949e; margin-top:12px; text-align:center;">
+          Enable agents here, or drag &amp; drop a <code>.py</code> file anywhere to hot-load.
+        </div>
+      </div>
+    </div>
+
+    <a class="icon-btn" href="https://kody-w.github.io/RAR/" title="Back to the RAPP Store">
+      <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5.69l5 4.5V18h-2v-6H9v6H7v-7.81l5-4.5M12 3L2 12h3v8h6v-6h2v6h6v-8h3L12 3z"/></svg></span>
+    </a>
+  </div>
+</header>
+
+<div id="chat"
   ondragover="event.preventDefault();document.getElementById('dropOverlay').classList.add('active')"
   ondragleave="if(!event.relatedTarget||!this.contains(event.relatedTarget))document.getElementById('dropOverlay').classList.remove('active')"
   ondrop="handleAgentDrop(event)">
-  <div class="chat-drop-overlay" id="dropOverlay">
-    <div class="drop-icon">&#128230;</div>
-    <div class="drop-text">Drop agent.py to hot-load</div>
-    <div class="drop-hint">The agent will be parsed, enabled, and ready to use instantly</div>
+
+  <!-- Subtle Drop Watermark -->
+  <div id="chat-watermark">
+    Drag & Drop .py Agents Here
+    <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
   </div>
+
   <div class="chat-messages" id="chatMessages">
-    <div class="chat-welcome-box" id="chatWelcome">
-      <h2>RAPP Brainstem</h2>
-      <p>A brainstem running in your browser. Chat naturally -- I'll route to the right agent automatically.</p>
-      <div class="chat-agent-pills" id="welcomeAgentPills">
-        <span class="chat-agent-pill">ManageMemory</span>
-        <span class="chat-agent-pill">ContextMemory</span>
-        <span class="chat-agent-pill">HackerNews</span>
-      </div>
-      <div class="chat-suggestions">
-        <div class="chat-suggestion" onclick="useSuggestion(this)">What's trending on Hacker News?</div>
-        <div class="chat-suggestion" onclick="useSuggestion(this)">Remember that I prefer dark mode</div>
-        <div class="chat-suggestion" onclick="useSuggestion(this)">What do you know about me?</div>
-      </div>
-    </div>
-  </div>
-  <div class="chat-model-bar" id="chatModelBar">
-    <div class="agent-enabled-pills" id="enabledAgentPills"></div>
-    <div class="agent-dropdown-wrap">
-      <button class="agent-dropdown-btn" onclick="toggleAgentDropdown(event)">
-        Agents <span class="agent-count" id="agentCount">3</span>
-      </button>
-      <div class="agent-dropdown-panel" id="agentDropdownPanel">
-        <input class="agent-dropdown-search" type="text" placeholder="Search agents..." oninput="filterAgentDropdown(this.value)">
-        <div class="agent-dropdown-list" id="agentDropdownList"></div>
+    <div class="msg system" id="chatWelcome">
+      <div class="bubble">
+        <h2>Welcome to the RAPP Brainstem!</h2>
+        <p>I am running right in your browser via Pyodide &mdash; real CPython, no server, no install. Here is a quick tour:</p>
+        <ul>
+          <li><strong>Chat</strong>: Just ask me questions below to start building and researching!</li>
+          <li><strong>Agents Panel</strong>: Click the <svg style="vertical-align: middle; width: 1.25em; height: 1.25em;" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v4h4v2h-4v4h-2v-4H7v-2h4z"/></svg> Agents button (top right) to browse the registry and enable tools.</li>
+          <li><strong>Add Skills</strong>: Drag and drop any <code>.py</code> agent file directly onto this window to instantly teach me new things.</li>
+        </ul>
+        <div class="chat-agent-pills" id="welcomeAgentPills" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:12px 0 4px;">
+          <span class="agent-enabled-pill" style="cursor:default">ManageMemory</span>
+          <span class="agent-enabled-pill" style="cursor:default">ContextMemory</span>
+          <span class="agent-enabled-pill" style="cursor:default">HackerNews</span>
+        </div>
+        <p><em>Click one of the prompts below to get started!</em></p>
       </div>
     </div>
-    <span style="color:var(--border)">|</span>
-    <span id="chatModelLabel">GitHub Models -- sign in to start chatting</span>
-    <select id="modelSelect" class="model-select" onchange="selectModel(this.value)" style="display:none"></select>
-    <div class="chat-toolbar">
-      <button class="chat-toolbar-btn" onclick="exportChat()" title="Export chat transcript">Export</button>
-      <button class="chat-toolbar-btn" onclick="importChat()" title="Import chat transcript">Import</button>
-      <input type="file" id="importChatFile" accept=".json" style="display:none" onchange="handleChatImport(event)">
-    </div>
-  </div>
-  <div class="chat-input-bar">
-    <input class="chat-input" id="chatInput" type="text" placeholder="Ask me anything..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}" disabled>
-    <button class="chat-send" id="chatSend" onclick="sendChat()" disabled>Send</button>
   </div>
 </div>
 
-</div><!-- /#appView -->
+<footer>
+  <div id="starter-prompts">
+    <button class="starter-btn" onclick="useStarter('What exactly can you do?')">What can you do?</button>
+    <button class="starter-btn" onclick="useStarter(&quot;What's trending on Hacker News?&quot;)">What's trending on Hacker News?</button>
+    <button class="starter-btn" onclick="useStarter('What do you know about me?')">What do you know about me?</button>
+  </div>
+  <div class="toolbar-row">
+    <div class="left">
+      <span id="chatModelLabel">GitHub Models &mdash; sign in to start chatting</span>
+      <select id="modelSelect" class="model-select" onchange="selectModel(this.value)" style="display:none"></select>
+      <div id="enabledAgentPills"></div>
+    </div>
+    <div class="right">
+      <button class="toolbar-link" onclick="exportChat()" title="Export transcript">
+        <span class="icon"><svg viewBox="0 0 16 16"><path fill-rule="evenodd" d="M7.47 10.78a.75.75 0 001.06 0l3.75-3.75a.75.75 0 00-1.06-1.06L8.75 8.44V1.75a.75.75 0 00-1.5 0v6.69L4.78 5.97a.75.75 0 00-1.06 1.06l3.75 3.75zM3.75 13a.75.75 0 000 1.5h8.5a.75.75 0 000-1.5h-8.5z"/></svg></span>
+        Export
+      </button>
+      <button class="toolbar-link" onclick="importChat()" title="Import transcript">Import</button>
+      <input type="file" id="importChatFile" accept=".json" style="display:none" onchange="handleChatImport(event)">
+      <button class="toolbar-link" onclick="clearChat()">Clear</button>
+      <a class="toolbar-link" href="https://kody-w.github.io/RAR/" target="_blank" title="Learn more about RAPP">&#128218; Tutorial</a>
+    </div>
+  </div>
+  <div class="input-row">
+    <textarea id="chatInput" rows="1" placeholder="Message brainstem..." autocomplete="off"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}" disabled></textarea>
+    <button id="chatSend" onclick="sendChat()" disabled>Send</button>
+  </div>
+</footer>
 
 <script>
-// Summon / QR deep-link arrivals skip the landing and open straight into chat.
-// Set synchronously (before first paint) so there is no landing flash.
-if (new URLSearchParams(location.search).getAll('agent').length) {
-  try { document.body.className = 'mode-app'; } catch (_) {}
+// ── Theme (light/dark) — defaults to light, persisted in localStorage('vb_theme') ──
+// Applied synchronously before first paint so there is no flash of the wrong theme.
+(function () {
+  try {
+    if (localStorage.getItem('vb_theme') !== 'dark') document.body.classList.add('light-mode');
+  } catch (_) { document.body.classList.add('light-mode'); }
+})();
+function toggleTheme() {
+  document.body.classList.toggle('light-mode');
+  const isLight = document.body.classList.contains('light-mode');
+  try { localStorage.setItem('vb_theme', isLight ? 'light' : 'dark'); } catch (_) {}
+}
+
+// ── UI glue: thin wrappers binding the local-brainstem markup to the engine ──
+// Fill the input from a starter-prompt and send (engine: useSuggestion → sendChat).
+function useStarter(text) {
+  const inp = document.getElementById('chatInput');
+  if (!inp) return;
+  if (inp.disabled) { handleGHAuth(); return; } // not signed in → prompt sign-in
+  inp.value = text;
+  sendChat();
+}
+// Dismissible, non-blocking login prompt (OAuth — not device code).
+function dismissLogin() {
+  const o = document.getElementById('login-overlay');
+  if (o) o.style.display = 'none';
+  try { localStorage.setItem('vb_login_dismissed', '1'); } catch (_) {}
+}
+function showLoginIfNeeded() {
+  // Show the (dismissible) sign-in card once, only when not signed in.
+  let dismissed = false;
+  try { dismissed = localStorage.getItem('vb_login_dismissed') === '1'; } catch (_) {}
+  const o = document.getElementById('login-overlay');
+  if (!o) return;
+  o.style.display = (typeof chatToken !== 'undefined' && chatToken) || dismissed ? 'none' : 'flex';
+}
+// Clear the current chat (transcript + rendered messages), restore the welcome tour.
+function clearChat() {
+  const container = document.getElementById('chatMessages');
+  if (container) {
+    container.querySelectorAll('.chat-msg, .chat-activity').forEach(el => el.remove());
+  }
+  const welcome = document.getElementById('chatWelcome');
+  if (welcome) welcome.style.display = '';
+  if (typeof chatHistory !== 'undefined') chatHistory = [];
+  const chatEl = document.getElementById('chat');
+  if (chatEl) chatEl.classList.remove('has-messages');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -3947,6 +4084,9 @@ function addChatMsg(role, html) {
   div.appendChild(avatar);
   div.appendChild(bubble);
   container.appendChild(div);
+  // Hide the corner watermark once a real conversation begins (local-brainstem behavior).
+  const chatEl = document.getElementById('chat');
+  if (chatEl) chatEl.classList.add('has-messages');
   container.scrollTop = container.scrollHeight;
   return bubble;
 }
@@ -4753,62 +4893,7 @@ async function applySummonDeepLink() {
 }
 
 // ── Landing page (mirrors rapp-installer) — boot terminal + launch ──
-const _lpSleep = ms => new Promise(r => setTimeout(r, ms));
-
-function bootLog(text, kind = 'run') {
-  const body = document.getElementById('lpBootBody');
-  if (!body) return;
-  const line = document.createElement('div');
-  line.className = 'lp-line ' + kind;
-  const mark = document.createElement('span');
-  mark.className = 'lp-mark';
-  mark.textContent = kind === 'cmd' ? '$' : kind === 'ok' ? '✓' : '→';
-  const txt = document.createElement('span');
-  txt.textContent = text;
-  line.appendChild(mark);
-  line.appendChild(txt);
-  body.appendChild(line);
-  body.scrollTop = body.scrollHeight;
-}
-
-function setLandingStatus(state, text) {
-  const dot = document.getElementById('lpDot');
-  const label = document.getElementById('lpStatus');
-  if (dot) dot.className = 'lp-dot ' + state;
-  if (label) label.textContent = text;
-}
-
-function bootReady() {
-  document.querySelectorAll('.lp-launch').forEach(b => { b.disabled = false; });
-  const tag = document.getElementById('lpBootTag');
-  if (tag) { tag.textContent = 'ready'; tag.classList.add('ready'); }
-  const n = (typeof availableAgents !== 'undefined' && availableAgents) ? availableAgents.length : 0;
-  setLandingStatus('ready', `Virtual brainstem online · ${n} registry agents`);
-}
-
-function launchBrainstem() {
-  if (document.body.classList.contains('mode-app')) return;
-  document.body.classList.remove('mode-landing');
-  document.body.classList.add('mode-app');
-  const inp = document.getElementById('chatInput');
-  if (inp && !inp.disabled) setTimeout(() => inp.focus(), 60);
-  window.scrollTo(0, 0);
-}
-
-function toggleTier(e, el) {
-  if (e.target.closest('a')) return;
-  el.classList.toggle('open');
-}
-
 (async function init() {
-  const summoning = new URLSearchParams(location.search).getAll('agent').length > 0;
-
-  bootLog('boot brainstem.wasm', 'cmd');
-  await _lpSleep(160);
-  bootLog('LisPy interpreter mounted', 'ok');
-  await _lpSleep(110);
-  bootLog('Python → JS transpiler online', 'ok');
-
   // Handle OAuth callback if present
   await handleAuthCallback();
 
@@ -4816,30 +4901,27 @@ function toggleTier(e, el) {
   if (chatToken) {
     await fetchGHUser();
     fetchModels(); // non-blocking — populates dropdown in background
-    bootLog('GitHub session restored', 'ok');
   }
   updateGHPill();
+
+  // Sign-in is optional: show the dismissible login card only when not signed in.
+  showLoginIfNeeded();
 
   // Restore agents from VFS (persisted across sessions)
   restoreVFSAgents();
 
   // Load registry for agent dropdown — await so summon can validate
-  bootLog('fetching agent registry…', 'run');
   await loadRegistryForChat();
-  bootLog(`registry loaded · ${availableAgents.length} agents`, 'ok');
 
-  bootReady();
-
-  // Apply summon deep-link (?agent=@pub/slug) if present
+  // Apply summon deep-link (?agent=@pub/slug) if present — opens straight into chat.
   await applySummonDeepLink();
 
   // Warm CPython in the background so the first agent run is instant.
-  ensurePyodide()
-    .then(() => bootLog('CPython (Pyodide) ready', 'ok'))
-    .catch(() => bootLog('CPython will load on first agent run', 'run'));
+  ensurePyodide().catch(() => {});
 
-  // QR / deep-link arrivals skip the landing and drop straight into chat.
-  if (summoning) launchBrainstem();
+  // Focus the input if we're signed in and ready.
+  const inp = document.getElementById('chatInput');
+  if (inp && !inp.disabled) setTimeout(() => inp.focus(), 60);
 })();
 
 </script>
