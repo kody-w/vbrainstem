@@ -6774,15 +6774,33 @@ window.rapp.neighborhood = {
 };
 // QR pairing button in the header + auto-join when arriving via ?peer=…
 (function () {
-  function showQR(info) {
+  async function showQR(info) {
+    // A kited twin that's hosting shows its JOIN link as a scannable QR — anyone who scans
+    // joins this kited neighborhood (sealed). Multiplayer = whoever joins. QR is rendered
+    // entirely client-side (no third party sees the token).
+    const link = info.op_link || info.link;
     let o = document.getElementById('hood-qr');
     if (!o) { o = document.createElement('div'); o.id = 'hood-qr';
-      o.style.cssText = 'position:fixed;right:16px;top:60px;z-index:9500;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px;text-align:center;box-shadow:0 16px 50px rgba(0,0,0,.5);font:12px -apple-system,sans-serif;color:#e6edf3';
+      o.style.cssText = 'position:fixed;right:16px;top:60px;z-index:9500;background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px;text-align:center;box-shadow:0 16px 50px rgba(0,0,0,.5);font:12px -apple-system,sans-serif;color:#e6edf3;max-width:260px';
       document.body.appendChild(o); }
-    o.innerHTML = '<div style="font-weight:600;margin-bottom:8px">🏘 Neighborhood — scan to join</div>' +
-      '<img src="' + info.qr + '" width="200" height="200" style="border-radius:6px;background:#fff"><div style="margin-top:8px;color:#8b949e">peer-id</div>' +
-      '<code style="font-size:10px;color:#58a6ff;word-break:break-all">' + info.peer_id + '</code>' +
-      '<div style="margin-top:8px"><button onclick="this.closest(\'#hood-qr\').remove()" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:4px 12px;cursor:pointer">close</button></div>';
+    o.innerHTML = '<div style="font-weight:700;margin-bottom:2px;font-size:14px">🪁 Kited — scan to join</div>'
+      + '<div style="color:#8b949e;margin-bottom:10px">this kited neighborhood · 🔒 sealed</div>'
+      + '<div id="hood-qr-img" style="background:#fff;border-radius:8px;padding:8px;display:inline-block;min-width:190px;min-height:190px;line-height:0"></div>'
+      + '<div id="hood-peers" style="margin-top:10px;color:#3fb950;font-weight:600">neighbors: ' + window.rapp.neighborhood.peers().length + '</div>'
+      + '<div style="margin-top:8px"><button id="hood-copy" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:4px 12px;cursor:pointer;margin-right:6px">copy link</button>'
+      + '<button id="hood-close" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:4px 12px;cursor:pointer">close</button></div>';
+    o.querySelector('#hood-copy').onclick = () => { navigator.clipboard.writeText(link); };
+    o.querySelector('#hood-close').onclick = () => { if (o._iv) clearInterval(o._iv); o.remove(); };
+    try {
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js');
+      const qr = qrcode(0, 'M'); qr.addData(link); qr.make();
+      o.querySelector('#hood-qr-img').innerHTML = qr.createImgTag(5, 0);
+      const img = o.querySelector('#hood-qr-img img'); if (img) { img.style.width = '190px'; img.style.height = '190px'; img.style.imageRendering = 'pixelated'; }
+    } catch (e) {  // fallback: third-party renderer if the lib CDN is unreachable
+      o.querySelector('#hood-qr-img').innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=8&data=' + encodeURIComponent(link) + '" width="190" height="190">';
+    }
+    if (o._iv) clearInterval(o._iv);   // live multiplayer membership count
+    o._iv = setInterval(() => { const el = document.getElementById('hood-peers'); if (!el) { clearInterval(o._iv); return; } el.textContent = 'neighbors: ' + window.rapp.neighborhood.peers().length; }, 1500);
   }
   function addBtn() {
     const c = document.querySelector('header .controls'); if (!c || document.getElementById('hood-btn')) return;
