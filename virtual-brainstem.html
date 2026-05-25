@@ -742,6 +742,10 @@
       <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 00-1.41 0 .996.996 0 000 1.41l1.06 1.06c.39.39 1.03.39 1.41 0a.996.996 0 000-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 000-1.41.996.996 0 00-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/></svg></span>
     </button>
 
+    <button class="icon-btn" id="term-btn" onclick="toggleTerminal()" title="Terminal — Python REPL + shell over the WASM filesystem">
+      <span class="icon" style="font:700 12px 'SF Mono',monospace">&gt;_</span>
+    </button>
+
     <div class="registry-wrapper">
       <button class="icon-btn" id="registry-btn" onclick="toggleAgentDropdown(event)" title="Browse the RAR agent registry">
         <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg></span>
@@ -4696,6 +4700,21 @@ def _rapp_run(source, display_name, request):
         try: out = json.dumps(out, default=str)
         except Exception: out = str(out)
     return json.dumps({'ran_class': name, 'agent_count': len(candidates), 'output': out})
+
+def _rapp_eval(code):
+    # REPL helper for the terminal: run code, capture stdout/stderr, return text.
+    import io, contextlib, traceback
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            try:
+                _r = eval(code, globals())
+                if _r is not None: print(repr(_r))
+            except SyntaxError:
+                exec(code, globals())
+    except Exception:
+        buf.write(traceback.format_exc())
+    return buf.getvalue()
 `;
 
 // Give the runtime a real, persistent working filesystem: Pyodide's MEMFS plus
@@ -4724,6 +4743,89 @@ async function setupBrainstemFS(py) {
 // Persist FS writes (IDBFS) so memory/data survives a reload. Best-effort.
 async function _persistFS() {
   try { if (_pyodide && _pyodide.FS) await new Promise((res) => _pyodide.FS.syncfs(false, () => res())); } catch (e) {}
+}
+
+// ── In-browser terminal: a real Python REPL + a shell shim over the live
+// Pyodide (WASM/Emscripten) filesystem. There's no OS shell to drop into
+// (no subprocess), so this drives the actual interpreter + its FS directly. ──
+let _termEl = null, _termHist = [], _termHi = 0;
+function _termEnsureUI() {
+  if (_termEl) return _termEl;
+  const st = document.createElement('style');
+  st.textContent = "#rapp-term{position:fixed;right:16px;bottom:16px;width:min(680px,92vw);height:min(440px,72vh);background:#0d1117;border:1px solid #30363d;border-radius:10px;box-shadow:0 16px 50px rgba(0,0,0,.5);display:none;flex-direction:column;z-index:9000;overflow:hidden;font-family:'SF Mono','Fira Code',monospace}#rapp-term.open{display:flex}#rapp-term .term-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:#161b22;border-bottom:1px solid #21262d;font-size:11px;color:#8b949e}#rapp-term .term-bar button{background:none;border:none;color:#8b949e;cursor:pointer;font-size:13px}#rapp-term .term-out{flex:1;overflow-y:auto;padding:10px 12px;font-size:12.5px;line-height:1.5;color:#e6edf3;white-space:pre-wrap;word-break:break-word}#rapp-term .term-line.cmd{color:#58a6ff}#rapp-term .term-line.ok{color:#3fb950}#rapp-term .term-line.err{color:#f85149}#rapp-term .term-line.dim{color:#6e7681}#rapp-term .term-in{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid #21262d}#rapp-term .term-prompt{color:#3fb950}#rapp-term #term-input{flex:1;background:none;border:none;outline:none;color:#e6edf3;font-family:inherit;font-size:12.5px}";
+  document.head.appendChild(st);
+  const el = document.createElement('div');
+  el.id = 'rapp-term';
+  el.innerHTML = '<div class="term-bar"><span>brainstem · wasm (emscripten) · python REPL</span><button onclick="toggleTerminal()" title="Close">&#10005;</button></div><div class="term-out" id="term-out"></div><div class="term-in"><span class="term-prompt">$</span><input id="term-input" autocomplete="off" spellcheck="false" placeholder="sysinfo · ls · python 1+1 · pip install requests · help"></div>';
+  document.body.appendChild(el);
+  _termEl = el;
+  const inp = el.querySelector('#term-input');
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { const v = inp.value; inp.value = ''; if (v.trim()) { _termHist.push(v); _termHi = _termHist.length; } termRun(v); }
+    else if (e.key === 'ArrowUp') { if (_termHi > 0) { _termHi--; inp.value = _termHist[_termHi] || ''; } e.preventDefault(); }
+    else if (e.key === 'ArrowDown') { if (_termHi < _termHist.length) { _termHi++; inp.value = _termHist[_termHi] || ''; } e.preventDefault(); }
+  });
+  return el;
+}
+function _termPrint(text, cls) {
+  const out = document.getElementById('term-out'); if (!out) return;
+  const d = document.createElement('div'); d.className = 'term-line' + (cls ? ' ' + cls : ''); d.textContent = text;
+  out.appendChild(d); out.scrollTop = out.scrollHeight;
+}
+function toggleTerminal() {
+  const el = _termEnsureUI();
+  const open = el.classList.toggle('open');
+  try { document.getElementById('term-btn').classList.toggle('active', open); } catch (e) {}
+  if (open) {
+    setTimeout(() => { const i = document.getElementById('term-input'); if (i) i.focus(); }, 30);
+    if (!el.dataset.booted) { el.dataset.booted = '1'; termRun('sysinfo'); }
+  }
+}
+function _shellToPy(line) {
+  const parts = line.trim().split(/\s+/), c = parts[0], a = parts.slice(1);
+  const q = s => JSON.stringify(String(s)), nf = a.find(x => !x.startsWith('-'));
+  switch (c) {
+    case 'pwd': return 'import os;print(os.getcwd())';
+    case 'ls': case 'dir': return `import os;_p=${q(nf || '.')};print(('  '.join(sorted(os.listdir(_p)))) if os.path.isdir(_p) else (_p if os.path.exists(_p) else 'ls: no such path: '+_p))`;
+    case 'cd': return `import os;os.chdir(${q(a[0] || '/brainstem')});print(os.getcwd())`;
+    case 'cat': return `print(open(${q(nf || '')}).read())`;
+    case 'echo': return `print(${q(a.join(' '))})`;
+    case 'mkdir': return `import os;os.makedirs(${q(nf || '')},exist_ok=True);print('created '+${q(nf || '')})`;
+    case 'touch': return `open(${q(nf || '')},'a').close()`;
+    case 'rm': return `import os,shutil;_p=${q(nf || '')};\n(shutil.rmtree(_p) if os.path.isdir(_p) else os.remove(_p)) if os.path.exists(_p) else print('rm: not found: '+_p)`;
+    case 'find': return `import os;[print(os.path.join(_d,_f)) for _d,_,_fs in os.walk(${q(nf || '.')}) for _f in _fs]`;
+    case 'env': return "import os;[print(k+'='+v) for k,v in sorted(os.environ.items())]";
+    case 'whoami': return "print('pyodide')";
+    case 'uname': return "import os;_u=os.uname();print(_u.sysname,_u.nodename,_u.release,_u.machine)";
+    case 'sysinfo': return "import os,sys,platform;_u=os.uname();print('uname  :',_u.sysname,_u.nodename,_u.release,_u.machine);print('python :',sys.version.split()[0]);print('arch   :',platform.machine(),'| sys.platform:',sys.platform);print('os.name:',os.name,'| cwd:',os.getcwd());print('--> WebAssembly VM (Emscripten). Not Linux; no subprocess/native shell.')";
+    case 'help': return "print('built-ins: sysinfo uname pwd ls cd cat echo mkdir touch rm find env whoami | pip install <pkg> | clear | anything else runs as Python')";
+    default: return null;  // not an alias → run the raw line as Python
+  }
+}
+async function termRun(line) {
+  line = (line || '').trim();
+  if (line) _termPrint('$ ' + line, 'cmd');
+  if (!line) return;
+  if (line === 'clear') { const o = document.getElementById('term-out'); if (o) o.innerHTML = ''; return; }
+  let py, loadingLine = null;
+  if (!_pyodide) { _termPrint('loading CPython (WASM)…', 'dim'); loadingLine = document.querySelector('#term-out .term-line.dim:last-child'); }
+  try { py = await ensurePyodide(); } catch (e) { _termPrint('failed to load CPython: ' + (e.message || e), 'err'); return; }
+  if (loadingLine) loadingLine.remove();
+  const m = line.match(/^(?:pip|micropip)\s+install\s+(.+)$/);
+  if (m) {
+    const pkgs = m[1].trim().split(/\s+/);
+    try { _termPrint('installing ' + pkgs.join(' ') + ' …', 'dim'); await py.runPythonAsync('import micropip\nawait micropip.install(' + JSON.stringify(pkgs) + ')'); _termPrint('✓ installed ' + pkgs.join(' '), 'ok'); }
+    catch (e) { _termPrint('pip error: ' + (e.message || e), 'err'); }
+    return;
+  }
+  const code = _shellToPy(line);
+  try {
+    py.globals.set('_term_code', code == null ? line : code);
+    const out = await py.runPythonAsync('_rapp_eval(_term_code)');
+    const s = (out == null) ? '' : String(out).replace(/\n$/, '');
+    if (s.length) _termPrint(s);
+    await _persistFS();
+  } catch (e) { _termPrint(String(e.message || e), 'err'); }
 }
 
 async function ensurePyodide() {
