@@ -4609,11 +4609,27 @@ def _rapp_install_shims():
     agents_pkg.basic_agent = ag_ba; sys.modules['agents'] = agents_pkg; sys.modules['agents.basic_agent'] = ag_ba
     utils_pkg = types.ModuleType('utils'); utils_pkg.__path__ = []
     afs = types.ModuleType('utils.azure_file_storage')
+    import os as _os
     class AzureFileStorageManager:
-        _store = {}
-        def __init__(self, *a, **k): pass
-        def read_file(self, *a, **k): return ''
-        def write_file(self, *a, **k): return True
+        # Real, persistent file store backed by the Pyodide FS (/brainstem/data).
+        _root = '/brainstem/data'
+        def __init__(self, *a, **k):
+            try: _os.makedirs(self._root, exist_ok=True)
+            except Exception: pass
+        def _p(self, name):
+            safe = str(name).replace('..', '_').lstrip('/').replace('/', '__')
+            return _os.path.join(self._root, safe or 'store')
+        def read_file(self, name, *a, **k):
+            try:
+                with open(self._p(name), 'r') as f: return f.read()
+            except Exception: return ''
+        def write_file(self, name, content='', *a, **k):
+            try:
+                _os.makedirs(self._root, exist_ok=True)
+                with open(self._p(name), 'w') as f:
+                    f.write(content if isinstance(content, str) else json.dumps(content, default=str))
+                return True
+            except Exception: return False
         def __getattr__(self, n): return lambda *a, **k: None
     afs.AzureFileStorageManager = AzureFileStorageManager
     utils_pkg.azure_file_storage = afs; sys.modules['utils'] = utils_pkg; sys.modules['utils.azure_file_storage'] = afs
@@ -4624,9 +4640,22 @@ def _rapp_norm(s):
 
 def _rapp_run(source, display_name, request):
     BasicAgent = _rapp_install_shims()
-    ns = {'__name__': '_rapp_agent_', '__file__': '/agents/agent.py'}
+    import os
+    # Materialize the agent onto the real (Pyodide) filesystem and run it from
+    # a real path, so __file__, os.path.dirname(__file__), sibling reads, and
+    # open()/write all work — agents are not just exec'd strings.
+    agent_dir = '/brainstem/agents'
+    try: os.makedirs(agent_dir, exist_ok=True)
+    except Exception: pass
+    agent_path = agent_dir + '/_active_agent.py'
     try:
-        exec(compile(source, '<agent>', 'exec'), ns)
+        with open(agent_path, 'w') as f: f.write(source)
+    except Exception:
+        agent_path = '/agents/agent.py'  # last-resort fallback if FS write fails
+    if agent_dir not in sys.path: sys.path.insert(0, agent_dir)
+    ns = {'__name__': '_rapp_agent_', '__file__': agent_path}
+    try:
+        exec(compile(source, agent_path, 'exec'), ns)
     except Exception as e:
         return json.dumps({'error': 'exec failed: ' + repr(e), 'trace': traceback.format_exc()[-1200:]})
     candidates = []
@@ -4669,6 +4698,34 @@ def _rapp_run(source, display_name, request):
     return json.dumps({'ran_class': name, 'agent_count': len(candidates), 'output': out})
 `;
 
+// Give the runtime a real, persistent working filesystem: Pyodide's MEMFS plus
+// best-effort IDBFS persistence mounted at /brainstem. Mirrors the catalog/VFS
+// agents into it so imports + sibling files resolve. All best-effort — on any
+// failure agents still run against the in-memory MEMFS.
+async function setupBrainstemFS(py) {
+  try {
+    py.FS.mkdirTree('/brainstem');
+    try {
+      py.FS.mount(py.FS.filesystems.IDBFS, {}, '/brainstem');
+      await new Promise((res) => py.FS.syncfs(true, () => res()));   // load persisted data
+    } catch (e) { /* IDBFS unavailable — in-memory only */ }
+    py.FS.mkdirTree('/brainstem/agents');
+    py.FS.mkdirTree('/brainstem/data');
+    py.runPython("import os, sys\ntry:\n    os.chdir('/brainstem')\nexcept Exception: pass\nif '/brainstem/agents' not in sys.path: sys.path.insert(0, '/brainstem/agents')");
+    try {
+      for (const f of VFS.listAgents()) {
+        const src = VFS.read(f); if (!src) continue;
+        py.FS.writeFile('/brainstem/agents/' + f.split('/').pop(), src, { encoding: 'utf8' });
+      }
+    } catch (e) {}
+  } catch (e) { console.warn('Brainstem FS setup failed (running in-memory):', e.message); }
+}
+
+// Persist FS writes (IDBFS) so memory/data survives a reload. Best-effort.
+async function _persistFS() {
+  try { if (_pyodide && _pyodide.FS) await new Promise((res) => _pyodide.FS.syncfs(false, () => res())); } catch (e) {}
+}
+
 async function ensurePyodide() {
   if (_pyodide) return _pyodide;
   if (_pyodideLoading) return _pyodideLoading;
@@ -4684,6 +4741,7 @@ async function ensurePyodide() {
     }
     const py = await loadPyodide({ indexURL: `https://cdn.jsdelivr.net/pyodide/${PYODIDE_VERSION}/full/` });
     py.runPython(PYODIDE_RUNNER_SRC);
+    await setupBrainstemFS(py);
     _pyodide = py;
     return py;
   })();
@@ -4696,6 +4754,7 @@ async function runAgentInPyodide(source, displayName, request) {
   py.globals.set('_agent_display', displayName || '');
   py.globals.set('_agent_request', request || '');
   const resJson = await py.runPythonAsync('_rapp_run(_agent_src, _agent_display, _agent_request)');
+  await _persistFS();   // persist any files the agent wrote (survives reload via IDBFS)
   return JSON.parse(resJson);
 }
 
