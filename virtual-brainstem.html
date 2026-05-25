@@ -6832,7 +6832,63 @@ window.rapp.neighborhood = {
       } catch (e) { pend.remove(); bubble('sys', 'error: ' + (e && e.message || e)); }
     }
     send.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+
+    // Hands-free (voice + gesture): raise your hand → mic ON (twin listening); lower your hand →
+    // mic OFF + send the utterance; the reply is spoken. For on-the-go / eyes-off use.
+    let hf = null;
+    const hfBtn = document.createElement('button');
+    hfBtn.id = 'dial-hf'; hfBtn.textContent = '✋🎤'; hfBtn.title = 'Hands-free — raise your hand to talk, lower to send';
+    hfBtn.style.cssText = 'background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:8px;padding:0 12px;font-size:16px';
+    send.parentElement.insertBefore(hfBtn, send);
+    hfBtn.onclick = async () => {
+      if (hf) { hf.stop(); hf = null; hfBtn.style.background = '#21262d'; st.textContent = op ? '🔒 connected' : 'connected'; return; }
+      try {
+        hf = await startHandsFree({ status: st, onUtterance: async (text) => {
+          bubble('me', text + '  🎤'); const pend = bubble('sys', '…');
+          try { const r = await window.rapp.neighborhood.ask(peer, text, op || undefined); pend.remove();
+            const resp = (r && r.response && (r.response.response !== undefined ? r.response.response : JSON.stringify(r.response)));
+            bubble('them', resp !== undefined ? resp : JSON.stringify(r)); if (resp) speak(resp);
+          } catch (e) { pend.remove(); bubble('sys', 'error: ' + (e && e.message || e)); } } });
+        hfBtn.style.background = '#238636';
+      } catch (e) { hf = null; bubble('sys', 'hands-free unavailable: ' + (e && e.message || e)); }
+    };
     try { inp.focus(); } catch (_) {}
+  }
+  function speak(text) { try { const u = new SpeechSynthesisUtterance(String(text)); u.rate = 1.05; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (_) {} }
+  function loadScript(src) { return new Promise((res, rej) => { if ([].slice.call(document.scripts).some(s => s.src === src)) return res();
+    const s = document.createElement('script'); s.src = src; s.crossOrigin = 'anonymous'; s.onload = () => res(); s.onerror = () => rej(new Error('failed to load ' + src)); document.head.appendChild(s); }); }
+  // Gesture-gated push-to-talk: MediaPipe Hands gates the Web Speech mic. Hand visible → listen;
+  // hand gone (>0.5s) → stop + send. Best on Chrome/Android desktop or mobile; iOS Safari lacks SpeechRecognition.
+  async function startHandsFree({ status, onUtterance }) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) throw new Error('no SpeechRecognition (use Chrome / Android)');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no camera API');
+    const video = document.createElement('video'); video.autoplay = true; video.playsInline = true; video.muted = true;
+    video.style.cssText = 'position:fixed;right:10px;top:10px;width:120px;height:90px;border-radius:8px;border:2px solid #30363d;object-fit:cover;z-index:100000;transform:scaleX(-1)';
+    document.body.appendChild(video);
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    video.srcObject = stream;
+    await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js');
+    const hands = new Hands({ locateFile: f => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + f });
+    hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    let handPresent = false, lastSeen = 0;
+    hands.onResults(r => { const now = Date.now();
+      if (r.multiHandLandmarks && r.multiHandLandmarks.length) { handPresent = true; lastSeen = now; }
+      else if (now - lastSeen > 500) handPresent = false; });
+    let running = true;
+    const pump = async () => { if (!running) return; try { await hands.send({ image: video }); } catch (_) {} if (running) requestAnimationFrame(pump); };
+    video.onloadeddata = () => pump();
+    let rec = null, listening = false, transcript = '';
+    const startListen = () => { if (listening) return; listening = true; transcript = ''; status.textContent = '🎤 listening…';
+      rec = new SR(); rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US';
+      rec.onresult = e => { let t = ''; for (let i = e.resultIndex; i < e.results.length; i++) t += e.results[i][0].transcript; transcript = t; status.textContent = '🎤 ' + t.slice(-42); };
+      rec.onend = () => { if (listening) { try { rec.start(); } catch (_) {} } };
+      try { rec.start(); } catch (_) {} };
+    const stopListen = () => { if (!listening) return; listening = false; status.textContent = '✋ raise hand to talk';
+      try { rec.onend = null; rec.stop(); } catch (_) {} const t = (transcript || '').trim(); transcript = ''; if (t) onUtterance(t); };
+    const gate = setInterval(() => { if (handPresent && !listening) startListen(); else if (!handPresent && listening) stopListen(); }, 200);
+    status.textContent = '✋ raise hand to talk';
+    return { stop() { running = false; clearInterval(gate); listening = false; try { rec && (rec.onend = null, rec.stop()); } catch (_) {} try { stream.getTracks().forEach(t => t.stop()); } catch (_) {} try { hands.close(); } catch (_) {} try { video.remove(); } catch (_) {} } };
   }
 })();
 
