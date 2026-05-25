@@ -4624,7 +4624,7 @@ def _rapp_norm(s):
 
 def _rapp_run(source, display_name, request):
     BasicAgent = _rapp_install_shims()
-    ns = {'__name__': '_rapp_agent_'}
+    ns = {'__name__': '_rapp_agent_', '__file__': '/agents/agent.py'}
     try:
         exec(compile(source, '<agent>', 'exec'), ns)
     except Exception as e:
