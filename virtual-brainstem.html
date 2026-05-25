@@ -498,6 +498,71 @@
     min-height: 16px;
   }
 
+  /* ── Secrets vault panel ── */
+  .secrets-wrapper { position: relative; }
+  #secrets-panel {
+    display: none;
+    position: absolute; top: 100%; right: 0; margin-top: 6px;
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px; width: 320px; z-index: 50;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    font-size: 13px; max-height: 70vh; overflow-y: auto; overflow-x: hidden;
+  }
+  #secrets-panel.open { display: block; }
+  #secrets-panel h3 {
+    font-size: 13px; font-weight: 600; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  #secrets-panel label {
+    display: block; color: #8b949e; font-size: 11px;
+    margin-bottom: 4px; margin-top: 10px;
+  }
+  #secrets-panel input {
+    flex: 1; min-width: 0; background: #0d1117; color: #e6edf3;
+    border: 1px solid #30363d; border-radius: 6px;
+    padding: 6px 8px; font-size: 12px;
+    font-family: "SF Mono", monospace;
+    outline: none; transition: border-color 0.15s;
+  }
+  #secrets-panel input:focus { border-color: #1f6feb; }
+  #secrets-panel .panel-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+  #secrets-panel .panel-btn {
+    background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+    border-radius: 6px; padding: 5px 10px; font-size: 11px;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  #secrets-panel .panel-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+  #secrets-panel .panel-btn.primary { background: #238636; border-color: #238636; color: #fff; }
+  #secrets-panel .panel-btn.primary:hover { background: #2ea043; }
+  .secrets-state {
+    font-size: 11px; padding: 6px 8px; border-radius: 6px;
+    background: rgba(248,81,73,0.10); color: #f85149;
+    border: 1px solid rgba(248,81,73,0.25); margin-bottom: 12px;
+  }
+  .secrets-state.unlocked {
+    background: rgba(63,185,80,0.10); color: #3fb950;
+    border-color: rgba(63,185,80,0.25);
+  }
+  .secrets-list { list-style: none; margin: 12px 0 0; padding: 0; }
+  .secrets-list li {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; padding: 7px 0; border-bottom: 1px solid #21262d; font-size: 12px;
+  }
+  .secrets-list li:last-child { border-bottom: none; }
+  .secrets-list .sk-key {
+    color: #e6edf3; font-family: "SF Mono", monospace;
+    word-break: break-all; flex: 1; min-width: 0;
+  }
+  .secrets-list .sk-mask { color: #8b949e; font-family: "SF Mono", monospace; font-size: 11px; }
+  .secrets-list .sk-del {
+    background: #21262d; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 4px; padding: 1px 7px; font-size: 13px; line-height: 1.4;
+    cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+  }
+  .secrets-list .sk-del:hover { border-color: #f85149; color: #f85149; }
+  .secrets-empty { font-size: 11px; color: #8b949e; margin-top: 10px; text-align: center; }
+  .secrets-note { font-size: 10px; color: #8b949e; margin-top: 12px; line-height: 1.4; }
+
   /* ── Drag & Drop Overlay (engine: #dropOverlay) ── */
   #drop-overlay, #dropOverlay {
     display: none; position: fixed; inset: 0;
@@ -674,6 +739,18 @@
   body.light-mode #voice-panel .panel-btn:hover { border-color: #0969da; color: #0969da; }
   body.light-mode #voice-panel .panel-btn.primary { background: #1f883d; border-color: #1f883d; color: #fff; }
   body.light-mode #voice-panel .panel-btn.primary:hover { background: #1a7f37; }
+  body.light-mode #secrets-panel {
+    background: #ffffff; border-color: #d0d7de; box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  }
+  body.light-mode #secrets-panel h3 { color: #24292e; }
+  body.light-mode #secrets-panel input { background: #ffffff; border-color: #d0d7de; color: #24292e; }
+  body.light-mode #secrets-panel .panel-btn { background: #f6f8fa; color: #24292e; border-color: #d0d7de; }
+  body.light-mode #secrets-panel .panel-btn:hover { border-color: #0969da; color: #0969da; }
+  body.light-mode #secrets-panel .panel-btn.primary { background: #1f883d; border-color: #1f883d; color: #fff; }
+  body.light-mode #secrets-panel .panel-btn.primary:hover { background: #1a7f37; }
+  body.light-mode .secrets-list li { border-color: #d0d7de; }
+  body.light-mode .secrets-list .sk-key { color: #24292e; }
+  body.light-mode .secrets-list .sk-del { background: #f6f8fa; border-color: #d0d7de; }
 </style>
 </head>
 <body>
@@ -745,6 +822,38 @@
     <button class="icon-btn" id="term-btn" onclick="toggleTerminal()" title="Terminal — Python REPL + shell over the WASM filesystem">
       <span class="icon" style="font:700 12px 'SF Mono',monospace">&gt;_</span>
     </button>
+
+    <div class="secrets-wrapper">
+      <button class="icon-btn" id="secrets-btn" onclick="toggleSecretsPanel(event)" title="Secrets vault — encrypted API keys & env (local-first)">
+        <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 10h-8.35A5.99 5.99 0 007 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 005.65-4H13l2 2 2-2 2 2 3-3.03L21 10zM7 15c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/></svg></span>
+      </button>
+      <div id="secrets-panel">
+        <h3>
+          <span class="icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 10h-8.35A5.99 5.99 0 007 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 005.65-4H13l2 2 2-2 2 2 3-3.03L21 10zM7 15c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/></svg></span>
+          Secrets vault (encrypted, local-first)
+        </h3>
+        <div class="secrets-state" id="secrets-state">Locked &middot; enter a passphrase to unlock or create the vault.</div>
+        <label for="secrets-pass">Passphrase</label>
+        <div class="panel-row" style="margin-top:0">
+          <input type="password" id="secrets-pass" placeholder="vault passphrase…" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')doUnlockVault()">
+          <button class="panel-btn primary" onclick="doUnlockVault()">Unlock / Set</button>
+        </div>
+        <label style="margin-top:14px">Add secret</label>
+        <div class="panel-row" style="margin-top:0">
+          <input type="text" id="secret-key" placeholder="KEY (e.g. OPENAI_API_KEY)" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="panel-row" style="margin-top:6px">
+          <input type="password" id="secret-val" placeholder="value" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')doAddSecret()">
+          <button class="panel-btn" onclick="doAddSecret()">Add</button>
+        </div>
+        <ul class="secrets-list" id="secrets-list"><!-- Populated by JS --></ul>
+        <div class="panel-row" style="margin-top:12px">
+          <button class="panel-btn" onclick="document.getElementById('holocard-import').click()" title="Import a .rappid holocard">Import holocard…</button>
+          <input type="file" id="holocard-import" accept=".json,.rappid.json" style="display:none" onchange="handleHolocardImport(event)">
+        </div>
+        <div class="secrets-note">Secrets are AES-256-GCM encrypted with your passphrase and never leave your browser.</div>
+      </div>
+    </div>
 
     <div class="registry-wrapper">
       <button class="icon-btn" id="registry-btn" onclick="toggleAgentDropdown(event)" title="Browse the RAR agent registry">
@@ -4850,11 +4959,215 @@ async function ensurePyodide() {
   return _pyodideLoading;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Local-first encrypted secrets vault + .rappid holocards
+// ═══════════════════════════════════════════════════════════════════════
+// Crypto: WebCrypto (AES-256-GCM, PBKDF2-SHA256, 210k iters). Browser only.
+// Secrets are encrypted at rest in localStorage; the passphrase lives only in
+// memory for the session and is never persisted. Never log secret VALUES.
+
+const _b64 = u8 => btoa(String.fromCharCode(...new Uint8Array(u8)));
+const _ub64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function _deriveKey(pass, salt) {
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 210000, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function encryptJSON(obj, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await _deriveKey(pass, salt);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return { v: 1, kdf: 'PBKDF2-SHA256', iter: 210000, salt: _b64(salt), iv: _b64(iv), ct: _b64(new Uint8Array(ct)) };
+}
+async function decryptJSON(blob, pass) {
+  const key = await _deriveKey(pass, _ub64(blob.salt));
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: _ub64(blob.iv) }, key, _ub64(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+
+// ── Secrets vault state (memory only; passphrase never persisted) ──
+let _secrets = null;     // decrypted { KEY: VALUE } once unlocked; null = locked
+let _vaultPass = null;   // session passphrase — memory only, never written anywhere
+
+function getSessionEnv() { return _secrets || {}; }
+
+// Unlock (or initialize) the vault with a passphrase. Throws on wrong passphrase.
+async function unlockVault(pass) {
+  const it = localStorage.getItem('vb_secrets_enc');
+  if (it) {
+    try {
+      _secrets = await decryptJSON(JSON.parse(it), pass);   // throws on wrong pass
+    } catch (e) {
+      throw new Error('wrong passphrase');
+    }
+  } else {
+    _secrets = {};
+  }
+  _vaultPass = pass;
+  return _secrets;
+}
+
+// Persist the (encrypted) vault. Only ever writes the ENCRYPTED blob.
+async function persistVault() {
+  if (_vaultPass == null) return;
+  try {
+    const blob = await encryptJSON(_secrets || {}, _vaultPass);
+    localStorage.setItem('vb_secrets_enc', JSON.stringify(blob));
+  } catch (e) {
+    console.warn('Vault persist failed:', e.message);   // never log secret values
+  }
+}
+
+async function setSecret(k, v) {
+  if (_secrets == null) _secrets = {};
+  _secrets[k] = v;
+  await persistVault();
+}
+
+async function removeSecret(k) {
+  if (_secrets == null) return;
+  delete _secrets[k];
+  await persistVault();
+}
+
+// Ensure the vault is unlocked; prompt for a passphrase if it is locked.
+// Returns true if unlocked (or freshly initialized), false if the user cancelled.
+async function ensureVaultUnlocked() {
+  if (_secrets != null) return true;
+  const has = !!localStorage.getItem('vb_secrets_enc');
+  const msg = has
+    ? 'Enter your vault passphrase to unlock saved secrets:'
+    : 'Set a passphrase for your new secrets vault:';
+  const pass = window.prompt(msg);
+  if (pass == null || pass === '') return false;
+  try {
+    await unlockVault(pass);
+    return true;
+  } catch (e) {
+    showToast(e.message || 'Could not unlock vault', true);
+    return false;
+  }
+}
+
+// ── Secrets vault panel UI ──
+function toggleSecretsPanel(e) {
+  if (e) e.stopPropagation();
+  const panel = document.getElementById('secrets-panel');
+  if (!panel) return;
+  // Close sibling panels so only one is open at a time.
+  document.getElementById('agentDropdownPanel')?.classList.remove('open');
+  document.getElementById('agents-panel')?.classList.remove('open');
+  document.getElementById('voice-panel')?.classList.remove('open');
+  const open = panel.classList.toggle('open');
+  if (open) { updateSecretsState(); renderSecretsList(); }
+}
+
+function updateSecretsState() {
+  const el = document.getElementById('secrets-state');
+  if (!el) return;
+  if (_secrets != null) {
+    const n = Object.keys(_secrets).length;
+    el.textContent = `Unlocked · ${n} secret${n === 1 ? '' : 's'} in this session.`;
+    el.classList.add('unlocked');
+  } else {
+    const has = !!localStorage.getItem('vb_secrets_enc');
+    el.textContent = has
+      ? 'Locked · enter your passphrase to unlock saved secrets.'
+      : 'Locked · enter a passphrase to create the vault.';
+    el.classList.remove('unlocked');
+  }
+}
+
+function renderSecretsList() {
+  const ul = document.getElementById('secrets-list');
+  if (!ul) return;
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  if (_secrets == null) {
+    ul.innerHTML = '<div class="secrets-empty">Unlock the vault to view secrets.</div>';
+    updateSecretsState();
+    return;
+  }
+  const keys = Object.keys(_secrets);
+  if (keys.length === 0) {
+    ul.innerHTML = '<div class="secrets-empty">No secrets yet. Add one above.</div>';
+  } else {
+    // Values are always masked — never render or log the real value.
+    ul.innerHTML = keys.map(k => {
+      const s = k.replace(/'/g, "\\'");
+      return `<li><span class="sk-key">${esc(k)}</span><span class="sk-mask">••••••</span><button class="sk-del" onclick="doRemoveSecret('${s}')" title="Remove secret">×</button></li>`;
+    }).join('');
+  }
+  updateSecretsState();
+}
+
+async function doUnlockVault() {
+  const input = document.getElementById('secrets-pass');
+  const pass = input ? input.value : '';
+  if (!pass) { showToast('Enter a passphrase', true); return; }
+  try {
+    await unlockVault(pass);
+    if (input) input.value = '';   // don't leave the passphrase in the DOM
+    showToast('Vault unlocked');
+  } catch (e) {
+    showToast(e.message || 'Could not unlock vault', true);
+  }
+  renderSecretsList();
+}
+
+async function doAddSecret() {
+  if (_secrets == null) {
+    const ok = await ensureVaultUnlocked();
+    if (!ok) return;
+  }
+  const kEl = document.getElementById('secret-key');
+  const vEl = document.getElementById('secret-val');
+  const k = (kEl?.value || '').trim();
+  const v = vEl?.value || '';
+  if (!k) { showToast('Enter a KEY', true); return; }
+  if (!v) { showToast('Enter a value', true); return; }
+  await setSecret(k, v);
+  if (kEl) kEl.value = '';
+  if (vEl) vEl.value = '';   // clear the value field immediately
+  renderSecretsList();
+  showToast(`Saved ${k}`);
+}
+
+async function doRemoveSecret(k) {
+  await removeSecret(k);
+  renderSecretsList();
+}
+
+function handleHolocardImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let parsed = null;
+    try { parsed = JSON.parse(reader.result); } catch (_) {}
+    if (parsed && parsed.schema === 'rapp-holocard/1.0') {
+      importHolocard(parsed);
+    } else {
+      showToast('Not a valid .rappid holocard', true);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
 async function runAgentInPyodide(source, displayName, request) {
   const py = await ensurePyodide();
   py.globals.set('_agent_src', source);
   py.globals.set('_agent_display', displayName || '');
   py.globals.set('_agent_request', request || '');
+  // Inject the unlocked secrets vault into the real os.environ so agents that
+  // call os.environ.get("OPENAI_API_KEY") etc. see the user's values. If the
+  // vault is locked/empty this injects nothing — env-gated agents return their
+  // normal "not set" message. Wrapped so a failure never breaks the agent run.
+  try {
+    py.globals.set('_env_json', JSON.stringify(getSessionEnv()));
+    await py.runPythonAsync("import os, json\nos.environ.update({str(k): str(v) for k,v in json.loads(_env_json).items()})");
+  } catch (e) {
+    console.warn('Env injection skipped:', e.message);   // never log secret values
+  }
   const resJson = await py.runPythonAsync('_rapp_run(_agent_src, _agent_display, _agent_request)');
   await _persistFS();   // persist any files the agent wrote (survives reload via IDBFS)
   return JSON.parse(resJson);
@@ -5679,6 +5992,7 @@ function renderEnabledAgentsList() {
       <div class="agent-name"><div class="agent-title">${esc(agent.display_name)}</div><div class="agent-file">${esc(file)}</div></div>
       <div class="agent-controls">
         <button class="export-btn" onclick="downloadAgent('${s}')" title="Download .py">Export</button>
+        <button class="export-btn" onclick="exportHolocard('${s}')" title="Export .rappid holocard (agent + encrypted secrets)">&#128230;</button>
         <button class="export-btn del-btn" onclick="toggleAgent('${s}')" title="Disable agent">Remove</button>
       </div>
     </li>`;
@@ -5730,13 +6044,27 @@ function handleAgentDrop(event) {
 
   const files = event.dataTransfer.files;
   for (const file of files) {
-    if (!file.name.endsWith('.py')) {
-      showToast(`Skipped ${file.name} — only .py files`, true);
-      continue;
+    const isHolocard = /\.rappid\.json$/i.test(file.name) || /\.json$/i.test(file.name);
+    if (file.name.endsWith('.py')) {
+      const reader = new FileReader();
+      reader.onload = () => hotLoadAgent(file.name, reader.result);
+      reader.readAsText(file);
+    } else if (isHolocard) {
+      // A .json drop might be a .rappid holocard — peek at the schema and route it.
+      const reader = new FileReader();
+      reader.onload = () => {
+        let parsed = null;
+        try { parsed = JSON.parse(reader.result); } catch (_) {}
+        if (parsed && parsed.schema === 'rapp-holocard/1.0') {
+          importHolocard(parsed);
+        } else {
+          showToast(`Skipped ${file.name} — not a .rappid holocard`, true);
+        }
+      };
+      reader.readAsText(file);
+    } else {
+      showToast(`Skipped ${file.name} — only .py or .rappid.json files`, true);
     }
-    const reader = new FileReader();
-    reader.onload = () => hotLoadAgent(file.name, reader.result);
-    reader.readAsText(file);
   }
 }
 
@@ -5854,6 +6182,14 @@ document.addEventListener('click', e => {
   }
 });
 
+// Close the secrets panel when clicking outside of it.
+document.addEventListener('click', e => {
+  const panel = document.getElementById('secrets-panel');
+  if (panel && panel.classList.contains('open') && !e.target.closest('.secrets-wrapper')) {
+    panel.classList.remove('open');
+  }
+});
+
 // ── Agent Download ──
 
 // Flatten any slug/path to a bare, root-level <slug>_agent.py. Brainstems
@@ -5915,6 +6251,138 @@ async function downloadAgent(slug) {
   a.click();
   URL.revokeObjectURL(url);
   showToast(`Downloaded ${filename}`);
+}
+
+// ── .rappid Holocards — portable agent + (optionally) its encrypted secrets ──
+// Schema:
+//   { "schema":"rapp-holocard/1.0", "exported_at":"<iso>",
+//     "agent": { "manifest": {<manifest>}, "source": "<full .py source>" },
+//     "env_keys": ["OPENAI_API_KEY", ...],         // manifest.requires_env
+//     "secrets": {<encryptJSON blob>} | null }      // AES-GCM {KEY:VALUE}, null if none
+
+// Resolve an agent's source the same way downloadAgent does: hot-loaded → VFS → registry.
+async function resolveAgentSource(slug) {
+  if (hotLoadedAgents[slug]) return hotLoadedAgents[slug].source;
+  const vfsFiles = VFS.listAgents();
+  for (const f of vfsFiles) {
+    const content = VFS.read(f);
+    if (content && content.includes(slug)) return content;
+  }
+  const agent = availableAgents.find(a => a.name === slug);
+  if (agent && agent._file) return await fetchAgent(agent);
+  return null;
+}
+
+async function exportHolocard(slug) {
+  try {
+    const agent = availableAgents.find(a => a.name === slug) || (hotLoadedAgents[slug] && hotLoadedAgents[slug].manifest) || null;
+    if (!agent) { showToast('Agent not found', true); return; }
+    let source;
+    try {
+      source = await resolveAgentSource(slug);
+    } catch (e) {
+      showToast(`Failed to read agent: ${e.message}`, true);
+      return;
+    }
+    if (!source) { showToast('Agent source not available', true); return; }
+
+    // The full manifest: prefer the hot-loaded one (richest), else the registry entry.
+    const manifest = (hotLoadedAgents[slug] && hotLoadedAgents[slug].manifest) || agent;
+    const env_keys = (manifest.requires_env || agent.requires_env || []);
+
+    // Collect env values: from the unlocked vault, else prompt (blank = omit).
+    const envObj = {};
+    const sessionEnv = getSessionEnv();
+    for (const key of env_keys) {
+      let val = sessionEnv[key];
+      if (val == null || val === '') {
+        val = window.prompt(`Value for ${key} (blank to omit):`);
+      }
+      if (val != null && val !== '') envObj[key] = val;
+    }
+
+    // Encrypt any provided secrets under a card passphrase; else null.
+    let secrets = null;
+    if (Object.keys(envObj).length > 0) {
+      const pass = window.prompt('Passphrase to encrypt the secrets in this card:');
+      if (pass == null || pass === '') {
+        showToast('Export cancelled (no passphrase)', true);
+        return;
+      }
+      secrets = await encryptJSON(envObj, pass);
+    }
+
+    const card = {
+      schema: 'rapp-holocard/1.0',
+      exported_at: new Date().toISOString(),
+      agent: { manifest, source },
+      env_keys,
+      secrets
+    };
+
+    // Filename: flatten to the bare basename (no @publisher/), e.g. my_agent.rappid.json
+    const base = flatAgentName(slug).replace(/\.py$/, '');
+    const fname = `${base}.rappid.json`;
+    const blob = new Blob([JSON.stringify(card, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Exported ${fname}${secrets ? ` (+${Object.keys(envObj).length} secrets)` : ''}`);
+  } catch (e) {
+    showToast(`Holocard export failed: ${e.message}`, true);
+  }
+}
+
+async function importHolocard(obj) {
+  try {
+    if (!obj || obj.schema !== 'rapp-holocard/1.0') {
+      showToast('Not a valid .rappid holocard', true);
+      return;
+    }
+    const ag = obj.agent || {};
+    const manifest = ag.manifest || {};
+    const source = ag.source;
+    if (!source) { showToast('Holocard has no agent source', true); return; }
+
+    // Load + enable the agent via the existing hot-load path (dropdown + FS).
+    const slug = manifest.name || '@local/imported';
+    const base = flatAgentName(slug);
+    hotLoadAgent(base, source);
+    const displayName = (hotLoadedAgents[slug] && hotLoadedAgents[slug].manifest.display_name) || manifest.display_name || base;
+
+    // Merge any attached secrets into the vault. Wrong passphrase → still load agent.
+    let added = 0;
+    if (obj.secrets) {
+      const pass = window.prompt("Passphrase to unlock this card's secrets:");
+      if (pass != null && pass !== '') {
+        try {
+          const dec = await decryptJSON(obj.secrets, pass);
+          // Ensure the vault is unlocked. If still locked, reuse this passphrase.
+          if (_secrets == null) {
+            try {
+              await unlockVault(pass);
+            } catch (e) {
+              // The card passphrase isn't the vault passphrase — prompt for the vault.
+              const ok = await ensureVaultUnlocked();
+              if (!ok) { showToast(`Imported ${displayName} (secrets skipped — vault locked)`, true); renderSecretsList(); return; }
+            }
+          }
+          if (_secrets == null) _secrets = {};
+          for (const [k, v] of Object.entries(dec)) { _secrets[k] = v; added++; }
+          await persistVault();
+        } catch (e) {
+          alert('Wrong passphrase — the agent was loaded, but its secrets could not be unlocked.');
+        }
+      }
+    }
+    renderSecretsList();
+    showToast(`Imported ${displayName} (+${added} secrets)`);
+  } catch (e) {
+    showToast(`Holocard import failed: ${e.message}`, true);
+  }
 }
 
 // ── Chat Export / Import ──
