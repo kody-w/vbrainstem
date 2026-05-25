@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAPP Brainstem Bridge</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#0d1117; color:#e6edf3; font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .wrap { max-width:760px; margin:0 auto; padding:28px 20px 60px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:#8b949e; margin:0 0 22px; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:18px; margin:0 0 16px; }
+  label { display:block; font-size:13px; color:#8b949e; margin:0 0 6px; }
+  input { width:100%; background:#0d1117; border:1px solid #30363d; border-radius:8px; color:#e6edf3; padding:10px 12px; font:14px monospace; }
+  button { background:#238636; border:0; color:#fff; padding:11px 18px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+  button:hover { background:#2ea043; } button:disabled { background:#30363d; color:#8b949e; cursor:default; }
+  .row { display:flex; gap:10px; align-items:flex-end; }
+  .row > div { flex:1; }
+  code, .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .pill { display:inline-block; background:#0d1117; border:1px solid #30363d; border-radius:20px; padding:3px 10px; font-size:12px; color:#3fb950; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:6px 12px; font-size:13px; align-items:center; }
+  .kv b { color:#8b949e; font-weight:500; }
+  .val { background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:6px 9px; word-break:break-all; }
+  .copy { background:#21262d; padding:4px 9px; font-size:12px; border:1px solid #30363d; }
+  #qr { display:block; margin:14px auto 0; border-radius:10px; background:#fff; padding:6px; }
+  #log { background:#0d1117; border:1px solid #30363d; border-radius:8px; padding:10px; font:12px/1.5 ui-monospace,monospace; max-height:280px; overflow:auto; white-space:pre-wrap; }
+  .log-in { color:#58a6ff; } .log-out { color:#3fb950; } .log-err { color:#f85149; } .log-sys { color:#8b949e; }
+  a { color:#58a6ff; }
+</style>
+</head><body>
+<div class="wrap">
+  <h1>🧠🌉 Brainstem Bridge</h1>
+  <p class="sub">Fronts a <b>local brainstem</b> into the RAPP neighborhood — so another browser, anywhere,
+  can drive <b>this computer's</b> brainstem over WebRTC. Speaks <code>rapp-neighborhood-protocol/1.0</code>
+  (the same twin-chat envelope as the vBrainstem), so a remote peer can't tell it's bridged.</p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Local brainstem URL (its <code>/chat</code> is the target)</label>
+        <input id="bs" value="http://localhost:7077" spellcheck="false">
+      </div>
+      <button id="go">Host bridge</button>
+    </div>
+    <p class="sub" style="margin:12px 0 0;font-size:12.5px">Every request is gated by a one-time <b>session token</b>
+    minted below — share the <b>operator link</b> only with yourself (same GitHub account). Closing this tab
+    ends the session, exactly like stopping the brainstem server.</p>
+  </div>
+
+  <div class="card" id="session" style="display:none">
+    <div style="margin-bottom:10px"><span class="pill" id="status">connecting…</span>
+      <span class="pill" id="bshealth" style="color:#8b949e">brainstem: ?</span></div>
+    <div class="kv">
+      <b>peer-id</b>      <div class="val mono" id="pid"></div>
+      <b>token</b>        <div class="val mono" id="tok"></div>
+      <b>operator link</b><div class="val mono" id="oplink"></div>
+    </div>
+    <div style="margin-top:10px"><button class="copy" id="copyop">copy operator link</button>
+      <button class="copy" id="copycli">copy vbridge CLI</button></div>
+    <img id="qr" width="180" height="180" alt="scan to join (chat-only)">
+  </div>
+
+  <div class="card">
+    <label>Live tether log</label>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const logEl = $('#log');
+function log(cls, msg){ const d=document.createElement('div'); d.className='log-'+cls;
+  d.textContent='['+new Date().toLocaleTimeString()+'] '+msg; logEl.appendChild(d); logEl.scrollTop=logEl.scrollHeight; }
+
+function myRappid(){ let r=localStorage.getItem('vb_rappid');
+  if(!r){ r=(crypto.randomUUID?crypto.randomUUID():'br-'+Date.now().toString(36)); localStorage.setItem('vb_rappid',r); } return r; }
+
+// ── §5a SEALED channel (E2E AES-256-GCM) — identical scheme/salt as the vBrainstem ──
+const _b64 = u8 => btoa(String.fromCharCode.apply(null, new Uint8Array(u8)));
+const _ub64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const _keyCache = {};
+async function _channelKey(secret){
+  if(!secret) throw new Error('sealed channel needs a secret');
+  if(_keyCache[secret]) return _keyCache[secret];
+  const enc=new TextEncoder();
+  const base=await crypto.subtle.importKey('raw',enc.encode(secret),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt:enc.encode('rapp-neighborhood-5a/1'),iterations:210000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  _keyCache[secret]=key; return key;
+}
+async function _seal(secret,obj){ const key=await _channelKey(secret); const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(JSON.stringify(obj))); return {schema:'rapp-sealed/1.0',iv:_b64(iv),ct:_b64(ct)}; }
+async function _open(secret,sealed){ const key=await _channelKey(secret); const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:_ub64(sealed.iv)},key,_ub64(sealed.ct)); return JSON.parse(new TextDecoder().decode(pt)); }
+
+const _state = { peer:null, id:null, token:null, bs:'http://localhost:7077', conns:{} };
+
+// ── Talk to the local brainstem (its /chat is the exact brainstem.py contract) ──
+async function bsChat(text, history, session){
+  const r = await fetch(_state.bs.replace(/\/$/,'') + '/chat', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ user_input:String(text||''), conversation_history:history||[], session_id:session||'bridge' }) });
+  if(!r.ok) throw new Error('brainstem '+r.status); return await r.json();
+}
+async function bsGet(path){ const r=await fetch(_state.bs.replace(/\/$/,'')+path); if(!r.ok) throw new Error('brainstem '+r.status); return await r.json(); }
+
+// ── Neighborhood handling — EVERYTHING is token-gated here (we're exposing this machine) ──
+function wire(conn){
+  _state.conns[conn.peer]=conn;
+  log('sys','peer connected: '+conn.peer.slice(0,8)+'…');
+  conn.on('data', m => handle(conn, m));
+  conn.on('close', ()=>{ delete _state.conns[conn.peer]; log('sys','peer left: '+conn.peer.slice(0,8)+'…'); });
+}
+async function handle(conn, raw){
+  let msg=raw, sealed=false;
+  if(raw && raw.schema==='rapp-sealed/1.0'){            // E2E-encrypted inbound — decrypt with the session secret
+    sealed=true;
+    try{ msg=await _open(_state.token, raw); }
+    catch(e){ log('err','DENIED sealed message (decrypt/auth failed)');
+      try{ conn.send(await _seal(_state.token||'·',{schema:'rapp-twin-chat-response/1.0',channel:'5a-tether-sealed',status:403,response:{error:'decrypt/auth failed'}})); }catch(_){}
+      return; }
+  }
+  if(!msg || msg.schema!=='rapp-twin-chat/1.0') return;
+  const p = msg.payload || {};
+  const respond=async(kind,status,response)=>{ const out={schema:'rapp-twin-chat-response/1.0',channel:sealed?'5a-tether-sealed':'5a-tether',
+    from_rappid:myRappid(),to_rappid:msg.from_rappid,kind,envelope:msg,status,response}; conn.send(sealed?await _seal(_state.token,out):out); };
+  // PLAINTEXT requires the session token; a SEALED message is authorized by key possession.
+  if(!sealed && (!_state.token || p.token!==_state.token)){
+    log('err','DENIED '+msg.kind+' from '+(msg.from_rappid||'?').slice(0,8)+' (bad token)');
+    return respond(msg.kind, 403, { error:'bridge access denied — invalid or missing session token' });
+  }
+  try {
+    if(msg.kind==='say'){
+      log('in',(sealed?'🔒 ':'')+'say ← '+(msg.from_rappid||'?').slice(0,8)+': '+JSON.stringify(p.text));
+      const reply = await bsChat(p.text, p.conversation_history, p.session_id);
+      log('out','/chat → '+JSON.stringify((reply&&reply.response||'').slice(0,80)));
+      await respond('say', 200, reply);
+    } else if(msg.kind==='console'){
+      log('in',(sealed?'🔒 ':'')+'console ← '+(msg.from_rappid||'?').slice(0,8)+': rapp.'+p.method);
+      let response;
+      if(p.method==='chat'){ const a=(p.args&&p.args[0])||{}; response=await bsChat(a.user_input,a.conversation_history,a.session_id); }
+      else if(p.method==='health'){ response=await bsGet('/health'); }
+      else if(p.method==='agents'){ const h=await bsGet('/health'); response={agents:h.agents||[]}; }
+      else throw new Error('bridge supports: chat, health, agents (got rapp.'+p.method+')');
+      await respond('console', 200, response);
+    }
+  } catch(e){ log('err',(e&&e.message)||String(e)); respond(msg.kind, 502, { error:(e&&e.message)||String(e) }); }
+}
+
+async function host(){
+  _state.bs = $('#bs').value.trim() || 'http://localhost:7077';
+  $('#go').disabled = true; $('#session').style.display='block';
+  log('sys','starting bridge → '+_state.bs);
+  // sanity-ping the brainstem
+  try { const h=await bsGet('/health'); $('#bshealth').textContent='brainstem: '+(h.status||'ok')+' · '+((h.agents||[]).length)+' agents';
+        $('#bshealth').style.color='#3fb950'; log('sys','brainstem ok — model='+(h.model||'?')+', agents='+((h.agents||[]).length)); }
+  catch(e){ $('#bshealth').textContent='brainstem: unreachable'; $('#bshealth').style.color='#f85149';
+        log('err','cannot reach brainstem at '+_state.bs+' ('+((e&&e.message)||e)+') — is it running?'); }
+
+  const peer = new Peer(); _state.peer = peer;
+  peer.on('open', id => {
+    _state.id = id;
+    _state.token = crypto.randomUUID ? crypto.randomUUID() : 'op-'+Date.now().toString(36)+Math.random().toString(36).slice(2);
+    const base = location.origin + location.pathname.replace(/brainstem_bridge\.html$/, 'index.html') + '?peer=' + id;
+    const opLink = base + '&op=' + encodeURIComponent(_state.token);
+    $('#status').textContent='hosting · '+id.slice(0,8)+'…';
+    $('#pid').textContent=id; $('#tok').textContent=_state.token; $('#oplink').textContent=opLink;
+    $('#qr').src='https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=8&data='+encodeURIComponent(base);
+    const cli = `bash vbridge.sh ${id} ${_state.token} ask "your question"`;
+    $('#copyop').onclick=()=>navigator.clipboard.writeText(opLink).then(()=>log('sys','operator link copied'));
+    $('#copycli').onclick=()=>navigator.clipboard.writeText(cli).then(()=>log('sys','vbridge CLI copied: '+cli));
+    log('sys','HOSTING — peer-id '+id);
+    log('sys','operator link (share with your other browser): '+opLink);
+  });
+  peer.on('connection', c => wire(c));
+  peer.on('error', e => { log('err','peer error: '+((e&&e.type)||e)); $('#status').textContent='error'; });
+}
+$('#go').onclick = host;
+log('sys','Brainstem Bridge ready. Set the URL and click “Host bridge”.');
+</script>
+</body></html>

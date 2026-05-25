@@ -92,6 +92,52 @@ CSS + the boot wiring in `init()`) and the absolute "Back to RAPP" link are
 > When the engine changes in RAR, port the `<script>` changes in by hand and keep the
 > landing markup + `lp-*` styles. (`virtual-brainstem.html` is the closest to RAR's.)
 
+## Neighborhood, kited twins & the sealed channel
+
+Two brainstems — a local `brainstem.py`, a vBrainstem tab, a person, or Claude — meet as
+**uniform peers** speaking `rapp-twin-chat/1.0`; nobody can tell what's on the other end. A
+*tether* is the live link between them. There are two §5a transports:
+
+- **WebRTC tether** (`5a-tether`) — direct P2P between two browser peers. The PeerJS public
+  broker is used for the handshake only (SDP/ICE); data flows DTLS-encrypted P2P and the
+  broker never sees it. `index.html` exposes `rapp.neighborhood.host()/join()/ask()/operate()`.
+- **Kite tether** (`5a-kite`) — an operator (Claude) holds the **string**: drives a browser
+  tab's console over the Chrome DevTools Protocol and relays. No broker, no STUN, no CORS —
+  the string-holder *is* the transport. For "thing-in-the-middle", or when P2P can't form.
+
+A **kited twin** is a tab flown on a kite string. It is **tethered** when the string also
+reaches the locally-running brainstem (`5a-kite+tether`) — its turns are answered by that
+local brainstem; with no local brainstem it is **just kited** (answered by the tab's own
+in-page brainstem). CDP is unauthenticated, so the kite/CDP hop must stay **on-device** —
+across machines, ride the WebRTC tether instead.
+
+### Sealed channel — end-to-end, as secure as on-device
+
+Any envelope can be **sealed**: `rapp-sealed/1.0` = AES-256-GCM, key derived (PBKDF2-SHA256,
+210k) from a secret that travels **only in the pairing link you copy out-of-band** — never to
+the broker. The wire / broker / TURN see opaque ciphertext, can't forge or modify it (GCM auth
+tag), and only the two secret-holders can read or speak. Layered over WebRTC's DTLS, the whole
+network is **fully untrusted and still safe**. Secrets *at rest* use the same primitive (the
+vault). A wrong-key peer can't even read the rejection. The same scheme/salt runs in the
+browser, the bridge, the CLI, and Node — so every hop is one contract.
+
+### Session / handshake
+
+You open the tab → it `host()`s → mints a **peer-id + token** (the token doubles as the channel
+secret). Share the **operator link** with yourself out-of-band (another browser, same account).
+Closing the tab destroys the peer + secret → the session ends, exactly like stopping
+`brainstem.py`. Plaintext chat (`say`) is open; **operating** the console (`run`/`eval`/`chat`/…)
+goes over the sealed channel, where key-possession *is* the authorization.
+
+### Tools
+
+| Tool | Role |
+|------|------|
+| `index.html` → `window.rapp.neighborhood` | host / join / `ask(peer,text,secret)` / `operate(peer,method,args,secret)`; `_seal`/`_open` exposed |
+| `brainstem_bridge.html` | front a local brainstem into the neighborhood (sealed) so a remote browser can drive **this** machine's brainstem |
+| `vbridge.sh <peer> <token> <ask\|eval\|run\|chat\|agents\|health> …` | CLI peer — operate a hosted tab from a shell, sealed |
+| `kited_twin.js --port <cdp> [--brainstem <url>] [--once]` | the kite string — fly a tab via CDP; `--brainstem` makes it **tethered** |
+
 ## License
 
 MIT © Kody Wildfeuer. Engine mirrored from [kody-w/RAR](https://github.com/kody-w/RAR).

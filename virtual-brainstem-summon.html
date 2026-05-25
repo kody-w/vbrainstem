@@ -6614,6 +6614,36 @@ function _myRappid() {
   if (!r) { r = (crypto.randomUUID ? crypto.randomUUID() : 'vb-' + Date.now().toString(36) + Math.random().toString(36).slice(2)); localStorage.setItem('vb_rappid', r); }
   return r;
 }
+// ── §5a SEALED channel: end-to-end AES-256-GCM over the twin-chat wire ──────────
+// The wire (PeerJS broker, TURN relays, the whole network) is treated as fully untrusted.
+// Every envelope is sealed with a key derived (PBKDF2-SHA256, 210k) from a secret that
+// travels ONLY in the pairing link you copy out-of-band — never to the broker. So the line
+// carries opaque ciphertext, can't be forged or modified (GCM auth tag), and only the two
+// endpoints holding the secret can read or speak: as secure as if it were all on one device.
+// Identical code runs in the browser and in Node (both expose crypto.subtle / btoa / atob).
+const _keyCache = {};
+async function _channelKey(secret) {
+  if (!secret) throw new Error('sealed channel needs a secret');
+  if (_keyCache[secret]) return _keyCache[secret];
+  const enc = new TextEncoder();
+  const base = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('rapp-neighborhood-5a/1'), iterations: 210000, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  _keyCache[secret] = key; return key;
+}
+// (reuses the page's existing base64 helpers _b64 / _ub64)
+async function _seal(secret, obj) {                         // obj → {schema:'rapp-sealed/1.0', iv, ct}
+  const key = await _channelKey(secret);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return { schema: 'rapp-sealed/1.0', iv: _b64(iv), ct: _b64(ct) };
+}
+async function _open(secret, sealed) {                      // throws if wrong key OR tampered (GCM verify)
+  const key = await _channelKey(secret);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: _ub64(sealed.iv) }, key, _ub64(sealed.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
 function _loadPeerJS() {
   if (window.Peer) return Promise.resolve();
   if (_peerjsLoading) return _peerjsLoading;
@@ -6640,25 +6670,62 @@ function _hoodWire(conn) {
   conn.on('data', (m) => _hoodHandle(conn, m));
   conn.on('close', () => { delete _hood.conns[conn.peer]; });
 }
-async function _hoodHandle(conn, msg) {
+async function _hoodHandle(conn, raw) {
+  let msg = raw, sealed = false;
+  if (raw && raw.schema === 'rapp-sealed/1.0') {            // E2E-encrypted — decrypt with the session secret
+    sealed = true;
+    try { msg = await _open(_hood.opToken, raw); }
+    catch (e) {                                             // wrong key or tampered → leak nothing, refuse
+      try { conn.send(await _seal(_hood.opToken || '·', { schema: 'rapp-twin-chat-response/1.0', channel: '5a-tether-sealed', status: 403, response: { error: 'decrypt/auth failed' } })); } catch (_) {}
+      return;
+    }
+  }
   if (!msg || msg.schema !== 'rapp-twin-chat/1.0') return;
-  _hood.log.push({ dir: 'in', msg });
+  _hood.log.push({ dir: 'in', sealed, msg });
   try { if (_hood.onmsg) _hood.onmsg(msg); } catch (e) {}
+  const respond = async (kind, status, response) => {
+    const out = { schema: 'rapp-twin-chat-response/1.0', channel: sealed ? '5a-tether-sealed' : '5a-tether',
+      from_rappid: _myRappid(), to_rappid: msg.from_rappid, kind, envelope: msg, status, response };
+    conn.send(sealed ? await _seal(_hood.opToken, out) : out);   // seal the reply too
+  };
   if (msg.kind === 'say') {                     // route a neighbor's turn into our own brainstem
     let reply;
     try { reply = await window.rapp.chat({ user_input: (msg.payload && msg.payload.text) || '' }); }
     catch (e) { reply = { error: e.message }; }
-    conn.send({ schema: 'rapp-twin-chat-response/1.0', channel: '5a-tether',
-      from_rappid: _myRappid(), to_rappid: msg.from_rappid, kind: 'say',
-      envelope: msg, status: (reply && reply.error) ? 502 : 200, response: reply });
+    await respond('say', (reply && reply.error) ? 502 : 200, reply);
+  } else if (msg.kind === 'console') {          // OPERATOR access — call any rapp.* method remotely
+    // Authorization: a SEALED console op is authorized by key possession (only a holder of the
+    // out-of-band secret can produce a valid sealed envelope). A PLAINTEXT console op must carry
+    // the session token. The secret/token lives only in this tab — closing it ends the session.
+    const p = msg.payload || {};
+    if (!sealed && (!_hood.opToken || p.token !== _hood.opToken)) {
+      return respond('console', 403, { error: 'console access denied — invalid or missing session token' });
+    }
+    let status = 200, response;
+    try {
+      const path = String(p.method || '').split('.');   // supports dotted paths e.g. "secrets.list"
+      let fn = window.rapp, ctx = null;
+      for (const k of path) { ctx = fn; fn = fn && fn[k]; }
+      if (typeof fn !== 'function') throw new Error('no such console method: rapp.' + p.method);
+      response = await fn.apply(ctx, Array.isArray(p.args) ? p.args : []);
+    } catch (e) { status = 502; response = { error: (e && e.message) || String(e) }; }
+    await respond('console', status, response);
   }
 }
 window.rapp.neighborhood = {
-  async host() {                                // become reachable; returns peer-id + QR to share
+  async host(opts) {                            // become reachable; returns peer-id + QR + operator token
     const id = await _hoodEnsure();
-    const link = location.origin + location.pathname + '?peer=' + id;
-    const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=8&data=' + encodeURIComponent(link);
-    return { peer_id: id, rappid: _myRappid(), link, qr };
+    opts = opts || {};
+    // Operator session token — required for `console` (operate) ops. Minted once per
+    // session unless the caller pins one. Closing the tab destroys the peer + token.
+    if (opts.token) _hood.opToken = String(opts.token);
+    else if (!_hood.opToken) _hood.opToken = (crypto.randomUUID ? crypto.randomUUID() : 'op-' + Date.now().toString(36) + Math.random().toString(36).slice(2));
+    const base = location.origin + location.pathname + '?peer=' + id;
+    const op_link = base + '&op=' + encodeURIComponent(_hood.opToken);
+    const qr = 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=8&data=' + encodeURIComponent(base);
+    // `token` doubles as the channel `secret`: it authorizes AND derives the AES-256-GCM key.
+    // It rides in op_link only — share that out-of-band (copy to your other browser); the broker never sees it.
+    return { peer_id: id, rappid: _myRappid(), link: base, op_link, token: _hood.opToken, secret: _hood.opToken, qr };
   },
   async join(peerId) {                          // connect to a neighbor by peer-id
     await _hoodEnsure();
@@ -6670,17 +6737,37 @@ window.rapp.neighborhood = {
     });
   },
   peers() { return Object.keys(_hood.conns); },
-  async ask(peerId, user_input) {               // send a 'say' to a neighbor, await their reply (§6e)
+  async _send(peerId, kind, payload, secret) {  // send an envelope, await its §6e response (correlated by nonce)
     if (!_hood.conns[peerId]) await this.join(peerId);
     const c = _hood.conns[peerId];
+    const nonce = (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
     const env = { schema: 'rapp-twin-chat/1.0', from_rappid: _myRappid(), to_rappid: peerId,
-      utc: new Date().toISOString(), kind: 'say', payload: { text: String(user_input) }, facets: [] };
+      utc: new Date().toISOString(), nonce, kind, payload: payload || {}, facets: [] };
+    const wire = secret ? await _seal(secret, env) : env;   // seal the whole envelope when a secret is set
     return new Promise((res, rej) => {
-      const t = setTimeout(() => rej(new Error('ask timeout')), 30000);
-      const h = (m) => { if (m && m.schema === 'rapp-twin-chat-response/1.0' && m.envelope && m.envelope.utc === env.utc) { clearTimeout(t); res(m); } };
-      c.on('data', h); c.send(env);
+      const t = setTimeout(() => { c.off && c.off('data', h); rej(new Error(kind + ' timeout')); }, 60000);
+      const h = async (m) => {
+        let r = m;
+        if (m && m.schema === 'rapp-sealed/1.0') { if (!secret) return; try { r = await _open(secret, m); } catch (e) { return; } }
+        if (r && r.schema === 'rapp-twin-chat-response/1.0' && r.envelope &&
+            (r.envelope.nonce === nonce || r.envelope.utc === env.utc)) {
+          clearTimeout(t); c.off && c.off('data', h); res(r);
+        }
+      };
+      c.on('data', h); c.send(wire);
     });
   },
+  // Pass `secret` (the session token from host()) to make the turn END-TO-END SEALED (AES-256-GCM).
+  // Omit it for plaintext open chat. `operate` always requires the secret — operating a neighbor's
+  // console only happens over a sealed, authenticated channel.
+  async ask(peerId, user_input, secret) {       // send a 'say' to a neighbor, await their reply (§6e)
+    return this._send(peerId, 'say', { text: String(user_input) }, secret);
+  },
+  async operate(peerId, method, args, secret) { // OPERATE a neighbor's console: rapp.<method>(...args) — sealed
+    if (!secret) throw new Error('operate requires the session secret (E2E-sealed channel)');
+    return this._send(peerId, 'console', { method, args: args || [] }, secret);
+  },
+  _seal, _open, _channelKey,                    // exposed so the Node bridge + tests speak the same seal
   onMessage(fn) { _hood.onmsg = fn; },
   id() { return _hood.id; },
   log() { return _hood.log; }
