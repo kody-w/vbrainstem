@@ -22,10 +22,14 @@ jobs:
           SALT=$(grep -oE "rapp-neighborhood-5a/[0-9]+" /tmp/sealed.mjs | head -1)
           ITERS=$(grep -oE "ITERATIONS *= *[0-9]+" /tmp/sealed.mjs | grep -oE "[0-9]+")
           echo "canonical salt=$SALT iterations=$ITERS"
-          for f in index.html share.html brainstem_bridge.html kited-demo.html; do
+          # Only files that actually implement the sealed channel (use AES-GCM) must carry the
+          # canonical salt + iterations. (share.html only DECODES the gzip agent-link, so it has none.)
+          for f in *.html vbridge.sh; do
             [ -f "$f" ] || continue
+            grep -q "AES-GCM" "$f" || continue
             grep -q "$SALT" "$f"  || fail "$f: sealed salt drifted from canonical ($SALT)"
             grep -q "$ITERS" "$f" || fail "$f: sealed iterations drifted from canonical ($ITERS)"
+            echo "  ✓ $f sealed params OK"
           done
 
           echo "── kite-mark: the four panel colours ──"
