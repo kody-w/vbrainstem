@@ -92,7 +92,9 @@ function mfield(src, re){ const m = src.match(re); return m ? m[1] : null; }
     + '<div class="seal">🔒 ' + bytes.toLocaleString() + ' bytes · rode here inside the link · runs in your browser sandbox</div>'
     + '<a class="pill" id="pill" draggable="true" href="' + esc(appLink) + '">🪁 Drag me into a vBrainstem<small>…then drop to install — the drop is your consent</small></a>'
     + '<div class="row"><a class="btn go" id="open" href="' + esc(appLink) + '">Open in vBrainstem →</a><button class="btn" id="copy">Copy link</button></div>'
-    + '<div id="qrwrap"><div id="qr"></div><div class="qcap">scan from another device to install</div></div>';
+    + (appLink.length <= 1500
+        ? '<div id="qrwrap"><div id="qr"></div><div class="qcap">scan from another device to install</div></div>'
+        : '<div class="qcap" style="margin-top:14px">📦 This agent is big — <b>drag the link</b> above, or tap <b>Open in vBrainstem</b>. (QR is for compact agents.)</div>');
 
   // Draggable pill carries the install link (so a drop onto a vBrainstem decodes + installs).
   const pill = document.getElementById('pill');
@@ -107,13 +109,16 @@ function mfield(src, re){ const m = src.match(re); return m ? m[1] : null; }
     navigator.clipboard.writeText(appLink).then(() => { const b=document.getElementById('copy'); b.textContent='Copied ✓'; setTimeout(()=>b.textContent='Copy link',1400); });
   };
 
-  // QR of the install link
-  try {
-    const q = qrcode(0, 'L'); q.addData(appLink); q.make();
-    document.getElementById('qr').innerHTML = q.createImgTag(4, 0);
-    const im = document.querySelector('#qr img'); if (im) { im.style.width='188px'; im.style.height='188px'; im.style.imageRendering='pixelated'; }
-  } catch (e) {
-    document.getElementById('qrwrap').innerHTML = '<div class="qcap">Agent too large for a QR — drag the link or use “Open in vBrainstem”.</div>';
+  // QR of the install link — only rendered when the link is comfortably scannable.
+  const qrEl = document.getElementById('qr');
+  if (qrEl) {
+    try {
+      const q = qrcode(0, 'L'); q.addData(appLink); q.make();
+      qrEl.innerHTML = q.createImgTag(4, 0);
+      const im = qrEl.querySelector('img'); if (im) { im.style.width='188px'; im.style.height='188px'; im.style.imageRendering='pixelated'; }
+    } catch (e) {
+      const w = document.getElementById('qrwrap'); if (w) w.innerHTML = '<div class=”qcap”>Drag the link or use “Open in vBrainstem”.</div>';
+    }
   }
 })();
 </script>
