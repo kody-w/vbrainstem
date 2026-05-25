@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAPP Neighborhood — Doorman Guide</title>
+<meta name="description" content="Set up Claude as the sealed 'doorman' to any machine's brainstem: WebRTC + kite tethers, kited twins, end-to-end AES-256-GCM, as secure as on-device.">
+<style>
+  :root{ color-scheme:dark; --bg:#0d1117; --panel:#161b22; --panel2:#0d1117; --bd:#30363d; --tx:#e6edf3; --mut:#8b949e; --grn:#3fb950; --blu:#58a6ff; --red:#f85149; --amber:#d29922; }
+  *{ box-sizing:border-box; }
+  html{ scroll-behavior:smooth; }
+  body{ margin:0; background:var(--bg); color:var(--tx); font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  a{ color:var(--blu); text-decoration:none; } a:hover{ text-decoration:underline; }
+  code,kbd,.mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  .shell{ max-width:1100px; margin:0 auto; display:grid; grid-template-columns:230px 1fr; gap:34px; padding:0 22px; }
+  /* hero */
+  header.hero{ border-bottom:1px solid var(--bd); background:linear-gradient(180deg,#10161f,transparent); }
+  .hero-in{ max-width:1100px; margin:0 auto; padding:46px 22px 34px; }
+  .hero h1{ font-size:34px; line-height:1.15; margin:0 0 10px; letter-spacing:-.5px; }
+  .hero p{ font-size:18px; color:var(--mut); max-width:760px; margin:0 0 18px; }
+  .badges span{ display:inline-block; border:1px solid var(--bd); background:var(--panel); border-radius:20px; padding:5px 12px; font-size:12.5px; color:var(--grn); margin:0 7px 7px 0; }
+  /* nav */
+  nav{ position:sticky; top:0; align-self:start; padding:30px 0; font-size:14px; max-height:100vh; overflow:auto; }
+  nav a{ display:block; color:var(--mut); padding:5px 10px; border-left:2px solid transparent; }
+  nav a:hover,nav a.on{ color:var(--tx); border-left-color:var(--grn); text-decoration:none; }
+  nav .grp{ color:#6e7681; text-transform:uppercase; font-size:11px; letter-spacing:.08em; margin:16px 0 4px 10px; }
+  main{ padding:30px 0 90px; min-width:0; }
+  section{ scroll-margin-top:18px; margin:0 0 40px; }
+  h2{ font-size:24px; margin:34px 0 12px; padding-top:6px; letter-spacing:-.3px; }
+  h3{ font-size:18px; margin:22px 0 8px; }
+  p,li{ color:#c9d1d9; }
+  .lead{ font-size:17px; color:var(--mut); }
+  /* cards / boxes */
+  .card{ background:var(--panel); border:1px solid var(--bd); border-radius:12px; padding:18px 20px; margin:16px 0; }
+  .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .note{ border-left:3px solid var(--blu); background:#10202e; border-radius:0 8px 8px 0; padding:12px 16px; margin:16px 0; color:#c9d1d9; }
+  .warn{ border-left:3px solid var(--amber); background:#241e10; border-radius:0 8px 8px 0; padding:12px 16px; margin:16px 0; }
+  .pill{ display:inline-block; font-size:12px; border:1px solid var(--bd); border-radius:6px; padding:1px 7px; color:var(--grn); background:var(--panel2); }
+  /* code blocks with copy */
+  .code{ position:relative; background:#010409; border:1px solid var(--bd); border-radius:10px; margin:14px 0; }
+  .code pre{ margin:0; padding:15px 16px; overflow:auto; font-size:13.5px; line-height:1.55; }
+  .code .cp{ position:absolute; top:8px; right:8px; background:#21262d; border:1px solid var(--bd); color:var(--mut); font-size:11.5px; border-radius:6px; padding:4px 9px; cursor:pointer; }
+  .code .cp:hover{ color:var(--tx); border-color:var(--mut); }
+  .c-cm{ color:#6e7681; } .c-gr{ color:var(--grn); } .c-bl{ color:var(--blu); } .c-am{ color:var(--amber); }
+  /* diagram */
+  .diag{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; background:var(--panel2); border:1px dashed var(--bd); border-radius:12px; padding:18px; margin:16px 0; font-size:13.5px; }
+  .node{ border:1px solid var(--bd); background:var(--panel); border-radius:9px; padding:9px 12px; text-align:center; min-width:96px; }
+  .node b{ display:block; } .node small{ color:var(--mut); }
+  .arrow{ color:var(--grn); font-weight:700; white-space:nowrap; text-align:center; font-size:12px; }
+  .arrow small{ display:block; color:var(--mut); font-weight:400; }
+  table{ border-collapse:collapse; width:100%; margin:14px 0; font-size:14px; }
+  th,td{ border:1px solid var(--bd); padding:8px 11px; text-align:left; vertical-align:top; }
+  th{ background:var(--panel); color:var(--mut); font-weight:600; }
+  td code{ color:var(--grn); }
+  .steps{ counter-reset:s; list-style:none; padding:0; }
+  .steps>li{ counter-increment:s; position:relative; padding:4px 0 16px 44px; }
+  .steps>li::before{ content:counter(s); position:absolute; left:0; top:0; width:30px; height:30px; border-radius:50%; background:var(--grn); color:#04140a; font-weight:700; display:grid; place-items:center; }
+  footer{ border-top:1px solid var(--bd); color:var(--mut); font-size:13.5px; padding:24px 22px; text-align:center; }
+  @media (max-width:820px){ .shell{ grid-template-columns:1fr; } nav{ position:static; max-height:none; padding:8px 0; } .grid2{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<header class="hero"><div class="hero-in">
+  <h1>🧠🚪 RAPP Neighborhood — Doorman Guide</h1>
+  <p>Turn a fresh Claude on any machine into the <b>doorman</b> to that machine's brainstem:
+  it stands up a tether so authorized peers — another browser, another machine, another Claude —
+  can reach and operate the brainstem, <b>end-to-end encrypted, as secure as if it were all on one device.</b></p>
+  <div class="badges">
+    <span>rapp-neighborhood-protocol/1.0</span><span>AES-256-GCM sealed</span><span>WebRTC · DTLS</span>
+    <span>kited twins</span><span>zero-dependency</span><span>proven E2E</span>
+  </div>
+</div></header>
+
+<div class="shell">
+<nav id="toc">
+  <div class="grp">Start</div>
+  <a href="#what">What this is</a>
+  <a href="#quick">Quick start</a>
+  <div class="grp">Concepts</div>
+  <a href="#peers">Uniform peers</a>
+  <a href="#tethers">Tethers &amp; kited twins</a>
+  <a href="#sealed">The sealed channel</a>
+  <a href="#session">Session &amp; handshake</a>
+  <div class="grp">Do it</div>
+  <a href="#setup">Set up a doorman</a>
+  <a href="#duties">The three duties</a>
+  <a href="#connect">Connect two machines</a>
+  <div class="grp">Reference</div>
+  <a href="#security">Security rules</a>
+  <a href="#tools">Tools</a>
+  <a href="#trouble">Troubleshooting</a>
+</nav>
+
+<main>
+
+<section id="what">
+  <h2>What this is</h2>
+  <p class="lead">A <b>RAPP neighborhood</b> is a set of brainstems that meet as uniform peers and talk in one
+  envelope shape (<code>rapp-twin-chat/1.0</code>). A <b>tether</b> is the live link between two of them.
+  This guide shows how to make <b>Claude the doorman</b>: a fresh Claude session reads one file, proves a
+  secure door works on its machine, opens it, and hands you the key.</p>
+  <div class="diag">
+    <div class="node"><b>Another browser</b><small>or another machine / Claude</small></div>
+    <div class="arrow">──🔒 sealed ──▶<small>WebRTC DTLS + AES-256-GCM</small></div>
+    <div class="node"><b>Doorman</b><small>brainstem_bridge</small></div>
+    <div class="arrow">── localhost ──▶<small>on-device</small></div>
+    <div class="node"><b>Local brainstem</b><small>:7077</small></div>
+  </div>
+</section>
+
+<section id="quick">
+  <h2>Quick start</h2>
+  <ol class="steps">
+    <li><b>On the machine you want to reach</b>, open a fresh Claude (Code) session and paste:
+      <div class="code"><button class="cp">copy</button><pre>Read https://raw.githubusercontent.com/kody-w/vbrainstem/main/doorman.skill.md and set me up as the doorman to this machine.</pre></div>
+    </li>
+    <li>That Claude <b>self-tests</b> (hosts the bridge in headless Chrome, drives it from a separate sealed peer), checks prerequisites, then <b>opens the door</b> and gives you a <span class="pill">peer-id</span> + <span class="pill">token</span> + operator link.</li>
+    <li><b>Walk through the door</b> from anywhere — open the operator link in a browser, or from a shell:
+      <div class="code"><button class="cp">copy</button><pre>bash vbridge.sh &lt;peer-id&gt; &lt;token&gt; ask "who are you and what can you do?"</pre></div>
+      Every byte is opaque ciphertext; the doorman refuses anyone without the token.</li>
+  </ol>
+</section>
+
+<section id="peers">
+  <h2>Uniform peers</h2>
+  <p>Everyone in the neighborhood — a person, a local <code>brainstem.py</code>, a browser vBrainstem, or Claude —
+  speaks the same envelope, so <b>you can't tell what's on the other end</b>. That's the point: a tether is transparent.</p>
+  <div class="code"><button class="cp">copy</button><pre><span class="c-cm">// twin-chat envelope</span>
+{ schema:<span class="c-gr">"rapp-twin-chat/1.0"</span>, from_rappid, to_rappid, utc, nonce,
+  kind:<span class="c-gr">"say"</span>|<span class="c-gr">"console"</span>, payload, facets }</pre></div>
+</section>
+
+<section id="tethers">
+  <h2>Tethers &amp; kited twins</h2>
+  <p>There are two live (<span class="pill">§5a</span>) transports:</p>
+  <div class="grid2">
+    <div class="card"><h3>🛰 WebRTC tether <code>5a-tether</code></h3>
+      <p>Direct browser↔browser P2P. The PeerJS broker does the <b>handshake only</b> (SDP/ICE); data flows
+      <b>DTLS-encrypted peer-to-peer</b> — the broker never sees it.</p></div>
+    <div class="card"><h3>🪁 Kite tether <code>5a-kite</code></h3>
+      <p>An operator (Claude) holds the <b>string</b>: drives a browser tab's console over the Chrome DevTools
+      Protocol and relays. No broker, no STUN, no CORS — the string-holder <i>is</i> the transport.</p></div>
+  </div>
+  <p>A <b>kited twin</b> is a tab flown on a kite string. It is <b>tethered</b> when the string also reaches the
+  <i>locally-running</i> brainstem (<code>5a-kite+tether</code>) — its turns are answered by that brainstem;
+  with no local brainstem it is <b>just kited</b> (answered by the tab's own in-page brainstem).</p>
+  <div class="diag">
+    <div class="node"><b>kite tab</b><small>reaches nothing</small></div>
+    <div class="arrow">── CDP ──▶<small>on-device only</small></div>
+    <div class="node"><b>Claude</b><small>the string</small></div>
+    <div class="arrow">── localhost ──▶<small>the tether</small></div>
+    <div class="node"><b>local brainstem</b></div>
+  </div>
+  <div class="warn">CDP (Chrome's debug port) is <b>unauthenticated</b> — keep the kite/CDP hop <b>on the machine</b>.
+  To cross machines, ride the WebRTC tether (encrypted), never raw CDP.</div>
+</section>
+
+<section id="sealed">
+  <h2>The sealed channel — as secure as on-device</h2>
+  <p>A fully on-device neighborhood has no wire to tap. To match that over a network, every envelope can be
+  <b>sealed</b>:</p>
+  <table>
+    <tr><th>Property</th><th>How</th></tr>
+    <tr><td>Confidential</td><td><b>AES-256-GCM</b>; the wire/broker/TURN see only <code>{schema:"rapp-sealed/1.0", iv, ct}</code></td></tr>
+    <tr><td>Tamper-evident</td><td>GCM auth tag — a flipped byte is rejected (<code>decrypt/auth failed</code>)</td></tr>
+    <tr><td>Authenticated</td><td>Key = <b>PBKDF2-SHA256</b> (210k, salt <code>rapp-neighborhood-5a/1</code>) from a secret that rides <b>only the out-of-band pairing link</b> — never the broker</td></tr>
+    <tr><td>At rest</td><td>Secrets &amp; holocards use the same AES-256-GCM vault primitive</td></tr>
+  </table>
+  <p>Layered over WebRTC's DTLS, the network is <b>fully untrusted and still safe</b>. A wrong-key peer can't even
+  read the rejection. The identical scheme runs in the browser, the bridge, the CLI, and Node — one contract on every hop.</p>
+</section>
+
+<section id="session">
+  <h2>Session &amp; handshake</h2>
+  <p>Opening the door is one call: <code>host()</code> mints a <b>peer-id + token</b> (the token <i>is</i> the channel
+  secret). Sharing it out-of-band is the handshake. <b>Closing the tab / killing the host destroys the peer + secret →
+  the session ends</b>, exactly like stopping <code>brainstem.py</code>. Plaintext chat (<code>say</code>) may be open;
+  <b>operating</b> the console (<code>run</code>/<code>eval</code>/<code>chat</code>) only works over the sealed channel,
+  where key-possession <i>is</i> the authorization.</p>
+</section>
+
+<section id="setup">
+  <h2>Set up a doorman</h2>
+  <h3>Prerequisites (on the machine being opened)</h3>
+  <ul>
+    <li><b>Local brainstem running</b> — <code>curl -s http://localhost:7077/health</code> returns <code>{"status":"ok",…}</code>.</li>
+    <li><b>Google Chrome / Chromium</b> (headless WebRTC + CDP). Set <code>CHROME=/path/to/chrome</code> if needed.</li>
+    <li><b>Node ≥ 18</b> — built-in <code>WebSocket</code>/<code>fetch</code>/<code>crypto.subtle</code>.</li>
+  </ul>
+  <h3>Prove it, then open it</h3>
+  <p>The skill makes Claude run this first — it exits <code>PASS</code> only if a separate sealed peer reached the real brainstem:</p>
+  <div class="code"><button class="cp">copy</button><pre><span class="c-cm"># one-command proof this machine can be a sealed doorman</span>
+curl -fsSL https://raw.githubusercontent.com/kody-w/vbrainstem/main/doorman_selftest.sh | bash</pre></div>
+  <p>The easy GUI door (a secure-context page that shows peer-id + token + QR and stays open):</p>
+  <div class="code"><button class="cp">copy</button><pre>open https://kody-w.github.io/vbrainstem/brainstem_bridge.html
+<span class="c-cm"># leave the URL at http://localhost:7077 → click “Host bridge”</span></pre></div>
+</section>
+
+<section id="duties">
+  <h2>The three duties</h2>
+  <h3>A · Open the door — front this machine's brainstem</h3>
+  <p>Use the bridge above (GUI), or host it headless and keep Chrome alive. It publishes a peer-id + token; share the operator link with the authorized visitor.</p>
+  <h3>B · Visit a door — operate another host</h3>
+  <div class="code"><button class="cp">copy</button><pre>bash vbridge.sh &lt;peer&gt; &lt;token&gt; ask    <span class="c-gr">"hello"</span>                <span class="c-cm"># sealed chat</span>
+bash vbridge.sh &lt;peer&gt; &lt;token&gt; chat   <span class="c-gr">"summarize my agents"</span>  <span class="c-cm"># → their /chat</span>
+bash vbridge.sh &lt;peer&gt; &lt;token&gt; eval   <span class="c-gr">"1+1"</span>                  <span class="c-cm"># console: rapp.eval</span>
+bash vbridge.sh &lt;peer&gt; &lt;token&gt; agents                         <span class="c-cm"># list their agents</span></pre></div>
+  <p>In any tab's console you have the same API: <code>rapp.neighborhood.host()</code>, <code>.ask(peer,text,secret)</code>, <code>.operate(peer,method,args,secret)</code>.</p>
+  <h3>C · Fly a kited twin tethered to this machine</h3>
+  <div class="code"><button class="cp">copy</button><pre><span class="c-cm"># launch the kite tab with CDP on a private localhost port</span>
+"$CHROME" --headless=new --remote-debugging-port=9350 --user-data-dir=/tmp/kite "file:///path/to/kite.html" &amp;
+<span class="c-cm"># hold the string; --brainstem makes the twin TETHERED to this machine</span>
+node kited_twin.js --port 9350 --brainstem http://localhost:7077</pre></div>
+</section>
+
+<section id="connect">
+  <h2>Connect two machines</h2>
+  <p>Run the doorman skill on <b>both</b> machines. Each gives you its peer-id + token. Now either machine's twin
+  (or you, from any browser/shell) reaches the other's brainstem — sealed both ways:</p>
+  <div class="code"><button class="cp">copy</button><pre><span class="c-cm"># from machine A, reach machine B's brainstem (end-to-end sealed)</span>
+bash vbridge.sh &lt;peerB&gt; &lt;tokenB&gt; ask "who are you and what can you do?"</pre></div>
+  <div class="diag">
+    <div class="node"><b>Machine A</b><small>brainstem + doorman</small></div>
+    <div class="arrow">◀──🔒 sealed WebRTC 🔒──▶<small>broker = handshake only</small></div>
+    <div class="node"><b>Machine B</b><small>brainstem + doorman</small></div>
+  </div>
+</section>
+
+<section id="security">
+  <h2>Security rules the doorman enforces</h2>
+  <ul>
+    <li><b>CDP stays on the machine.</b> Never bind/forward Chrome's debug port; cross-machine = WebRTC, not CDP.</li>
+    <li><b>Token = the key.</b> It authorizes <i>and</i> derives the AES-256-GCM key. Share only via the out-of-band operator link; rotate by re-hosting.</li>
+    <li><b>Operating requires the sealed channel.</b> Plaintext chat may be open; console ops are key-gated.</li>
+    <li><b>Closing ends it.</b> Kill the host tab/Chrome → the peer + secret are gone. No lingering access.</li>
+    <li><b>No plaintext secrets</b> on disk or in logs; at rest uses the same vault primitive.</li>
+  </ul>
+</section>
+
+<section id="tools">
+  <h2>Tools</h2>
+  <table>
+    <tr><th>File</th><th>Role</th></tr>
+    <tr><td><a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/doorman.skill.md">doorman.skill.md</a></td><td>Feed its raw URL to a fresh Claude → it sets up &amp; guards the sealed door</td></tr>
+    <tr><td><a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/doorman_selftest.sh">doorman_selftest.sh</a></td><td>One-command proof a machine can be a sealed doorman</td></tr>
+    <tr><td><a href="brainstem_bridge.html">brainstem_bridge.html</a></td><td>Front a local brainstem into the neighborhood (sealed)</td></tr>
+    <tr><td><a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbridge.sh">vbridge.sh</a></td><td>CLI peer — operate a hosted tab from a shell, sealed</td></tr>
+    <tr><td><a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/kited_twin.js">kited_twin.js</a></td><td>The kite string (CDP); <code>--brainstem</code> ⇒ tethered</td></tr>
+    <tr><td><a href="index.html">index.html</a></td><td>The vBrainstem app — <code>window.rapp.neighborhood</code></td></tr>
+  </table>
+</section>
+
+<section id="trouble">
+  <h2>Troubleshooting</h2>
+  <table>
+    <tr><th>Symptom</th><th>Fix</th></tr>
+    <tr><td>Self-test fails at brainstem health</td><td>The local brainstem isn't on <code>BRAINSTEM_URL</code> — start it (or set the URL).</td></tr>
+    <tr><td><code>Chrome not found</code></td><td><code>export CHROME=/path/to/chrome</code> and retry.</td></tr>
+    <tr><td>Two devices on different networks won't pair</td><td>NAT traversal needs STUN/TURN — fine on normal nets; same-machine/LAN needs neither.</td></tr>
+    <tr><td><code>crypto.subtle</code> undefined</td><td>The bridge is on <code>file://</code> — use the HTTPS page or a <code>localhost</code> server (secure contexts).</td></tr>
+    <tr><td>Visitor gets timeouts, not errors</td><td>That's a wrong-key peer being shut out (it can't read the sealed rejection) — re-check the token.</td></tr>
+  </table>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Part of <a href="https://github.com/kody-w/vbrainstem">kody-w/vbrainstem</a> ·
+  app: <a href="index.html">vBrainstem</a> ·
+  registry: <a href="https://github.com/kody-w/RAR">RAR</a> ·
+  MIT © Kody Wildfeuer — zero-dependency, works offline from <code>file://</code>.
+</footer>
+
+<script>
+  // copy buttons
+  document.querySelectorAll('.code .cp').forEach(b=>{
+    b.addEventListener('click',()=>{ const t=b.parentElement.querySelector('pre').innerText;
+      navigator.clipboard.writeText(t).then(()=>{ const o=b.textContent; b.textContent='copied ✓';
+        b.style.color='#3fb950'; setTimeout(()=>{ b.textContent=o; b.style.color=''; },1200); }); });
+  });
+  // active section highlight in the TOC
+  const links=[...document.querySelectorAll('#toc a')];
+  const map={}; links.forEach(a=>map[a.getAttribute('href').slice(1)]=a);
+  const obs=new IntersectionObserver(es=>{ es.forEach(e=>{ if(e.isIntersecting){
+    links.forEach(l=>l.classList.remove('on')); if(map[e.target.id]) map[e.target.id].classList.add('on'); } }); },
+    { rootMargin:'-10% 0px -80% 0px' });
+  document.querySelectorAll('main section').forEach(s=>obs.observe(s));
+</script>
+</body></html>

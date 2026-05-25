@@ -6,6 +6,9 @@ page and run any single-file RAPP agent **in your browser** — real CPython via
 
 **Live:** https://kody-w.github.io/vbrainstem/
 
+**Doorman guide:** https://kody-w.github.io/vbrainstem/guide.html — set up Claude as the sealed
+**doorman** to any machine's brainstem (WebRTC + kite tethers, kited twins, end-to-end AES-256-GCM).
+
 This is a standalone host for the RAPP Brainstem, kept **outside** the
 [RAR](https://github.com/kody-w/RAR) registry repo so it can be linked and embedded
 independently (e.g. from Grail trading-card QR codes). The agent **registry stays in
