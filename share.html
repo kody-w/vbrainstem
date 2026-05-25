@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared agent — drag into a vBrainstem</title>
+<meta name="description" content="A RAPP agent shared as a link — its full source rides inside the URL. Drag it into a vBrainstem to install, scan the QR, or open it directly. Private, nothing server-side.">
+<style>
+  :root{ color-scheme:dark; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body{ margin:0; min-height:100dvh; background:radial-gradient(120% 90% at 50% -10%,#11203a 0%,#0d1117 55%); color:#e6edf3;
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; display:flex; flex-direction:column; align-items:center; padding:28px 18px 60px; }
+  .kite{ line-height:0; margin-bottom:10px; }
+  h1{ font-size:22px; margin:0 0 2px; letter-spacing:-.3px; text-align:center; }
+  .sub{ color:#8b949e; font-size:13.5px; margin:0 0 20px; text-align:center; }
+  .card{ background:#161b22; border:1px solid #30363d; border-radius:16px; padding:20px; max-width:480px; width:100%; box-shadow:0 16px 50px rgba(0,0,0,.45); }
+  .aname{ font-size:21px; font-weight:800; letter-spacing:-.3px; }
+  .aslug{ color:#8b949e; font:12.5px ui-monospace,Menlo,monospace; margin-top:2px; word-break:break-all; }
+  .adesc{ margin:12px 0; color:#c9d1d9; }
+  .meta{ display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 4px; }
+  .tag{ background:#0d1117; border:1px solid #30363d; border-radius:20px; padding:3px 10px; font-size:11.5px; color:#58a6ff; }
+  .seal{ margin:14px 0 4px; color:#3fb950; font-size:12.5px; }
+  .pill{ display:block; text-align:center; margin:16px 0 6px; background:#1f6feb; color:#fff; text-decoration:none;
+    border-radius:12px; padding:13px 16px; font-weight:700; cursor:grab; user-select:none; border:0; font-size:15px; }
+  .pill:active{ cursor:grabbing; }
+  .pill small{ display:block; font-weight:400; opacity:.85; font-size:11.5px; margin-top:3px; }
+  .row{ display:flex; gap:8px; margin-top:8px; }
+  .btn{ flex:1; text-align:center; background:#21262d; border:1px solid #30363d; color:#e6edf3; border-radius:10px; padding:10px; font-size:14px; cursor:pointer; text-decoration:none; }
+  .btn.go{ background:#238636; border:0; color:#fff; font-weight:600; }
+  #qrwrap{ text-align:center; margin:16px 0 2px; }
+  #qr{ background:#fff; border-radius:12px; padding:10px; display:inline-block; line-height:0; }
+  #qr img{ width:188px; height:188px; image-rendering:pixelated; }
+  .qcap{ color:#8b949e; font-size:12px; margin-top:6px; }
+  .err{ color:#f85149; }
+  .foot{ color:#6e7681; font-size:12px; margin-top:22px; text-align:center; max-width:460px; }
+  a.link{ color:#58a6ff; }
+</style>
+</head><body>
+
+<div class="kite">
+<svg viewBox="0 0 100 138" width="62" height="86" aria-label="kite"><g><animateTransform attributeName="transform" attributeType="XML" type="rotate" values="-6 50 6; 6 50 6; -6 50 6" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.4 0 0.6 1; 0.4 0 0.6 1" dur="3.6s" repeatCount="indefinite"/><polygon points="50,6 10,40 50,40" fill="#F25022"/><polygon points="50,6 90,40 50,40" fill="#7FBA00"/><polygon points="50,98 90,40 50,40" fill="#FFB900"/><polygon points="50,98 10,40 50,40" fill="#00A4EF"/><polygon points="50,6 90,40 50,98 10,40" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/><line x1="50" y1="6" x2="50" y2="98" stroke="#fff" stroke-width="2.2"/><line x1="10" y1="40" x2="90" y2="40" stroke="#fff" stroke-width="2.2"/><path d="M50,98 Q58,108 52,116 Q46,124 54,131" fill="none" stroke="#9aa0a6" stroke-width="1.4" stroke-linecap="round"/><path d="M50.8,105.8 L54,109 L50.8,112.2 Z M57.2,105.8 L54,109 L57.2,112.2 Z" fill="#F25022"/><path d="M46.8,113.8 L50,117 L46.8,120.2 Z M53.2,113.8 L50,117 L53.2,120.2 Z" fill="#7FBA00"/><path d="M51.8,123.8 L55,127 L51.8,130.2 Z M58.2,123.8 L55,127 L58.2,130.2 Z" fill="#FFB900"/></g></svg>
+</div>
+<h1>🪁 Shared agent</h1>
+<div class="sub">Its full source rides inside this link — nothing is fetched from a server.</div>
+
+<div class="card" id="card"><div id="loading" style="text-align:center;color:#8b949e">decoding the agent from the link…</div></div>
+
+<div class="foot">
+  <b>To install it:</b> drag the blue link into an open <a class="link" href="./index.html">vBrainstem</a> window — the drop is your consent, and the full agent loads locally. Or tap <b>Open in vBrainstem</b>, or scan the QR from another device. Private &amp; end-to-end: the agent never touches a server.
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+const _b64urlU8 = s => { s=String(s).replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)s+='='; return Uint8Array.from(atob(s),c=>c.charCodeAt(0)); };
+async function _decPayload(p){ const m=p[0],data=_b64urlU8(p.slice(1));
+  if(m==='G'){ const buf=await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer(); return new TextDecoder().decode(buf); }
+  return new TextDecoder().decode(data); }
+function _parseAgentLink(u){ const m=String(u).match(/[#?&]a=([A-Za-z0-9\-_]+)/); if(!m)return null; const n=String(u).match(/[#?&]n=([^&\s]+)/); return {payload:m[1],name:n?decodeURIComponent(n[1]):null}; }
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function mfield(src, re){ const m = src.match(re); return m ? m[1] : null; }
+
+(async () => {
+  const p = _parseAgentLink(location.hash) || _parseAgentLink(location.search);
+  const card = document.getElementById('card');
+  if (!p) { card.innerHTML = '<div class="err">No agent found in this link. The share link should contain <code>#a=…</code>.</div>'; return; }
+  let src;
+  try { src = await _decPayload(p.payload); }
+  catch (e) { card.innerHTML = '<div class="err">Could not decode the agent from this link.</div>'; return; }
+
+  const name = mfield(src, /["']display_name["']\s*:\s*["']([^"']+)["']/) || p.name || 'Shared agent';
+  const slug = mfield(src, /["']name["']\s*:\s*["']([^"']+)["']/) || '';
+  const desc = mfield(src, /["']description["']\s*:\s*["']([^"']+)["']/) || (src.match(/^(?:"""|''')([\s\S]*?)(?:"""|''')/m)||[])[1] || '';
+  const author = mfield(src, /["']author["']\s*:\s*["']([^"']+)["']/);
+  const cat = mfield(src, /["']category["']\s*:\s*["']([^"']+)["']/);
+  const tm = src.match(/["']tags["']\s*:\s*\[([^\]]*)\]/);
+  const tags = tm ? tm[1].split(',').map(x => x.replace(/["'\s]/g, '')).filter(Boolean) : [];
+  const bytes = new TextEncoder().encode(src).length;
+
+  // The link that INSTALLS into a vBrainstem (opening it shows the Add-agent banner; dropping it installs).
+  const dir = location.pathname.replace(/[^/]*$/, '');
+  const appLink = location.origin + dir + 'index.html#a=' + p.payload + (p.name ? '&n=' + encodeURIComponent(p.name) : (name ? '&n=' + encodeURIComponent(name) : ''));
+
+  card.innerHTML =
+    '<div class="aname">' + esc(name) + '</div>'
+    + (slug ? '<div class="aslug">' + esc(slug) + '</div>' : '')
+    + (desc ? '<div class="adesc">' + esc(desc) + '</div>' : '')
+    + '<div class="meta">'
+      + (cat ? '<span class="tag">' + esc(cat) + '</span>' : '')
+      + tags.map(t => '<span class="tag">' + esc(t) + '</span>').join('')
+      + (author ? '<span class="tag">by ' + esc(author) + '</span>' : '')
+    + '</div>'
+    + '<div class="seal">🔒 ' + bytes.toLocaleString() + ' bytes · rode here inside the link · runs in your browser sandbox</div>'
+    + '<a class="pill" id="pill" draggable="true" href="' + esc(appLink) + '">🪁 Drag me into a vBrainstem<small>…then drop to install — the drop is your consent</small></a>'
+    + '<div class="row"><a class="btn go" id="open" href="' + esc(appLink) + '">Open in vBrainstem →</a><button class="btn" id="copy">Copy link</button></div>'
+    + '<div id="qrwrap"><div id="qr"></div><div class="qcap">scan from another device to install</div></div>';
+
+  // Draggable pill carries the install link (so a drop onto a vBrainstem decodes + installs).
+  const pill = document.getElementById('pill');
+  pill.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/uri-list', appLink);
+    e.dataTransfer.setData('text/plain', appLink);
+    e.dataTransfer.effectAllowed = 'copyLink';
+  });
+  pill.addEventListener('click', e => e.preventDefault());   // it's for dragging, not navigating
+
+  document.getElementById('copy').onclick = () => {
+    navigator.clipboard.writeText(appLink).then(() => { const b=document.getElementById('copy'); b.textContent='Copied ✓'; setTimeout(()=>b.textContent='Copy link',1400); });
+  };
+
+  // QR of the install link
+  try {
+    const q = qrcode(0, 'L'); q.addData(appLink); q.make();
+    document.getElementById('qr').innerHTML = q.createImgTag(4, 0);
+    const im = document.querySelector('#qr img'); if (im) { im.style.width='188px'; im.style.height='188px'; im.style.imageRendering='pixelated'; }
+  } catch (e) {
+    document.getElementById('qrwrap').innerHTML = '<div class="qcap">Agent too large for a QR — drag the link or use “Open in vBrainstem”.</div>';
+  }
+})();
+</script>
+</body></html>

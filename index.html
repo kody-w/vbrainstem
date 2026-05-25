@@ -5991,6 +5991,7 @@ function renderEnabledAgentsList() {
     html += `<li>
       <div class="agent-name"><div class="agent-title">${esc(agent.display_name)}</div><div class="agent-file">${esc(file)}</div></div>
       <div class="agent-controls">
+        <button class="export-btn" onclick="shareAgentBySlug('${s}')" title="Share — the agent rides inside a link &amp; QR (private, nothing server-side)">Share</button>
         <button class="export-btn" onclick="downloadAgent('${s}')" title="Download .py">Export</button>
         <button class="export-btn" onclick="exportHolocard('${s}')" title="Export .rappid holocard (agent + encrypted secrets)">&#128230;</button>
         <button class="export-btn del-btn" onclick="toggleAgent('${s}')" title="Disable agent">Remove</button>
@@ -6105,6 +6106,22 @@ async function encodeAgentLink(source, name){
   if (name) u += '&n=' + encodeURIComponent(name);
   return u;
 }
+// A share-sheet link: opening it lands on share.html (the agent's package page with a draggable
+// link + QR). Dropping it onto a vBrainstem still installs (the drop handler matches #a= anywhere).
+function _shareSheetURL(payload, name){
+  const dir = location.pathname.replace(/[^/]*$/, '');
+  return location.origin + dir + 'share.html#a=' + payload + (name ? '&n=' + encodeURIComponent(name) : '');
+}
+// One-click share for an agent in the panel: resolve its source (hot-loaded → VFS → registry).
+async function shareAgentBySlug(slug){
+  let source = null;
+  if (hotLoadedAgents[slug]) source = hotLoadedAgents[slug].source;
+  if (!source) { try { for (const f of VFS.listAgents()) { const c = VFS.read(f); if (c && c.includes(slug)) { source = c; break; } } } catch (e) {} }
+  if (!source) { const a = availableAgents.find(x => x.name === slug); if (a && a._file) { try { source = await fetchAgent(a); } catch (e) {} } }
+  if (!source) { try { showToast('Could not get agent source to share', true); } catch (_) {} return; }
+  const a = availableAgents.find(x => x.name === slug);
+  return window.rapp.shareAgent(source, (a && a.display_name) || flatAgentName(slug));
+}
 async function installAgentFromLink(url){
   const p = _parseAgentLink(url); if (!p) return false;
   let src; try { src = await _decPayload(p.payload); } catch (e) { try { showToast('Could not decode the shared agent link', true); } catch(_){} return false; }
@@ -6145,7 +6162,7 @@ window.addEventListener('load', () => setTimeout(async () => {
         const r = (window.VFS && VFS.read) ? VFS.read(path) : null; if (r) { src = r; if (!nm) nm = path.split('/').pop().replace(/\.py$/,''); } } catch (e) {}
     }
     if (!nm) nm = (src.match(/["']display_name["']\s*:\s*["']([^"']+)["']/) || [])[1] || 'shared_agent';
-    const link = await encodeAgentLink(src, nm);
+    const link = _shareSheetURL(await _encPayload(src), nm);
     try { await navigator.clipboard.writeText(link); } catch (e) {}
     _showShareQR(link, nm);
     console.log('🪁 share link (copied — drag it onto any vBrainstem):', link);
