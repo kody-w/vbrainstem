@@ -757,8 +757,8 @@
 
 <div id="dropOverlay" class="chat-drop-overlay">
   <div class="drop-icon">&#128230;</div>
-  <div class="drop-text">Drop .py agent file to install</div>
-  <div class="drop-hint">The agent will be parsed, enabled, and ready to use instantly</div>
+  <div class="drop-text">Drop a .py agent — or a shared agent link — to install</div>
+  <div class="drop-hint">A dropped link carries the agent inside it (private, nothing fetched). Parsed, enabled, ready instantly.</div>
 </div>
 
 <div id="login-overlay" style="display:none">
@@ -6042,6 +6042,15 @@ function handleAgentDrop(event) {
   event.preventDefault();
   document.getElementById('dropOverlay').classList.remove('active');
 
+  // ── Share-by-link: a dropped URL/text carrying an agent (#a=…) → decode + install.
+  // The agent's full source rides INSIDE the link (gzip+base64url in the fragment), so nothing
+  // is fetched from a server — it's AirDrop-style private. The DROP itself is your consent.
+  try {
+    const dt = event.dataTransfer;
+    const text = (dt.getData('text/uri-list') || dt.getData('text/plain') || dt.getData('URL') || '').trim();
+    if (text && _parseAgentLink(text)) { installAgentFromLink(text); return; }
+  } catch (e) {}
+
   const files = event.dataTransfer.files;
   for (const file of files) {
     const isHolocard = /\.rappid\.json$/i.test(file.name) || /\.json$/i.test(file.name);
@@ -6067,6 +6076,87 @@ function handleAgentDrop(event) {
     }
   }
 }
+
+// ── Agent-in-a-link: share a .py by encoding its FULL source into the URL fragment ──────────
+// gzip → base64url, carried in #a= (the fragment is never sent to a server). The link IS the
+// agent — private, AirDrop-style. Receiving = dropping/opening the link (the user's consent).
+function _u8b64url(u8){ let b=btoa(String.fromCharCode.apply(null, u8)); return b.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function _b64urlU8(s){ s=String(s).replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4) s+='='; return Uint8Array.from(atob(s), c=>c.charCodeAt(0)); }
+async function _encPayload(str){
+  if (typeof CompressionStream !== 'undefined') {
+    const buf = await new Response(new Blob([new TextEncoder().encode(str)]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+    return 'G' + _u8b64url(new Uint8Array(buf));            // G = gzipped
+  }
+  return 'B' + _u8b64url(new TextEncoder().encode(str));     // B = plain (fallback)
+}
+async function _decPayload(p){
+  const method = p[0], data = _b64urlU8(p.slice(1));
+  if (method === 'G') { const buf = await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer(); return new TextDecoder().decode(buf); }
+  return new TextDecoder().decode(data);
+}
+function _parseAgentLink(url){                                // returns {payload,name} or null
+  const m = String(url).match(/[#?&]a=([A-Za-z0-9\-_]+)/);
+  if (!m) return null;
+  const n = String(url).match(/[#?&]n=([^&\s]+)/);
+  return { payload: m[1], name: n ? decodeURIComponent(n[1]) : null };
+}
+async function encodeAgentLink(source, name){
+  let u = location.origin + location.pathname + '#a=' + (await _encPayload(source));
+  if (name) u += '&n=' + encodeURIComponent(name);
+  return u;
+}
+async function installAgentFromLink(url){
+  const p = _parseAgentLink(url); if (!p) return false;
+  let src; try { src = await _decPayload(p.payload); } catch (e) { try { showToast('Could not decode the shared agent link', true); } catch(_){} return false; }
+  hotLoadAgent((p.name || 'shared_agent').replace(/\.py$/,'') + '.py', src);   // same install path as a dropped file
+  return true;
+}
+// Consent banner for arriving via a link (not a drop): show name + Add/Dismiss.
+function _offerSharedAgent(name, source){
+  if (document.getElementById('shared-agent-offer')) return;
+  const o = document.createElement('div'); o.id = 'shared-agent-offer';
+  o.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:99999;background:#161b22;border:1px solid #30363d;border-radius:12px;padding:14px 18px;box-shadow:0 16px 50px rgba(0,0,0,.5);font:14px -apple-system,sans-serif;color:#e6edf3;max-width:92vw;text-align:center';
+  o.innerHTML = '🪁 <b>Shared agent:</b> ' + (name||'agent') + '<div style="color:#8b949e;font-size:12.5px;margin:6px 0 10px">It rode here inside the link — runs in your browser sandbox. Add it to your vBrainstem?</div>'
+    + '<button id="sa-add" style="background:#238636;border:0;color:#fff;border-radius:8px;padding:7px 16px;font-weight:600;cursor:pointer;margin-right:8px">Add agent</button>'
+    + '<button id="sa-no" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:8px;padding:7px 14px;cursor:pointer">Dismiss</button>';
+  document.body.appendChild(o);
+  o.querySelector('#sa-add').onclick = () => { hotLoadAgent((name||'shared_agent').replace(/\.py$/,'') + '.py', source); o.remove(); };
+  o.querySelector('#sa-no').onclick = () => o.remove();
+}
+function _loadQRLib(){ return new Promise((res,rej)=>{ if(window.qrcode) return res(); const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+async function _showShareQR(link, name){
+  let o = document.getElementById('agent-share-qr'); if (o) o.remove();
+  o = document.createElement('div'); o.id = 'agent-share-qr';
+  o.style.cssText = 'position:fixed;right:16px;top:60px;z-index:9600;background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px;text-align:center;box-shadow:0 16px 50px rgba(0,0,0,.5);font:12px -apple-system,sans-serif;color:#e6edf3;max-width:280px';
+  o.innerHTML = '<div style="font-weight:700;font-size:14px">🪁 Share agent: ' + (name||'agent') + '</div>'
+    + '<div style="color:#8b949e;margin:4px 0 10px">the agent is <b>inside</b> this link — scan it, or drag the link onto a vBrainstem. Link copied.</div>'
+    + '<div id="asq" style="background:#fff;border-radius:8px;padding:8px;display:inline-block;min-width:180px;min-height:60px;line-height:0"></div>'
+    + '<div style="margin-top:8px"><button onclick="this.closest(\'#agent-share-qr\').remove()" style="background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:4px 12px;cursor:pointer">close</button></div>';
+  document.body.appendChild(o);
+  try { await _loadQRLib(); const q = qrcode(0,'L'); q.addData(link); q.make(); o.querySelector('#asq').innerHTML = q.createImgTag(4,0); const im=o.querySelector('#asq img'); if(im){im.style.width='200px';im.style.height='200px';im.style.imageRendering='pixelated';} }
+  catch (e) { o.querySelector('#asq').innerHTML = '<div style="color:#333;padding:14px;font-size:11px">Agent too big for a QR — the link is copied; just <b>drag it</b> onto a vBrainstem.</div>'; }
+}
+// Wire the share API + handle arriving via a #a= link (after window.rapp exists).
+window.addEventListener('load', () => setTimeout(async () => {
+  if (window.rapp) window.rapp.shareAgent = async function(sourceOrName, name){
+    let src = sourceOrName, nm = name;
+    if (typeof src === 'string' && !/[\n{]/.test(src)) {       // looks like a name/path → try the VFS
+      try { const path = src.startsWith('agents/') ? src : ('agents/' + (src.includes('/') ? src : ('@local/' + src.replace(/\.py$/,'') + '.py')));
+        const r = (window.VFS && VFS.read) ? VFS.read(path) : null; if (r) { src = r; if (!nm) nm = path.split('/').pop().replace(/\.py$/,''); } } catch (e) {}
+    }
+    if (!nm) nm = (src.match(/["']display_name["']\s*:\s*["']([^"']+)["']/) || [])[1] || 'shared_agent';
+    const link = await encodeAgentLink(src, nm);
+    try { await navigator.clipboard.writeText(link); } catch (e) {}
+    _showShareQR(link, nm);
+    console.log('🪁 share link (copied — drag it onto any vBrainstem):', link);
+    return link;
+  };
+  const p = _parseAgentLink(location.hash);
+  if (p) { let src; try { src = await _decPayload(p.payload); } catch (e) { return; }
+    _offerSharedAgent(p.name || 'shared agent', src);
+    try { history.replaceState(null, '', location.origin + location.pathname + location.search); } catch (e) {}
+  }
+}, 1500));
 
 function hotLoadAgent(filename, source) {
   // Extract docstring (used for description fallback)
