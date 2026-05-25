@@ -5512,7 +5512,7 @@ function renderEnabledAgentsList() {
   // Enabled registry / hot-loaded agents — with download + disable controls.
   for (const slug of enabledAgents) {
     const agent = availableAgents.find(a => a.name === slug) || { display_name: slug, name: slug };
-    const file = (agent._file ? agent._file.split('/').pop() : slug.replace(/^@\w+\//, '') + '.py');
+    const file = (agent._file ? agent._file.split('/').pop() : flatAgentName(slug));
     const s = slug.replace(/'/g, "\\'");
     html += `<li>
       <div class="agent-name"><div class="agent-title">${esc(agent.display_name)}</div><div class="agent-file">${esc(file)}</div></div>
@@ -5695,6 +5695,14 @@ document.addEventListener('click', e => {
 
 // ── Agent Download ──
 
+// Flatten any slug/path to a bare, root-level <slug>_agent.py. Brainstems
+// hot-load flat files from the agents root — never nested @publisher/ paths.
+function flatAgentName(slugOrPath) {
+  let b = String(slugOrPath).split('/').pop().replace(/\.py$/, '');
+  if (!b.endsWith('_agent')) b += '_agent';
+  return b + '.py';
+}
+
 async function downloadAgent(slug) {
   let source = null;
   let filename = null;
@@ -5702,7 +5710,7 @@ async function downloadAgent(slug) {
   // Check VFS / hot-loaded first
   if (hotLoadedAgents[slug]) {
     source = hotLoadedAgents[slug].source;
-    filename = slug.replace(/^@\w+\//, '') + '.py';
+    filename = flatAgentName(slug);
   }
 
   // Try VFS
@@ -5712,7 +5720,7 @@ async function downloadAgent(slug) {
       const content = VFS.read(f);
       if (content && content.includes(slug)) {
         source = content;
-        filename = f.replace('agents/', '');
+        filename = f.split('/').pop();   // flat basename only
         break;
       }
     }
@@ -5821,7 +5829,7 @@ function restoreVFSAgents() {
   for (const path of agentFiles) {
     const source = VFS.read(path);
     if (!source) continue;
-    const filename = path.replace('agents/', '');
+    const filename = path.split('/').pop();   // flat basename only
     hotLoadAgent(filename, source);
   }
   _silentRestore = false;
