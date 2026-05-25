@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Kited — live demo</title>
+<meta name="description" content="The RAPP kited neighborhood, live. Open it, scan the kite's QR, and you're connected in real time — sealed, end-to-end. The hello world that actually connects.">
+<style>
+  :root{ color-scheme:dark; --bg:#0d1117; --pan:#161b22; --bd:#30363d; --tx:#e6edf3; --mut:#8b949e; --grn:#3fb950; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; }
+  body{ margin:0; background:radial-gradient(120% 90% at 50% -10%, #11203a 0%, var(--bg) 55%); color:var(--tx);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; display:flex; flex-direction:column; height:100dvh; }
+  header{ padding:14px 18px; border-bottom:1px solid var(--bd); display:flex; align-items:center; gap:12px; }
+  header .k{ line-height:0; flex:0 0 auto; }
+  header h1{ font-size:16px; margin:0; font-weight:700; letter-spacing:-.2px; }
+  header .sub{ font-size:12px; color:var(--mut); }
+  header .live{ margin-left:auto; font-size:12.5px; color:var(--grn); font-weight:600; white-space:nowrap; }
+  /* host invite */
+  #invite{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; gap:6px; }
+  #invite .big{ font-size:26px; font-weight:800; letter-spacing:-.4px; }
+  #invite .sub2{ color:var(--mut); max-width:440px; }
+  #qrbox{ background:#fff; border-radius:16px; padding:14px; margin:18px 0 6px; line-height:0; box-shadow:0 16px 50px rgba(0,0,0,.5); }
+  #qrbox img{ width:248px; height:248px; image-rendering:pixelated; display:block; }
+  .pill{ display:inline-block; background:var(--pan); border:1px solid var(--bd); border-radius:20px; padding:6px 14px; font-size:13px; color:var(--grn); font-weight:600; }
+  .link{ color:#8b949e; font-size:11px; word-break:break-all; max-width:90vw; margin-top:8px; }
+  .cta{ background:#238636; border:0; color:#fff; padding:11px 18px; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; margin-top:6px; }
+  /* chat */
+  #room{ flex:1; display:none; flex-direction:column; min-height:0; }
+  #feed{ flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:9px; }
+  .msg{ max-width:84%; padding:9px 13px; border-radius:13px; white-space:pre-wrap; word-break:break-word; animation:pop .18s ease-out; }
+  @keyframes pop{ from{ transform:translateY(6px) scale(.98); opacity:0 } to{ transform:none; opacity:1 } }
+  .msg .who{ font-size:11px; font-weight:700; margin-bottom:2px; opacity:.9 }
+  .me{ align-self:flex-end; background:#1f6feb; color:#fff; }
+  .them{ align-self:flex-start; background:var(--pan); border:1px solid var(--bd); }
+  .sys{ align-self:center; color:var(--mut); font-size:12.5px; background:transparent; }
+  #bar{ display:flex; gap:9px; padding:11px 12px; border-top:1px solid var(--bd); background:var(--bg); }
+  #txt{ flex:1; background:var(--pan); border:1px solid var(--bd); border-radius:11px; color:var(--tx); padding:12px 14px; font-size:16px; }
+  #snd{ background:#238636; border:0; color:#fff; border-radius:11px; padding:0 18px; font-size:16px; font-weight:700; cursor:pointer; }
+  #miniqr{ position:fixed; right:12px; bottom:74px; background:#fff; border-radius:10px; padding:6px; line-height:0; box-shadow:0 8px 30px rgba(0,0,0,.5); display:none; }
+  #miniqr img{ width:120px; height:120px; image-rendering:pixelated; }
+  #miniqr .cap{ font:10px sans-serif; color:#333; text-align:center; padding-top:3px; }
+</style>
+</head><body>
+
+<header>
+  <span class="k" id="hk"></span>
+  <div><h1 id="htitle">Kited — live demo</h1><div class="sub" id="hsub">starting…</div></div>
+  <div class="live" id="live"></div>
+</header>
+
+<div id="invite">
+  <div class="big">🪁 Kited — scan to join, <span style="color:var(--grn)">LIVE</span></div>
+  <div class="sub2">This page is a kited neighborhood. Scan with a phone (or any device) and you're connected in real time — end‑to‑end <b>sealed</b>. Then just talk; everyone here sees it instantly.</div>
+  <div id="qrbox"><div id="qr" style="width:248px;height:248px"></div></div>
+  <div class="pill" id="count">🟢 you're hosting — waiting for neighbors…</div>
+  <div class="link" id="vlink"></div>
+  <button class="cta" id="enter">Enter the room →</button>
+</div>
+
+<div id="room">
+  <div id="feed"></div>
+  <div id="bar"><input id="txt" placeholder="say something — everyone here sees it live…" autocomplete="off" enterkeyhint="send"><button id="snd">Send</button></div>
+</div>
+<div id="miniqr"><div id="miniqr-img"></div><div class="cap">scan to join</div></div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const PALETTE = ['#58a6ff','#3fb950','#f778ba','#ffa657','#a371f7','#ff7b72','#79c0ff','#d2a8ff'];
+const MY = { name: localStorage.getItem('kd_name') || ('guest-' + Math.random().toString(16).slice(2,6)),
+             color: PALETTE[Math.floor(Math.random()*PALETTE.length)] };
+localStorage.setItem('kd_name', MY.name);
+
+// ── §8 sealed channel (AES-256-GCM, same scheme/salt as the rest of the neighborhood) ──
+const _b64 = u8 => btoa(String.fromCharCode.apply(null, new Uint8Array(u8)));
+const _ub64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const _kc = {};
+async function _ck(secret){ if(_kc[secret]) return _kc[secret]; const e=new TextEncoder();
+  const b=await crypto.subtle.importKey('raw',e.encode(secret),'PBKDF2',false,['deriveKey']);
+  const k=await crypto.subtle.deriveKey({name:'PBKDF2',salt:e.encode('rapp-neighborhood-5a/1'),iterations:210000,hash:'SHA-256'},b,{name:'AES-GCM',length:256},false,['encrypt','decrypt']); _kc[secret]=k; return k; }
+async function seal(secret,o){ const k=await _ck(secret); const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},k,new TextEncoder().encode(JSON.stringify(o))); return {schema:'rapp-sealed/1.0',iv:_b64(iv),ct:_b64(ct)}; }
+async function open_(secret,s){ const k=await _ck(secret); const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:_ub64(s.iv)},k,_ub64(s.ct)); return JSON.parse(new TextDecoder().decode(pt)); }
+
+// ── the kite mark (MS logo flown as a kite) ──
+function kite(size){ size=size||30;
+  if(!document.getElementById('kkf')){ const st=document.createElement('style'); st.id='kkf';
+    st.textContent='@keyframes ksway{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(7deg)}}.kmark{animation:ksway 3.4s ease-in-out infinite;transform-origin:50% 5%}'; document.head.appendChild(st); }
+  const bow=(x,y,c)=>{const s=3.2;return '<path d="M'+(x-s)+','+(y-s)+' L'+x+','+y+' L'+(x-s)+','+(y+s)+' Z M'+(x+s)+','+(y-s)+' L'+x+','+y+' L'+(x+s)+','+(y+s)+' Z" fill="'+c+'"/>';};
+  return '<svg class="kmark" viewBox="0 0 100 134" width="'+size+'" height="'+Math.round(size*1.34)+'" style="filter:drop-shadow(0 3px 7px rgba(0,0,0,.45))">'
+    +'<polygon points="50,6 10,40 50,40" fill="#F25022"/><polygon points="50,6 90,40 50,40" fill="#7FBA00"/>'
+    +'<polygon points="50,98 90,40 50,40" fill="#FFB900"/><polygon points="50,98 10,40 50,40" fill="#00A4EF"/>'
+    +'<polygon points="50,6 90,40 50,98 10,40" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/>'
+    +'<line x1="50" y1="6" x2="50" y2="98" stroke="#fff" stroke-width="2.2"/><line x1="10" y1="40" x2="90" y2="40" stroke="#fff" stroke-width="2.2"/>'
+    +'<path d="M50,98 Q58,108 52,116 Q46,124 54,131" fill="none" stroke="#8b949e" stroke-width="1.4" stroke-linecap="round"/>'
+    +bow(54,109,'#F25022')+bow(50,117,'#7FBA00')+bow(55,127,'#FFB900')+'</svg>'; }
+
+function qrInto(el, link, px){ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+  const draw=()=>{ try{ const q=qrcode(0,'M'); q.addData(link); q.make(); el.innerHTML=q.createImgTag(6,0); const im=el.querySelector('img'); if(im){im.style.width=px+'px';im.style.height=px+'px';im.style.imageRendering='pixelated';} }
+    catch(e){ el.innerHTML='<img style="width:'+px+'px;height:'+px+'px" src="https://api.qrserver.com/v1/create-qr-code/?size=360x360&margin=8&data='+encodeURIComponent(link)+'">'; } };
+  if(window.qrcode) return draw(); s.onload=draw; s.onerror=draw; document.head.appendChild(s); }
+
+// ── room ──
+const feed = $('#feed');
+function bubble(name, text, color, kind){ const d=document.createElement('div');
+  d.className='msg '+(kind||'them');
+  if(kind==='sys'){ d.textContent=text; }
+  else { const w=document.createElement('div'); w.className='who'; w.textContent=name; w.style.color=color||'#8b949e'; d.appendChild(w); const t=document.createElement('div'); t.textContent=text; d.appendChild(t); }
+  feed.appendChild(d); feed.scrollTop=feed.scrollHeight; }
+
+const conns = {};                       // peer-id -> DataConnection
+let secret = null, isHost = false, hostConn = null;
+
+function wire(c){ conns[c.peer]=c;
+  c.on('data', m => handle(c, m));
+  c.on('close', ()=>{ delete conns[c.peer]; if(isHost){ bubble('','✦ a neighbor left',null,'sys'); presence(); } }); }
+
+async function handle(c, raw){
+  let m = raw; if(raw && raw.schema==='rapp-sealed/1.0'){ try{ m=await open_(secret, raw); }catch(e){ return; } }
+  if(!m) return;
+  if(m.kind==='say'){
+    const p=m.payload||{}; bubble(p.name||'neighbor', p.text, p.color, 'them');
+    if(isHost){ for(const id in conns){ if(id!==c.peer){ try{ conns[id].send(await seal(secret, m)); }catch(e){} } } }  // relay to the rest of the room
+  } else if(m.kind==='presence'){ setLive(m.payload && m.payload.count); }
+  else if(m.kind==='welcome'){ bubble('', m.payload && m.payload.text || '✦ connected', null, 'sys'); }
+}
+
+async function broadcast(env){ const s=await seal(secret, env);
+  if(isHost){ for(const id in conns){ try{ conns[id].send(s); }catch(e){} } }
+  else if(hostConn){ try{ hostConn.send(s); }catch(e){} } }
+
+async function say(text){ if(!text.trim()) return;
+  const env={ schema:'rapp-twin-chat/1.0', kind:'say', from_rappid:MY.name, utc:new Date().toISOString(),
+              nonce:Math.random().toString(36).slice(2), payload:{name:MY.name, text:text, color:MY.color}, facets:[] };
+  bubble(MY.name, text, MY.color, 'me'); broadcast(env); }
+
+function setLive(n){ const c=$('#count'); const here = (typeof n==='number'? n : (Object.keys(conns).length + 1));
+  $('#live').textContent='🟢 '+here+' here · 🔒 sealed';
+  if(c) c.textContent = here<=1 ? '🟢 you are hosting — waiting for neighbors…' : ('🟢 '+here+' in the room'); }
+function presence(){ const count=Object.keys(conns).length+1; setLive(count);
+  const env={schema:'rapp-twin-chat/1.0',kind:'presence',payload:{count:count}}; broadcast(env); }
+
+function enterRoom(){ $('#invite').style.display='none'; $('#room').style.display='flex';
+  if(isHost && Object.keys(conns).length>=0) $('#miniqr').style.display='block';
+  try{ $('#txt').focus(); }catch(e){} }
+$('#snd').onclick=()=>{ say($('#txt').value); $('#txt').value=''; };
+$('#txt').addEventListener('keydown', e=>{ if(e.key==='Enter'){ say($('#txt').value); $('#txt').value=''; } });
+$('#enter').onclick=enterRoom;
+$('#hk').innerHTML=kite(30);
+
+// ── boot: host (default) or viewer (?peer=&op=) ──
+const params=new URLSearchParams(location.search);
+const peerParam=params.get('peer'), opParam=params.get('op');
+
+window.addEventListener('load', ()=>{
+  const peer=new Peer();
+  peer.on('error', e=>{ $('#hsub').textContent='connection error: '+((e&&e.type)||e); });
+
+  if(peerParam){   // ── VIEWER ──
+    isHost=false; secret=opParam||'';
+    $('#htitle').textContent='Kited — joined live';
+    $('#invite').style.display='none'; $('#room').style.display='flex';
+    bubble('', '🪁 joining the kited neighborhood…', null, 'sys');
+    peer.on('open', ()=>{
+      const c=peer.connect(peerParam, {reliable:true});
+      c.on('open', ()=>{ hostConn=c; wire(c); bubble('', '🔒 connected — you are live. Say hi 👋', null, 'sys'); $('#live').textContent='🟢 live · 🔒 sealed'; $('#txt').focus(); });
+      c.on('error', e=>bubble('', 'connect failed: '+((e&&e.type)||e), null, 'sys'));
+    });
+  } else {         // ── HOST (kited) ──
+    isHost=true; secret=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36));
+    peer.on('open', id=>{
+      const vlink=location.origin+location.pathname+'?peer='+id+'&op='+encodeURIComponent(secret);
+      $('#hsub').textContent='kited · 🔒 sealed · scan to join';
+      $('#vlink').textContent=vlink;
+      qrInto($('#qr'), vlink, 248); qrInto($('#miniqr-img'), vlink, 120);
+      setLive(1);
+      peer.on('connection', c=>{ wire(c);
+        c.on('open', async ()=>{ bubble('', '✨ a neighbor joined', null, 'sys'); presence();
+          try{ c.send(await seal(secret, {schema:'rapp-twin-chat/1.0',kind:'welcome',payload:{text:'🔒 you are in '+MY.name+'’s kited neighborhood — live & sealed'}})); }catch(e){} }); });
+    });
+  }
+});
+</script>
+</body></html>
