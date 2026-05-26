@@ -1,6 +1,6 @@
 name: neighborhood-canon
-# Drift guard: the vBrainstem INLINES the sealed codec (rapp-sealed) and the kite mark
-# (kite-mark) because it's zero-dependency single-file. This fails CI if those inlined copies
+# Drift guard: the vBrainstem INLINES the sealed codec (rapp-sealed) and the kited-twin mark
+# (rapp-kited-twin) because it's zero-dependency single-file. This fails CI if those inlined copies
 # diverge from the canonical repos — so the grail can't silently drift.
 on:
   push: { paths: ['index.html', 'share.html', 'brainstem_bridge.html', 'kited-demo.html', '.github/workflows/neighborhood-canon.yml'] }
@@ -32,11 +32,11 @@ jobs:
             echo "  ✓ $f sealed params OK"
           done
 
-          echo "── kite-mark: the four panel colours ──"
-          curl -fsSL https://raw.githubusercontent.com/kody-w/kite-mark/main/kite-mark.svg -o /tmp/kite.svg
-          COLORS=$(grep -oiE "#(F25022|7FBA00|00A4EF|FFB900)" /tmp/kite.svg | tr 'a-z' 'A-Z' | sort -u)
+          echo "── rapp-kited-twin: the four panel colours (neutral, no third-party logo) ──"
+          curl -fsSL https://raw.githubusercontent.com/kody-w/rapp-kited-twin/main/kited-twin.svg -o /tmp/kite.svg
+          COLORS=$(grep -oiE "#(e07a5f|81b29a|f2cc8f|3d5a80)" /tmp/kite.svg | tr 'A-Z' 'a-z' | sort -u)
           for c in $COLORS; do
-            grep -qi "$c" index.html || fail "index.html: kite colour $c drifted from canonical kite-mark.svg"
+            grep -qi "$c" index.html || fail "index.html: kite colour $c drifted from canonical rapp-kited-twin"
           done
 
           echo "✅ inlined sealed codec + kite mark are in sync with the canonical repos"
