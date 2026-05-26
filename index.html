@@ -897,6 +897,7 @@
         </h3>
         <label>Tools</label>
         <div class="panel-row" style="margin-top:0;flex-wrap:wrap;gap:6px">
+          <button class="panel-btn" onclick="document.getElementById('voice-panel').classList.remove('open');hostNeighborhood&&hostNeighborhood()" title="Show the kite QR — scan it from another device to join this twin"><svg viewBox="0 0 100 100" width="13" height="13" style="vertical-align:-2px;margin-right:4px"><polygon points="50,5 12,40 50,40" fill="#e07a5f"/><polygon points="50,5 88,40 50,40" fill="#81b29a"/><polygon points="50,95 88,40 50,40" fill="#f2cc8f"/><polygon points="50,95 12,40 50,40" fill="#3d5a80"/></svg>Host a kite</button>
           <button class="panel-btn" onclick="document.getElementById('voice-panel').classList.remove('open');toggleTerminal()" title="Python REPL + shell over the WASM filesystem">⌨ Terminal</button>
           <button class="panel-btn" onclick="document.getElementById('voice-panel').classList.remove('open');toggleSecretsPanel(event)" title="Encrypted secrets vault (local-first)">🔑 Secrets</button>
           <button class="panel-btn" onclick="document.getElementById('voice-panel').classList.remove('open');toggleAgentDropdown(event)" title="Browse the RAR agent registry">📖 Registry</button>
@@ -6936,11 +6937,10 @@ window.rapp.neighborhood = {
     o._iv = setInterval(() => { const el = document.getElementById('hood-peers'); if (!el) { clearInterval(o._iv); return; } el.textContent = 'neighbors: ' + window.rapp.neighborhood.peers().length; }, 1500);
   }
   function addBtn() {
-    const c = document.querySelector('header .controls'); if (!c || document.getElementById('hood-btn')) return;
-    const b = document.createElement('button'); b.id = 'hood-btn'; b.className = 'icon-btn'; b.title = 'Neighborhood — host a WebRTC line (QR to pair)';
-    b.innerHTML = '<span class="icon" style="font-size:14px">🏘</span>';
-    b.onclick = async () => { try { showQR(await window.rapp.neighborhood.host()); } catch (e) { alert('Neighborhood error: ' + e.message); } };
-    c.insertBefore(b, c.firstChild);
+    // Host action now lives in the gear → Settings → Tools (no separate toolbar button).
+    window.hostNeighborhood = async () => {
+      try { showQR(await window.rapp.neighborhood.host()); } catch (e) { alert('Kite error: ' + e.message); }
+    };
   }
   window.addEventListener('load', () => {
     setTimeout(addBtn, 200);
