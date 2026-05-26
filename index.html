@@ -6757,6 +6757,17 @@ async function _open(secret, sealed) {                      // throws if wrong k
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: _ub64(sealed.iv) }, key, _ub64(sealed.ct));
   return JSON.parse(new TextDecoder().decode(pt));
 }
+// ── §5c PAIR CONFIRMATION — a 6-digit Short-Authentication-String both devices show before sync ──
+// Derived from the shared secret + both peer-ids (order-independent), so the two endpoints compute
+// the SAME pin iff they hold the same secret AND are talking to each other (no swapped/extra peer).
+// The human (holding both devices) confirms the pins match and approves on the host before sync.
+async function _sasPin(secret, idA, idB) {
+  const ids = [String(idA || ''), String(idB || '')].sort();
+  const data = new TextEncoder().encode('rapp-sas/1|' + (secret || '') + '|' + ids.join('|'));
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+  return String(((h[0] << 16) | (h[1] << 8) | h[2]) % 1000000).padStart(6, '0');
+}
+function _pinFmt(p) { return p.slice(0, 3) + ' ' + p.slice(3); }
 function _loadPeerJS() {
   if (window.Peer) return Promise.resolve();
   if (_peerjsLoading) return _peerjsLoading;
@@ -6782,6 +6793,28 @@ function _hoodWire(conn) {
   _hood.conns[conn.peer] = conn;
   conn.on('data', (m) => _hoodHandle(conn, m));
   conn.on('close', () => { delete _hood.conns[conn.peer]; });
+  // Host side (inbound) over a sealed session: surface the PIN to approve the instant a device
+  // kites in. The joiner (outbound) shows its own matching PIN in the dial panel.
+  if (!conn._outbound && _hood.opToken) {
+    _sasPin(_hood.opToken, _hood.id, conn.peer).then((sas) => _pairPrompt(conn, sas)).catch(() => {});
+  }
+}
+// Host-side approval modal: show the PIN; gate sync until the human approves it (matched against the
+// joiner's screen). Reject closes the line. Until approved, sealed say/console are refused (409).
+function _pairPrompt(conn, sas) {
+  if (conn._approved || document.getElementById('pair-' + conn.peer)) return;
+  const m = document.createElement('div'); m.id = 'pair-' + conn.peer;
+  m.style.cssText = 'position:fixed;inset:0;z-index:100001;background:rgba(2,6,12,.72);display:flex;align-items:center;justify-content:center;font:15px -apple-system,BlinkMacSystemFont,sans-serif';
+  m.innerHTML = '<div style="background:#0d1117;border:1px solid #30363d;border-radius:16px;padding:24px 26px;max-width:340px;text-align:center;color:#e6edf3;box-shadow:0 20px 60px rgba(0,0,0,.6)">'
+    + '<div style="font-size:30px">🪁🔐</div>'
+    + '<div style="font-weight:700;font-size:18px;margin:6px 0 2px">A device wants to kite in</div>'
+    + '<div style="color:#8b949e;font-size:13.5px;margin-bottom:14px">Confirm this PIN matches the one on your other device, then approve. Nothing syncs until you do.</div>'
+    + '<div style="font:700 32px ui-monospace,Menlo,monospace;letter-spacing:6px;color:#79c0ff;background:#10151c;border:1px solid #30363d;border-radius:10px;padding:12px 0;margin-bottom:16px">' + _pinFmt(sas) + '</div>'
+    + '<div style="display:flex;gap:10px"><button id="pair-no" style="flex:1;background:#21262d;border:1px solid #30363d;color:#e6edf3;border-radius:9px;padding:10px;font-weight:600;cursor:pointer">Reject</button>'
+    + '<button id="pair-yes" style="flex:1;background:#238636;border:0;color:#fff;border-radius:9px;padding:10px;font-weight:700;cursor:pointer">Approve</button></div></div>';
+  document.body.appendChild(m);
+  m.querySelector('#pair-yes').onclick = () => { conn._approved = true; m.remove(); };
+  m.querySelector('#pair-no').onclick = () => { try { conn.close(); } catch (_) {} delete _hood.conns[conn.peer]; m.remove(); };
 }
 async function _hoodHandle(conn, raw) {
   let msg = raw, sealed = false;
@@ -6801,6 +6834,12 @@ async function _hoodHandle(conn, raw) {
       from_rappid: _myRappid(), to_rappid: msg.from_rappid, kind, envelope: msg, status, response };
     conn.send(sealed ? await _seal(_hood.opToken, out) : out);   // seal the reply too
   };
+  // PIN gate — a SEALED say/console isn't served until the human approved this line's PIN on the host.
+  if (sealed && (msg.kind === 'say' || msg.kind === 'console') && !conn._approved) {
+    if (!conn._pairing) { conn._pairing = true; _sasPin(_hood.opToken, _hood.id, conn.peer).then((s) => _pairPrompt(conn, s)).catch(() => {}); }
+    const sas = await _sasPin(_hood.opToken, _hood.id, conn.peer);
+    return respond(msg.kind, 409, { error: 'awaiting PIN approval on the host device', sas, pin: _pinFmt(sas), pending: true });
+  }
   if (msg.kind === 'say') {                     // route a neighbor's turn into our own brainstem
     let reply;
     try { reply = await window.rapp.chat({ user_input: (msg.payload && msg.payload.text) || '' }); }
@@ -6844,6 +6883,7 @@ window.rapp.neighborhood = {
     await _hoodEnsure();
     return new Promise((res, rej) => {
       const c = _hood.peer.connect(peerId);
+      c._outbound = true;                       // joiner side — show the PIN in the dial panel, not the host modal
       const t = setTimeout(() => rej(new Error('connect timeout')), 15000);
       c.on('open', () => { clearTimeout(t); _hoodWire(c); res({ connected: peerId }); });
       c.on('error', (e) => { clearTimeout(t); rej(e); });
@@ -6880,7 +6920,7 @@ window.rapp.neighborhood = {
     if (!secret) throw new Error('operate requires the session secret (E2E-sealed channel)');
     return this._send(peerId, 'console', { method, args: args || [] }, secret);
   },
-  _seal, _open, _channelKey,                    // exposed so the Node bridge + tests speak the same seal
+  _seal, _open, _channelKey, _sasPin,           // exposed so the Node bridge + tests speak the same seal
   onMessage(fn) { _hood.onmsg = fn; },
   id() { return _hood.id; },
   log() { return _hood.log; }
@@ -6971,17 +7011,30 @@ window.rapp.neighborhood = {
         + (who === 'me' ? 'align-self:flex-end;background:#1f6feb;color:#fff' : who === 'them' ? 'align-self:flex-start;background:#161b22;border:1px solid #30363d' : 'align-self:center;color:#8b949e;font-size:12px');
       d.textContent = text; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d; };
     bubble('sys', op ? '🔒 sealed channel — end-to-end encrypted (AES-256-GCM)' : 'plaintext channel');
-    window.rapp.neighborhood.join(peer).then(() => { st.textContent = op ? '🔒 connected' : 'connected'; })
-      .catch(e => { st.textContent = 'connect failed'; bubble('sys', 'connect failed: ' + (e && e.message || e)); });
-    async function go() {
-      const text = inp.value.trim(); if (!text) return; inp.value = '';
-      bubble('me', text); const pend = bubble('sys', '…');
-      try { const r = await window.rapp.neighborhood.ask(peer, text, op || undefined);
-        pend.remove();
+    let dialOK = !op;                          // sealed sessions are gated behind a PIN match + host approval
+    window.rapp.neighborhood.join(peer).then(async () => {
+      st.textContent = op ? '🔒 connected' : 'connected';
+      if (op) {                                // show the PIN to confirm against the host's screen
+        const sas = await window.rapp.neighborhood._sasPin(op, window.rapp.neighborhood.id(), peer);
+        const bar = document.createElement('div');
+        bar.style.cssText = 'padding:12px 14px;border-bottom:1px solid #21262d;text-align:center;background:#10151c';
+        bar.innerHTML = '<div style="color:#8b949e;font-size:12px;margin-bottom:6px">🔐 confirm this PIN matches your other device, then Approve there</div>'
+          + '<div style="font:700 26px ui-monospace,Menlo,monospace;letter-spacing:5px;color:#79c0ff">' + sas.slice(0, 3) + ' ' + sas.slice(3) + '</div>'
+          + '<button id="dial-match" style="margin-top:8px;background:#238636;border:0;color:#fff;border-radius:8px;padding:7px 16px;font-weight:600;cursor:pointer">It matches ✓</button>';
+        w.insertBefore(bar, msgs);
+        bar.querySelector('#dial-match').onclick = () => { dialOK = true; const b = bar.querySelector('#dial-match'); b.textContent = 'confirmed ✓'; b.disabled = true; b.style.background = '#21262d'; st.textContent = '🔒 confirmed'; };
+      }
+    }).catch(e => { st.textContent = 'connect failed'; bubble('sys', 'connect failed: ' + (e && e.message || e)); });
+    async function ask(text, spoken) {
+      if (!dialOK) { bubble('sys', '🔐 confirm the PIN matches (button above) and Approve on your other device before syncing'); return; }
+      bubble('me', text + (spoken ? '  🎤' : '')); const pend = bubble('sys', '…');
+      try { const r = await window.rapp.neighborhood.ask(peer, text, op || undefined); pend.remove();
+        if (r && r.status === 409) { bubble('sys', '⏳ ' + ((r.response && r.response.error) || 'waiting for approval on the host') + ((r.response && r.response.pin) ? ' (PIN ' + r.response.pin + ')' : '') + ' — Approve there, then send again'); return; }
         const resp = (r && r.response && (r.response.response !== undefined ? r.response.response : JSON.stringify(r.response)));
-        bubble('them', resp !== undefined ? resp : JSON.stringify(r));
+        bubble('them', resp !== undefined ? resp : JSON.stringify(r)); if (spoken && resp) speak(resp);
       } catch (e) { pend.remove(); bubble('sys', 'error: ' + (e && e.message || e)); }
     }
+    async function go() { const text = inp.value.trim(); if (!text) return; inp.value = ''; await ask(text, false); }
     send.onclick = go; inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
 
     // Hands-free (voice + gesture): raise your hand → mic ON (twin listening); lower your hand →
@@ -6994,12 +7047,7 @@ window.rapp.neighborhood = {
     hfBtn.onclick = async () => {
       if (hf) { hf.stop(); hf = null; hfBtn.style.background = '#21262d'; st.textContent = op ? '🔒 connected' : 'connected'; return; }
       try {
-        hf = await startHandsFree({ status: st, onUtterance: async (text) => {
-          bubble('me', text + '  🎤'); const pend = bubble('sys', '…');
-          try { const r = await window.rapp.neighborhood.ask(peer, text, op || undefined); pend.remove();
-            const resp = (r && r.response && (r.response.response !== undefined ? r.response.response : JSON.stringify(r.response)));
-            bubble('them', resp !== undefined ? resp : JSON.stringify(r)); if (resp) speak(resp);
-          } catch (e) { pend.remove(); bubble('sys', 'error: ' + (e && e.message || e)); } } });
+        hf = await startHandsFree({ status: st, onUtterance: (text) => ask(text, true) });
         hfBtn.style.background = '#238636';
       } catch (e) { hf = null; bubble('sys', 'hands-free unavailable: ' + (e && e.message || e)); }
     };
