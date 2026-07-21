@@ -563,12 +563,30 @@ async function main() {
     } else {
       skip('k', 'guided tour smoke', 'real mode runs the loose flight plan (a, c-e, i, j)');
     }
+
+    // l — Brainstem Studio (VS Code shell + Copilot Chat panel) (mock only)
+    if (!isReal) {
+      await step('l', 'studio: explorer tree + Monaco + Copilot Chat panel drives the brainstem', async () => {
+        await page.click('#vscode-link');
+        await page.waitForSelector('#vb-editor', { timeout: 15_000 });
+        await page.waitForFunction(() => (document.getElementById('vb-ed-tree')?.textContent || '').includes('soul.md'), null, { timeout: 15_000 });
+        const tree = await page.evaluate(() => document.getElementById('vb-ed-tree').textContent);
+        assert(/agents\//.test(tree) && tree.includes('soul.md'), 'explorer tree does not reflect the brainstem workspace');
+        assert(await page.evaluate(() => !!document.getElementById('vb-ed-chat-log')), 'no Copilot Chat panel');
+        // Drive the chat panel the way the brain surgeon would.
+        const reply = await page.evaluate(async () => await window.rapp.editor.send('hello from autopilot'));
+        assert(String(reply).includes('MOCK_LLM_OK'), `chat panel reply unexpected: ${String(reply).slice(0, 80)}`);
+        await page.evaluate(() => { document.getElementById('vb-ed-close').click(); });
+      });
+    } else {
+      skip('l', 'brainstem studio', 'real mode runs the loose flight plan (a, c-e, i, j)');
+    }
   } else {
     for (const [id, name] of [
       ['b', 'model auto-select'], ['c', 'plain chat'], ['d', 'memory write'],
       ['e', 'memory read'], ['f', 'agents panel'], ['g', 'drag-drop install'],
       ['h', 'reload persistence'], ['i', 'window.rapp contract'],
-      ['j', 'workspace export'], ['k', 'guided tour smoke'],
+      ['j', 'workspace export'], ['k', 'guided tour smoke'], ['l', 'brainstem studio'],
     ]) skip(id, name, 'boot (step a) failed');
   }
 

@@ -1114,8 +1114,17 @@
     }, 1200);
   });
 
-  // ── VS Code-style editor overlay (Monaco) ──────────────────────────────────
-  var editorState = { overlay: null, monaco: null, model: null, currentPath: null, dirty: false };
+  // ── VS Code-style workspace: activity bar + explorer + Monaco + Copilot Chat ─
+  // Monaco is the same editor engine VS Code ships. Around it we build the VS
+  // Code shell — an activity bar, a file tree over the real brainstem workspace,
+  // and a Copilot-Chat-style panel on the right wired to the brainstem's
+  // streaming /chat. The human talks to the brainstem there while editing; the
+  // "brain surgeon" (autopilot/rapp.editor.send) drives that same panel in the
+  // user's place — the browser twin of VS Code + GitHub Copilot Chat.
+  var editorState = {
+    overlay: null, monaco: null, editor: null, currentPath: null, dirty: false,
+    chatHistory: [], chatSession: null, chatBusy: false, view: 'explorer',
+  };
 
   function fsCall(op, path, content) {
     return workerCall({ type: 'fs', op: op, path: path || '', content: content }).then(function (msg) {
@@ -1141,90 +1150,218 @@
     });
   }
 
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  // Minimal, safe markdown for the chat panel (escape first, then format).
+  function chatMarkdown(text) {
+    var html = escapeHtml(text);
+    html = html.replace(/```([\s\S]*?)```/g, function (_m, code) {
+      return '<pre style="background:#1e1e1e;border:1px solid #333;border-radius:5px;padding:8px;overflow-x:auto;margin:6px 0"><code>' + code.trim() + '</code></pre>';
+    });
+    html = html.replace(/`([^`]+)`/g, '<code style="background:#333;border-radius:3px;padding:1px 4px">$1</code>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\n/g, '<br>');
+    return html;
+  }
+
   async function openEditor() {
-    if (editorState.overlay) { editorState.overlay.style.display = 'flex'; refreshTree(); return; }
+    if (editorState.overlay) {
+      editorState.overlay.style.display = 'flex';
+      refreshTree();
+      return editorState.overlay;
+    }
     var overlay = document.createElement('div');
     overlay.id = 'vb-editor';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9995;display:flex;flex-direction:column;' +
       'background:#1e1e1e;color:#cccccc;font:13px "Segoe UI",-apple-system,sans-serif';
     overlay.innerHTML =
-      '<div style="display:flex;align-items:center;gap:10px;background:#323233;padding:6px 12px;-webkit-app-region:drag">' +
-      '<span style="font-weight:600;color:#ccc">⌨ brainstem workspace — VS Code in your browser</span>' +
-      '<span id="vb-ed-dirty" style="color:#e2c08d"></span>' +
-      '<span style="flex:1"></span>' +
-      '<button id="vb-ed-save" style="background:#0e639c;color:#fff;border:0;border-radius:3px;padding:4px 14px;cursor:pointer">Save (Ctrl+S)</button>' +
-      '<button id="vb-ed-close" style="background:none;color:#ccc;border:0;font-size:18px;cursor:pointer">✕</button>' +
+      // Title bar
+      '<div style="display:flex;align-items:center;gap:10px;background:#323233;padding:6px 12px">' +
+        '<span style="font-weight:600;color:#ccc">🧠 rapp_brainstem — Brainstem Studio</span>' +
+        '<span id="vb-ed-dirty" style="color:#e2c08d"></span>' +
+        '<span style="flex:1"></span>' +
+        '<button id="vb-ed-save" style="background:#0e639c;color:#fff;border:0;border-radius:3px;padding:4px 14px;cursor:pointer">Save (Ctrl+S)</button>' +
+        '<button id="vb-ed-close" style="background:none;color:#ccc;border:0;font-size:18px;cursor:pointer" title="Close">✕</button>' +
       '</div>' +
+      // Body: activity bar | explorer | editor | chat
       '<div style="flex:1;display:flex;min-height:0">' +
-      '<div id="vb-ed-tree" style="width:230px;background:#252526;overflow-y:auto;padding:8px 0;border-right:1px solid #1b1b1b"></div>' +
-      '<div id="vb-ed-editor" style="flex:1;min-width:0"></div>' +
+        '<div id="vb-ed-activity" style="width:48px;background:#333333;display:flex;flex-direction:column;align-items:center;padding-top:8px;gap:4px;border-right:1px solid #1b1b1b">' +
+          '<button data-view="explorer" title="Explorer" style="background:none;border:0;border-left:2px solid #007acc;color:#fff;font-size:20px;cursor:pointer;padding:8px 6px;width:100%">🗂️</button>' +
+          '<button data-view="chat" title="Brainstem Chat" style="background:none;border:0;border-left:2px solid transparent;color:#858585;font-size:20px;cursor:pointer;padding:8px 6px;width:100%">💬</button>' +
+        '</div>' +
+        '<div id="vb-ed-explorer" style="width:240px;background:#252526;overflow-y:auto;border-right:1px solid #1b1b1b;display:flex;flex-direction:column">' +
+          '<div style="padding:8px 12px 4px;font-size:11px;letter-spacing:.6px;color:#bbbbbb;text-transform:uppercase;display:flex;align-items:center">Explorer' +
+            '<span style="flex:1"></span>' +
+            '<button id="vb-ed-new" title="New agent" style="background:none;border:0;color:#ccc;cursor:pointer;font-size:15px">＋</button></div>' +
+          '<div style="padding:2px 12px 8px;font-size:11px;font-weight:700;color:#cccccc">RAPP_BRAINSTEM</div>' +
+          '<div id="vb-ed-tree" style="flex:1;overflow-y:auto;padding-bottom:8px"></div>' +
+        '</div>' +
+        '<div style="flex:1;min-width:0;display:flex;flex-direction:column">' +
+          '<div id="vb-ed-tab" style="height:32px;background:#2d2d2d;display:flex;align-items:center;padding:0 12px;font-size:12px;color:#cccccc;border-bottom:1px solid #1b1b1b">No file open</div>' +
+          '<div id="vb-ed-editor" style="flex:1;min-width:0"></div>' +
+        '</div>' +
+        // Copilot-Chat-style panel
+        '<div id="vb-ed-chat" style="width:380px;min-width:280px;background:#1e1e1e;border-left:1px solid #1b1b1b;display:flex;flex-direction:column">' +
+          '<div style="padding:10px 14px;border-bottom:1px solid #2b2b2b;display:flex;align-items:center;gap:8px">' +
+            '<span style="font-size:16px">🧠</span><b style="color:#eaeaea">Brainstem Chat</b>' +
+            '<span style="flex:1"></span>' +
+            '<button id="vb-ed-chat-clear" title="Clear chat" style="background:none;border:0;color:#858585;cursor:pointer;font-size:13px">Clear</button></div>' +
+          '<div id="vb-ed-chat-log" style="flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px"></div>' +
+          '<div style="padding:10px 12px;border-top:1px solid #2b2b2b">' +
+            '<div style="display:flex;gap:8px;align-items:flex-end">' +
+              '<textarea id="vb-ed-chat-input" rows="1" placeholder="Ask your brainstem…" style="flex:1;resize:none;max-height:120px;background:#2d2d2d;color:#eaeaea;border:1px solid #3c3c3c;border-radius:6px;padding:8px 10px;font:13px inherit;outline:none"></textarea>' +
+              '<button id="vb-ed-chat-send" style="background:#0e639c;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Send</button>' +
+            '</div>' +
+            '<div style="color:#6a6a6a;font-size:11px;margin-top:6px">Talks to this brainstem — the same engine as the main chat. Save an agent, then ask it here.</div>' +
+          '</div>' +
+        '</div>' +
       '</div>' +
-      '<div style="background:#007acc;color:#fff;padding:2px 12px;font-size:12px;display:flex;gap:16px">' +
-      '<span>🧠 RAPP Brainstem — browser edition</span><span id="vb-ed-path"></span>' +
-      '<span style="flex:1"></span><span>Agents hot-reload on every chat — save and just ask.</span></div>';
+      // Status bar
+      '<div style="background:#007acc;color:#fff;padding:2px 12px;font-size:12px;display:flex;gap:16px;align-items:center">' +
+        '<span>🧠 RAPP Brainstem — browser edition</span><span id="vb-ed-path"></span>' +
+        '<span style="flex:1"></span><span>Agents hot-reload on every message — save and just ask.</span></div>';
     document.body.appendChild(overlay);
     editorState.overlay = overlay;
 
     overlay.querySelector('#vb-ed-close').onclick = function () { overlay.style.display = 'none'; };
     overlay.querySelector('#vb-ed-save').onclick = saveCurrent;
+    overlay.querySelector('#vb-ed-new').onclick = newAgentFile;
+    overlay.querySelector('#vb-ed-chat-clear').onclick = function () {
+      editorState.chatHistory = [];
+      editorState.chatSession = null;
+      renderChatLog();
+    };
     overlay.addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveCurrent(); }
     });
 
+    // Activity bar: on narrow widths, collapse the explorer or chat.
+    Array.prototype.forEach.call(overlay.querySelectorAll('#vb-ed-activity button'), function (btn) {
+      btn.onclick = function () { setEditorView(btn.getAttribute('data-view')); };
+    });
+
+    // Chat input wiring
+    var chatInput = overlay.querySelector('#vb-ed-chat-input');
+    chatInput.addEventListener('input', function () {
+      chatInput.style.height = 'auto';
+      chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+    });
+    chatInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); triggerEditorChat(); }
+    });
+    overlay.querySelector('#vb-ed-chat-send').onclick = triggerEditorChat;
+
+    renderChatLog();
     await refreshTree();
     try {
       var monaco = await loadMonaco();
       editorState.editor = monaco.editor.create(overlay.querySelector('#vb-ed-editor'), {
         theme: 'vs-dark', automaticLayout: true, fontSize: 13,
-        minimap: { enabled: true }, value: '# Select a file on the left.\n', language: 'python',
+        minimap: { enabled: true }, value: '# Select a file on the left, or ask the brainstem on the right to build one.\n', language: 'python',
       });
       editorState.editor.onDidChangeModelContent(function () {
         editorState.dirty = true;
-        overlay.querySelector('#vb-ed-dirty').textContent = '●';
+        overlay.querySelector('#vb-ed-dirty').textContent = '● unsaved';
       });
     } catch (e) {
       var ta = document.createElement('textarea');
       ta.id = 'vb-ed-fallback';
       ta.style.cssText = 'width:100%;height:100%;background:#1e1e1e;color:#ccc;border:0;' +
         'font:13px "SF Mono",Consolas,monospace;padding:12px;resize:none;outline:none';
-      ta.oninput = function () { editorState.dirty = true; overlay.querySelector('#vb-ed-dirty').textContent = '●'; };
+      ta.oninput = function () { editorState.dirty = true; overlay.querySelector('#vb-ed-dirty').textContent = '● unsaved'; };
       overlay.querySelector('#vb-ed-editor').appendChild(ta);
     }
     var files = await fsCall('list');
-    var first = files.find(function (f) { return f === 'soul.md'; }) || files[0];
-    if (first) openFile(first);
+    var first = files.indexOf('soul.md') !== -1 ? 'soul.md' : files[0];
+    if (first) await openFile(first);
+    setEditorView('explorer');
+    return overlay;
+  }
+
+  function setEditorView(view) {
+    editorState.view = view;
+    var overlay = editorState.overlay;
+    if (!overlay) return;
+    var narrow = window.innerWidth < 900;
+    // On wide screens both explorer and chat stay visible; the activity bar just
+    // scrolls the requested one into focus. On narrow screens, toggle.
+    if (narrow) {
+      overlay.querySelector('#vb-ed-explorer').style.display = view === 'explorer' ? 'flex' : 'none';
+      overlay.querySelector('#vb-ed-chat').style.display = view === 'chat' ? 'flex' : 'none';
+    } else {
+      overlay.querySelector('#vb-ed-explorer').style.display = 'flex';
+      overlay.querySelector('#vb-ed-chat').style.display = 'flex';
+      if (view === 'chat') overlay.querySelector('#vb-ed-chat-input').focus();
+    }
+    Array.prototype.forEach.call(overlay.querySelectorAll('#vb-ed-activity button'), function (btn) {
+      var active = btn.getAttribute('data-view') === view;
+      btn.style.borderLeftColor = active ? '#007acc' : 'transparent';
+      btn.style.color = active ? '#fff' : '#858585';
+    });
+  }
+
+  async function newAgentFile() {
+    var name = prompt('New agent filename (must end in _agent.py):', 'my_new_agent.py');
+    if (!name) return;
+    if (!/_agent\.py$/.test(name)) name = name.replace(/\.py$/, '') + '_agent.py';
+    var stem = name.replace(/_agent\.py$/, '');
+    var cls = stem.replace(/(^|_)(\w)/g, function (_m, _s, c) { return c.toUpperCase(); }) + 'Agent';
+    await fsCall('write', 'agents/' + name,
+      'from agents.basic_agent import BasicAgent\n\n\nclass ' + cls + '(BasicAgent):\n' +
+      '    def __init__(self):\n        self.name = "' + stem.replace(/_/g, ' ').replace(/(^|\s)\w/g, function (m) { return m.toUpperCase(); }).replace(/\s/g, '') + '"\n        self.metadata = {\n' +
+      '            "name": self.name,\n            "description": "Describe when the AI should call this agent.",\n' +
+      '            "parameters": {"type": "object", "properties": {}, "required": []}\n        }\n' +
+      '        super().__init__(name=self.name, metadata=self.metadata)\n\n' +
+      '    def perform(self, **kwargs):\n        return "Hello from your new agent!"\n');
+    await refreshTree();
+    openFile('agents/' + name);
+  }
+
+  function fileIcon(name) {
+    if (/\.py$/.test(name)) return '🐍';
+    if (/\.md$/.test(name)) return '📝';
+    if (/\.json$/.test(name)) return '⚙️';
+    return '📄';
   }
 
   async function refreshTree() {
     var tree = editorState.overlay.querySelector('#vb-ed-tree');
     var files = await fsCall('list');
-    tree.innerHTML = '';
-    var newBtn = document.createElement('div');
-    newBtn.textContent = '＋ New agent…';
-    newBtn.style.cssText = 'padding:4px 16px;cursor:pointer;color:#75beff';
-    newBtn.onclick = async function () {
-      var name = prompt('New agent filename (must end in _agent.py):', 'my_new_agent.py');
-      if (!name) return;
-      if (!/_agent\.py$/.test(name)) name = name.replace(/\.py$/, '') + '_agent.py';
-      await fsCall('write', 'agents/' + name,
-        'from agents.basic_agent import BasicAgent\n\n\nclass MyNewAgent(BasicAgent):\n' +
-        '    def __init__(self):\n        self.name = "MyNew"\n        self.metadata = {\n' +
-        '            "name": self.name,\n            "description": "Describe when the AI should call this agent.",\n' +
-        '            "parameters": {"type": "object", "properties": {}, "required": []}\n        }\n' +
-        '        super().__init__(name=self.name, metadata=self.metadata)\n\n' +
-        '    def perform(self, **kwargs):\n        return "Hello from your new agent!"\n');
-      await refreshTree();
-      openFile('agents/' + name);
-    };
-    tree.appendChild(newBtn);
+    // Group into folders + root files so the tree reads like the on-device
+    // rapp_brainstem layout (agents/ folder, soul.md, engine files).
+    var folders = {};
+    var rootFiles = [];
     files.forEach(function (f) {
-      var row = document.createElement('div');
-      row.textContent = (f.endsWith('.py') ? '🐍 ' : '📄 ') + f;
-      row.style.cssText = 'padding:4px 16px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' +
-        (f === editorState.currentPath ? ';background:#37373d;color:#fff' : '');
-      row.onclick = function () { openFile(f); };
-      tree.appendChild(row);
+      var slash = f.indexOf('/');
+      if (slash === -1) rootFiles.push(f);
+      else {
+        var dir = f.slice(0, slash);
+        (folders[dir] = folders[dir] || []).push(f);
+      }
     });
+    tree.innerHTML = '';
+    function row(label, icon, fullpath, depth, isFolder) {
+      var el = document.createElement('div');
+      el.textContent = icon + ' ' + label;
+      el.style.cssText = 'padding:3px 8px 3px ' + (10 + depth * 14) + 'px;cursor:pointer;' +
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px' +
+        (fullpath === editorState.currentPath ? ';background:#37373d;color:#fff' : ';color:#cccccc');
+      if (!isFolder) el.onclick = function () { openFile(fullpath); };
+      tree.appendChild(el);
+      return el;
+    }
+    // Folders first (agents/ etc.), then root files — matching VS Code ordering.
+    Object.keys(folders).sort().forEach(function (dir) {
+      row(dir + '/', '📁', null, 0, true);
+      folders[dir].sort().forEach(function (f) {
+        row(f.slice(dir.length + 1), fileIcon(f), f, 1, false);
+      });
+    });
+    rootFiles.sort().forEach(function (f) { row(f, fileIcon(f), f, 0, false); });
   }
 
   async function openFile(path) {
@@ -1233,6 +1370,7 @@
     editorState.dirty = false;
     editorState.overlay.querySelector('#vb-ed-dirty').textContent = '';
     editorState.overlay.querySelector('#vb-ed-path').textContent = '/brainstem/' + path;
+    editorState.overlay.querySelector('#vb-ed-tab').textContent = fileIcon(path) + ' ' + path;
     var lang = path.endsWith('.py') ? 'python' : (path.endsWith('.md') ? 'markdown' : 'plaintext');
     if (editorState.editor && editorState.monaco) {
       var model = editorState.monaco.editor.createModel(data.content, lang);
@@ -1255,11 +1393,138 @@
     editorState.overlay.querySelector('#vb-ed-dirty').textContent = '';
   }
 
+  // ── Copilot-Chat panel: streams the brainstem's /chat/stream ──────────────
+  function renderChatLog() {
+    var log = editorState.overlay && editorState.overlay.querySelector('#vb-ed-chat-log');
+    if (!log) return;
+    if (!editorState.chatHistory.length) {
+      log.innerHTML = '<div style="color:#8a8a8a;font-size:12px;line-height:1.6">' +
+        'Ask your brainstem anything, or have it build an agent for you —<br>' +
+        '<em>"make an agent that reverses a string"</em>, <em>"what agents do I have?"</em>, ' +
+        '<em>"remember my name is Ada"</em>.<br><br>' +
+        'Same memory and agents as the main chat. This is where the <b>brain surgeon</b> ' +
+        'drives your brainstem in your place.</div>';
+      return;
+    }
+    log.innerHTML = '';
+    editorState.chatHistory.forEach(function (m) {
+      var wrap = document.createElement('div');
+      var isUser = m.role === 'user';
+      wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px' + (isUser ? ';align-items:flex-end' : '');
+      var who = document.createElement('div');
+      who.textContent = isUser ? 'You' : '🧠 Brainstem';
+      who.style.cssText = 'font-size:11px;color:#8a8a8a';
+      var bubble = document.createElement('div');
+      bubble.style.cssText = 'max-width:92%;padding:8px 11px;border-radius:8px;font-size:13px;line-height:1.5;' +
+        (isUser ? 'background:#0e639c;color:#fff' : 'background:#2d2d2d;color:#eaeaea');
+      if (isUser) bubble.textContent = m.content;
+      else bubble.innerHTML = chatMarkdown(m.content || '…');
+      wrap.appendChild(who);
+      wrap.appendChild(bubble);
+      if (!isUser && m.logs) {
+        var logsEl = document.createElement('div');
+        logsEl.style.cssText = 'font-size:11px;color:#7ee787;background:#161b22;border-radius:6px;padding:6px 9px;max-width:92%;white-space:pre-wrap;overflow-x:auto';
+        logsEl.textContent = m.logs;
+        wrap.appendChild(logsEl);
+      }
+      log.appendChild(wrap);
+    });
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function triggerEditorChat() {
+    var input = editorState.overlay.querySelector('#vb-ed-chat-input');
+    var text = (input.value || '').trim();
+    if (!text) return;
+    input.value = '';
+    input.style.height = 'auto';
+    editorChatSend(text);
+  }
+
+  // Sends to the brainstem's streaming /chat and renders the reply. Returns the
+  // final reply text (so the brain surgeon / autopilot can await it).
+  async function editorChatSend(text) {
+    if (editorState.chatBusy) return;
+    editorState.chatBusy = true;
+    var sendBtn = editorState.overlay.querySelector('#vb-ed-chat-send');
+    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '…'; }
+    editorState.chatHistory.push({ role: 'user', content: text });
+    var reply = { role: 'assistant', content: '', logs: '' };
+    editorState.chatHistory.push(reply);
+    renderChatLog();
+
+    var history = editorState.chatHistory
+      .slice(0, -1)
+      .filter(function (m) { return m.role === 'user' || (m.role === 'assistant' && m.content); })
+      .map(function (m) { return { role: m.role, content: m.content }; });
+
+    try {
+      var resp = await window.fetch('/chat/stream', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_input: text,
+          conversation_history: history.slice(0, -1),
+          session_id: editorState.chatSession,
+        }),
+      });
+      if (!resp.ok || !resp.body) {
+        var errBody = await resp.json().catch(function () { return {}; });
+        throw new Error(errBody.error || ('chat error ' + resp.status));
+      }
+      var readerRdr = resp.body.getReader();
+      var decoder = new TextDecoder();
+      var buf = '';
+      while (true) {
+        var chunk = await readerRdr.read();
+        if (chunk.done) break;
+        buf += decoder.decode(chunk.value, { stream: true });
+        var frames = buf.split('\n\n');
+        buf = frames.pop();
+        for (var i = 0; i < frames.length; i++) {
+          var line = frames[i].split('\n').find(function (l) { return l.indexOf('data:') === 0; });
+          if (!line) continue;
+          var evt;
+          try { evt = JSON.parse(line.slice(5).trim()); } catch (e) { continue; }
+          if (evt.type === 'delta') { reply.content += evt.text; renderChatLog(); }
+          else if (evt.type === 'agent') { reply.logs = evt.logs; renderChatLog(); }
+          else if (evt.type === 'done') {
+            if (evt.response != null && evt.response !== '') reply.content = evt.response;
+            if (evt.agent_logs) reply.logs = evt.agent_logs;
+            if (evt.session_id) editorState.chatSession = evt.session_id;
+            renderChatLog();
+          } else if (evt.type === 'error') {
+            reply.content = evt.error || 'The brainstem hit an error.';
+            renderChatLog();
+          }
+        }
+      }
+      if (!reply.content) reply.content = '(no response)';
+    } catch (e) {
+      reply.content = 'Error: ' + (e.message || e);
+    } finally {
+      editorState.chatBusy = false;
+      if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+      renderChatLog();
+      // An agent the brainstem just wrote/hot-loaded should show up in the tree.
+      refreshTree();
+    }
+    return reply.content;
+  }
+
   window.__vbrainstem = {
     ready: ready,
     worker: worker,
     info: function () { return bootInfo; },
     fs: fsCall,
     openEditor: openEditor,
+    editorChat: function (text) { return openEditor().then(function () { return editorChatSend(text); }); },
+  };
+
+  // Expose the editor's Copilot-Chat surface on rapp so the brain surgeon can
+  // drive it in the user's place, mirroring rapp.ui.send for the main chat.
+  window.rapp.editor = function () { return openEditor(); };
+  window.rapp.editor.open = function () { return openEditor(); };
+  window.rapp.editor.send = function (text) {
+    return openEditor().then(function () { return editorChatSend(text); });
   };
 })();

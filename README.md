@@ -34,7 +34,7 @@ they never touch any third-party server. `brainstem_web.py` honors env overrides
 | File | Role |
 |------|------|
 | `index.html` | The local brainstem UI, verbatim, + the vBrainstem boot block |
-| `vbrainstem-boot.js` | Page-side bridge: fetch interception, SSE bridging, `window.rapp`, Monaco editor, deep links |
+| `vbrainstem-boot.js` | Page-side bridge: fetch interception, SSE bridging, `window.rapp`, Brainstem Studio (VS Code shell + Copilot Chat), deep links |
 | `vbrainstem-worker.js` | Pyodide host Web Worker: boots Python, runs the micropip pre-pass, dispatches requests |
 | `brainstem_web.py` | The brainstem itself — faithful port of `rapp_brainstem/brainstem.py` v0.6.16 |
 | `local_storage.py` | Same storage shim as the local brainstem (`.brainstem_data/` under MEMFS) |
@@ -96,13 +96,25 @@ It installs the on-device brainstem, imports the freshest workspace zip from
 Downloads, and opens `localhost:7071` — every agent and memory carried over.
 Credentials never leave the browser; you sign in fresh on the machine.
 
-## VS Code in your browser
+## Brainstem Studio — VS Code + Copilot Chat, in the browser
 
-The header's **Open in VS Code** button (the same one the local UI has) opens a
-Monaco editor overlay over the live virtual workspace — `agents/`, `soul.md`.
-Save an agent file and it hot-loads on the next message, exactly like editing
-`agents/` on disk with the local brainstem: agents are re-discovered every
-request, no restart.
+The header's **Open in VS Code** button opens **Brainstem Studio**: the VS Code
+shell built around Monaco (the same editor engine VS Code ships), over the live
+virtual workspace.
+
+- **Activity bar + Explorer** — a file tree that reflects the on-device
+  `rapp_brainstem` layout (`agents/` folder, `soul.md`, the engine files). Save
+  an agent and it hot-loads on the next message — agents are re-discovered every
+  request, no restart, exactly like editing `agents/` on disk.
+- **Copilot Chat panel (right side)** — a chat docked next to the editor, wired
+  to the brainstem's streaming `/chat`. The human talks to the brainstem here
+  while editing; the **brain surgeon** drives that same panel in the user's
+  place via `rapp.editor.send("…")` — the browser twin of VS Code + GitHub
+  Copilot Chat. It shares the same memory and agents as the main chat, and an
+  agent the brainstem writes shows up in the Explorer immediately.
+
+Full VS Code in the browser (code-server / vscode.dev) can't reach the in-page
+Pyodide brainstem, so the Studio wires the VS Code shell directly to it instead.
 
 ## The guide
 
