@@ -1,0 +1,54 @@
+name: vbrainstem-autopilot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - brainstem_web.py
+      - vbrainstem-*.js
+      - agents/**
+      - tools/autopilot/**
+      - .github/workflows/vbrainstem-autopilot.yml
+  pull_request:
+    paths:
+      - index.html
+      - brainstem_web.py
+      - vbrainstem-*.js
+      - agents/**
+      - tools/autopilot/**
+      - .github/workflows/vbrainstem-autopilot.yml
+  workflow_dispatch:
+
+jobs:
+  autopilot:
+    name: brain surgeon (mock flight plan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install harness dependencies
+        working-directory: tools/autopilot
+        run: npm install
+
+      - name: Install Playwright Chromium
+        working-directory: tools/autopilot
+        run: npx playwright install --with-deps chromium
+
+      - name: Fly the mock flight plan (steps a-k)
+        working-directory: tools/autopilot
+        run: node autopilot.mjs --mock
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autopilot-screenshots
+          path: tools/autopilot/artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

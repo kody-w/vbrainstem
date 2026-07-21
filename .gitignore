@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.brainstem_data/
+.copilot_*
+.brainstem_model
+.brainstem_book.json
+.brainstem_secret
+.rapp_console/
+.vb_seeded
+voice.zip

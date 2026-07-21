@@ -1,0 +1,12 @@
+{
+  "name": "vbrainstem-autopilot",
+  "private": true,
+  "type": "module",
+  "description": "Brain-surgeon harness: drives the vbrainstem UI in a real browser exactly like a person.",
+  "scripts": {
+    "autopilot": "node autopilot.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

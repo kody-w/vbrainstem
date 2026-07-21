@@ -1,18 +1,140 @@
 # vBrainstem
 
-Browser-native runtime for [RAPP](https://github.com/kody-w/RAR) agents. Open the
-page and run any single-file RAPP agent **in your browser** — real CPython via
-[Pyodide](https://pyodide.org), no install, no server.
+**The RAPP Brainstem, running 100% in your browser.** Same engine, same UI, same
+guided tour ("The First Interview") as the on-device brainstem — real CPython via
+[Pyodide](https://pyodide.org), zero install, no admin rights. This is the
+zero-friction install: open the page and you are running a brainstem.
 
 **Live:** https://kody-w.github.io/vbrainstem/
 
 **Doorman guide:** https://kody-w.github.io/vbrainstem/guide.html — set up Claude as the sealed
 **doorman** to any machine's brainstem (WebRTC + kite tethers, kited twins, end-to-end AES-256-GCM).
 
-This is a standalone host for the RAPP Brainstem, kept **outside** the
-[RAR](https://github.com/kody-w/RAR) registry repo so it can be linked and embedded
-independently (e.g. from Grail trading-card QR codes). The agent **registry stays in
-RAR** — this app reads it live, so RAR remains the single source of truth.
+## How it works
+
+`index.html` is the local brainstem UI (`rapp_brainstem/index.html`) copied
+**verbatim**, plus one boot block injected after `<title>`. The boot block loads
+`vbrainstem-boot.js`, which patches `window.fetch` so every same-origin brainstem
+route (`/chat`, `/health`, `/agents`, `/login`, `/models`, ...) is dispatched to
+`brainstem_web.py` — a faithful, route-for-route port of
+`rapp_brainstem/brainstem.py` **v0.6.16** — running in Pyodide inside a Web
+Worker. The disk is Pyodide MEMFS persisted to IndexedDB (IDBFS), so agents,
+soul.md and memories survive reloads.
+
+Auth: GitHub device-code sign-in goes through the CORS proxy worker
+`https://rapp-auth.kwildfeuer.workers.dev` (github.com sends no CORS headers).
+After that, the Copilot token exchange (`api.github.com/copilot_internal/v2/token`)
+and chat completions (`api.individual.githubcopilot.com`) go **direct** to
+GitHub — both endpoints send `Access-Control-Allow-Origin: *` (empirically
+verified). Tokens live in `localStorage` (`vb_gh_token`) and the worker's MEMFS;
+they never touch any third-party server. `brainstem_web.py` honors env overrides
+(`GITHUB_TOKEN`, `COPILOT_TOKEN_URL`, `VB_AUTH_WORKER`) seeded from the
+`localStorage` key `vb_env` (a JSON object).
+
+| File | Role |
+|------|------|
+| `index.html` | The local brainstem UI, verbatim, + the vBrainstem boot block |
+| `vbrainstem-boot.js` | Page-side bridge: fetch interception, SSE bridging, `window.rapp`, Monaco editor, deep links |
+| `vbrainstem-worker.js` | Pyodide host Web Worker: boots Python, runs the micropip pre-pass, dispatches requests |
+| `brainstem_web.py` | The brainstem itself — faithful port of `rapp_brainstem/brainstem.py` v0.6.16 |
+| `local_storage.py` | Same storage shim as the local brainstem (`.brainstem_data/` under MEMFS) |
+| `agents/` | Starter agents (`basic_agent.py`, memory agents); user agents land here too |
+| `soul.md` | System prompt — knows it is in a browser and when to offer the tether |
+| `VERSION` | Parity version (matches the local brainstem release it ports) |
+| `rapp-guide.html` | The 14-step RAPP production guide, wired to the in-browser chat |
+| `tether.ps1` / `tether.sh` | One-command move to the on-device brainstem (see below) |
+| `tools/autopilot/` | Browser-driving test harness (see below) |
+
+## Exact parity
+
+The route contract is identical to the local server:
+
+| Route | Status |
+|-------|--------|
+| `POST /chat` | identical — agents, tool-calling loop, memory injection |
+| `POST /chat/stream` | SSE, via the local server's own documented non-streaming fallback (whole-round deltas, `"streamed": false`) |
+| `GET /health` | identical |
+| `POST /login`, `/login/poll`, `GET /login/status`, `POST /login/switch`, `/login/retry` | identical shapes; device-code start/poll rides the rapp-auth worker |
+| `GET /models`, `POST /models/set` | identical (including `auto` selection) |
+| `GET /agents`, `POST /agents/import`, `GET /agents/export/<f>`, `DELETE /agents/<f>` | identical — drag-drop import, hot reload every request |
+| `GET/POST /voice*` | identical |
+| `GET /diagnostics`, `/diagnostics/book.json`, `POST /diagnostics/clear`, `/diagnostics/report`, `GET /version`, `GET /debug/auth` | identical |
+| `GET /workspace/export` | browser-only addition — workspace zip for the tether |
+
+Deliberate browser deltas, all minimal:
+
+- **Streaming** — buffered XHR can't expose partial bodies without cross-origin
+  isolation, so `/chat/stream` takes the same non-streaming fallback path the
+  local server documents, marking frames `"streamed": false`. The UI's streaming
+  renderer, agent-log events and abort handling work unchanged.
+- **Device-code auth** — start/poll goes through the rapp-auth worker; everything
+  after that is direct to GitHub.
+- **No `gh` CLI link** in the auth chain (no subprocess in the sandbox).
+- **pip auto-install** — served by an async micropip pre-pass in the worker
+  before each dispatch, instead of `pip install` at agent import time.
+- **No LAN mode** / Host checks (a browser tab has no LAN surface).
+
+## The Brainstem Tether
+
+When you outgrow the sandbox — agents that shell out, raw sockets, local files,
+CORS-hostile APIs — you don't start over. Ask the in-browser brainstem to
+**"download my workspace"** (or hit `GET /workspace/export`); it saves
+`brainstem-workspace-YYYY-MM-DD.zip` — your `agents/*.py`, `soul.md` and
+`.brainstem_data/` memories, **no tokens** — into Downloads. Then run one command:
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/kody-w/vbrainstem/main/tether.ps1 | iex
+```
+
+**Mac/Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/kody-w/vbrainstem/main/tether.sh | bash
+```
+
+It installs the on-device brainstem, imports the freshest workspace zip from
+Downloads, and opens `localhost:7071` — every agent and memory carried over.
+Credentials never leave the browser; you sign in fresh on the machine.
+
+## VS Code in your browser
+
+The header's **Open in VS Code** button (the same one the local UI has) opens a
+Monaco editor overlay over the live virtual workspace — `agents/`, `soul.md`.
+Save an agent file and it hot-loads on the next message, exactly like editing
+`agents/` on disk with the local brainstem: agents are re-discovered every
+request, no restart.
+
+## The guide
+
+`rapp-guide.html` is the 14-step RAPP production methodology — the same guide
+the AIBAST library ships — with every interview-loop prompt wired directly to
+the in-browser chat. Click a prompt in the guide and the brainstem runs it.
+
+## Autopilot (the brain surgeon)
+
+`tools/autopilot/` drives the page like a person: boots it in a real browser,
+signs in, chats, imports agents, and asserts on what the UI shows.
+
+- **Mock-LLM mode** (default, used in CI) — no token needed, deterministic.
+- **`--real`** — run the same script against the live Copilot API with your own token.
+- **`--base http://localhost:7071`** — point the identical assertions at an
+  on-device brainstem, side by side. If autopilot passes against both, parity holds.
+
+It also verifies the structural invariant that `index.html` is the local UI
+verbatim plus the boot block after `<title>`.
+
+## Updating `index.html` from the local brainstem
+
+Do **not** hand-edit the UI here. When `rapp_brainstem/index.html` changes:
+
+1. Re-copy `rapp_brainstem/index.html` over `index.html` verbatim.
+2. Re-add the vBrainstem boot block (the `<template id="vb-kite-mark">` +
+   `<script src="./vbrainstem-boot.js">` block, delimited by its banner
+   comments) immediately after the `<title>` line.
+
+That boot block is the **only** divergence from the local UI —
+`tools/autopilot` verifies this property, and `brainstem-ui-reference.html`
+holds the pristine local copy for diffing.
 
 ## Headless SDK — drive agents through a port (`vbrainstem_sdk.py`)
 
@@ -51,49 +173,27 @@ await rapp.eval('import sys; print(sys.version)')                            // 
 
 So `vbrainstem_sdk.py` (headless CPython) and the browser tab (Pyodide) are **one API contract** — identical request/response shapes, two runtimes.
 
-## UI
-
-`index.html` opens as a landing page styled to mirror
-[kody-w/rapp-installer](https://kody-w.github.io/rapp-installer/): a 🧠 hero, a
-terminal widget that shows the **real** in-browser boot (LisPy VM → registry →
-Pyodide), three explainer cards, and a **Launch** button that drops into the chat
-runtime. Arriving with an `?agent=` deep-link skips the landing and opens chat
-directly.
-
-## Files
-
-| File | Role |
-|------|------|
-| `index.html` | The app — landing → Launch → chat. Accepts `?agent=@publisher/slug` deep-links (QR / Grail), which bypass the landing. |
-| `virtual-brainstem-summon.html` | Identical to `index.html` (canonical named path). |
-| `virtual-brainstem.html` | **Classic UI** — same engine, straight to chat, no landing. Linked from the landing footer. |
-
-## Deep links
+## Deep links and share links
 
 ```
 https://kody-w.github.io/vbrainstem/?agent=@kody/registry_client_agent
 ```
 
-Opens the brainstem with that agent summoned and ready to run (landing skipped).
+Opens the brainstem with that agent summoned from the live
+[RAR](https://github.com/kody-w/RAR) registry
+(`https://raw.githubusercontent.com/kody-w/RAR/main/registry.json` — RAR stays
+the single source of truth; the registry panel reads it live).
 
-## Where the agents come from
+`share.html` renders an agent shared as a link — the full source rides inside
+the URL after `#a=…`, nothing server-side. Drag it into a vBrainstem to
+install, scan the QR, or open it directly. `#prompt=` prefills also work; every
+previously shared URL keeps working.
 
-The app fetches the live registry and agent source straight from RAR:
+## Classic pages
 
-- Registry — `https://raw.githubusercontent.com/kody-w/RAR/main/registry.json`
-- Agent source — `https://raw.githubusercontent.com/kody-w/RAR/main/agents/…`
-
-## Engine vs. UI (syncing)
-
-The **engine** (the big `<script>`: LisPy interpreter, Python→JS transpiler, VFS,
-Pyodide execution, chat, GitHub auth, summon) is mirrored from RAR's
-`virtual-brainstem*.html`. The **landing UI** (`#landingView` markup + the `lp-*`
-CSS + the boot wiring in `init()`) and the absolute "Back to RAPP" link are
-**specific to this repo** and do **not** exist in RAR.
-
-> ⚠️ Do **not** blindly re-copy `index.html` from RAR — that would wipe the landing.
-> When the engine changes in RAR, port the `<script>` changes in by hand and keep the
-> landing markup + `lp-*` styles. (`virtual-brainstem.html` is the closest to RAR's.)
+`virtual-brainstem.html` and `virtual-brainstem-summon.html` are the previous
+generation (LisPy VM + transpiler engine) and remain available unchanged.
+`kited-demo.html` and `brainstem_bridge.html` are likewise still served.
 
 ## Neighborhood, kited twins & the sealed channel
 
@@ -149,6 +249,22 @@ goes over the sealed channel, where key-possession *is* the authorization.
 | `doorman.skill.md` | feed its **raw URL** to a fresh Claude on another machine → it sets up and guards a sealed door to *that* machine's brainstem (Claude as the "doorman") |
 | `doorman_selftest.sh` | one command that **proves** a machine can be a sealed doorman (hosts the bridge, drives it from a separate sealed peer, asserts the real brainstem answered) |
 
+### Canon-tools mirror (byte-identity, CI-enforced)
+
+These working copies must stay byte-identical to their canonical repos — the
+`canon-tools` workflow fails CI on any drift. Sync them from upstream; never
+edit them here:
+
+| Working copy | Canonical source |
+|--------------|------------------|
+| `doorman.skill.md` | `kody-w/rapp-doorman` |
+| `doorman_selftest.sh` | `kody-w/rapp-doorman` |
+| `vbrainstem_sdk.py` | `kody-w/rapp-brainstem-sdk` |
+| `vbridge.sh` | `kody-w/rapp-kite` |
+| `kited_twin.js` | `kody-w/rapp-kite` |
+| `kite_vtwin.js` | `kody-w/rapp-kite` |
+| `claude_bridge.js` | `kody-w/rapp-kite` |
+
 ## License
 
-MIT © Kody Wildfeuer. Engine mirrored from [kody-w/RAR](https://github.com/kody-w/RAR).
+MIT © Kody Wildfeuer. Brainstem engine ported from [rapp_brainstem](https://github.com/kody-w/rapp-installer); agent registry from [kody-w/RAR](https://github.com/kody-w/RAR).
