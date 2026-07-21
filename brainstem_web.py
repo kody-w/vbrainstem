@@ -975,14 +975,50 @@ def start_device_code_login(force_new=False):
     _invalidate_copilot_token()
     _clear_no_copilot()
 
-    resp = requests.post(
-        f"{AUTH_WORKER}/api/auth/device",
-        headers={"Content-Type": "application/json"},
-        json={},
-        timeout=_timeout(15),
-    )
-    resp.raise_for_status()
-    data = resp.json()
+    # GitHub's device-code endpoint (proxied by the CORS worker) enforces a
+    # short-window secondary rate limit. Never leak the raw "429 Client Error"
+    # text: self-heal once on a transient 429/5xx, then surface a clean,
+    # retryable message the login UI can show.
+    resp = None
+    for attempt in range(2):
+        try:
+            resp = requests.post(
+                f"{AUTH_WORKER}/api/auth/device",
+                headers={"Content-Type": "application/json"},
+                json={},
+                timeout=_timeout(15),
+            )
+        except Exception as e:
+            _tlog("login.device_start_unreachable", {"error": str(e)[:160]}, level="warn")
+            raise RuntimeError(
+                "Couldn't reach the sign-in service. Check your connection and try again."
+            )
+        if resp.status_code in (429, 502, 503) and attempt == 0:
+            _tlog("login.device_start_ratelimited", {"status": resp.status_code}, level="warn")
+            try:
+                time.sleep(2)
+            except Exception:
+                pass
+            continue
+        break
+
+    if resp.status_code == 429:
+        raise RuntimeError(
+            "Sign-in is busy right now (too many requests). Please wait a "
+            "moment and click Try again."
+        )
+    if not (200 <= resp.status_code < 300):
+        _tlog("login.device_start_error", {"status": resp.status_code}, level="warn")
+        raise RuntimeError(
+            f"The sign-in service returned an error ({resp.status_code}). "
+            "Please try again shortly."
+        )
+    try:
+        data = resp.json()
+    except Exception:
+        raise RuntimeError("The sign-in service sent an unexpected response. Please try again.")
+    if not data.get("device_code") or not data.get("user_code"):
+        raise RuntimeError("The sign-in service sent an incomplete response. Please try again.")
     _pending_login = {
         "device_code": data["device_code"],
         "user_code": data["user_code"],
@@ -1019,13 +1055,25 @@ def poll_device_code():
         return None
     _last_device_poll = time.time()
 
-    resp = requests.post(
-        f"{AUTH_WORKER}/api/auth/device/poll",
-        headers={"Content-Type": "application/json"},
-        json={"device_code": _pending_login["device_code"]},
-        timeout=_timeout(15),
-    )
-    data = resp.json()
+    try:
+        resp = requests.post(
+            f"{AUTH_WORKER}/api/auth/device/poll",
+            headers={"Content-Type": "application/json"},
+            json={"device_code": _pending_login["device_code"]},
+            timeout=_timeout(15),
+        )
+    except Exception:
+        # Transient network blip mid-login: keep the flow alive, poll again.
+        return None
+    # A rate-limited or 5xx poll is not fatal — back off (like GitHub's own
+    # slow_down) and keep polling rather than leaking a raw HTTP error.
+    if resp.status_code in (429, 502, 503):
+        _pending_login["interval"] = min(_pending_login.get("interval", 5) + 5, 30)
+        return None
+    try:
+        data = resp.json()
+    except Exception:
+        return None
 
     if data.get("access_token"):
         token = data["access_token"]
