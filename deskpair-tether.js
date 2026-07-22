@@ -178,13 +178,33 @@
   }
 
   var pendingSay = {};
+  var lastSeen = 0;
+  var hbTimer = null;
+  function heartbeat() {
+    if (hbTimer) clearInterval(hbTimer);
+    lastSeen = Date.now();
+    hbTimer = setInterval(async function () {
+      if (!S.up || !S.conn || !token) return;
+      if (Date.now() - lastSeen > 30000) {
+        // Three missed beats — the desk is gone even if PeerJS never said so.
+        try { S.conn.close(); } catch (e) { }
+        markLost();
+        return;
+      }
+      try {
+        S.conn.send(await seal(token, { schema: 'rapp-twin-chat/1.0', kind: 'ping', from_rappid: myRappid() }));
+      } catch (e) { markLost(); }
+    }, 10000);
+  }
   async function onData(raw) {
+    lastSeen = Date.now();
     var msg = raw;
     if (raw && raw.schema === 'rapp-sealed/1.0') {
       try { msg = token ? await open_(token, raw) : await open_(pairSecret(), raw); }
       catch (e) { return; }
     }
     if (!msg || !msg.schema) return;
+    if (msg.kind === 'pong') return;
     if (msg.kind === 'pair-grant' && msg.response && msg.response.token) {
       token = msg.response.token;
       S.up = true; S.ceremonyDone = true; S.backoff = 2000;
@@ -253,6 +273,14 @@
   function markLost() {
     if (!S.up && !S.ceremonyDone) return;
     S.up = false;
+    if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
+    // In-flight turns must not wait out a dead link — reject them now so
+    // each falls back to the in-browser brainstem immediately.
+    Object.keys(pendingSay).forEach(function (nonce) {
+      var cb = pendingSay[nonce];
+      delete pendingSay[nonce];
+      try { cb({ status: 599, response: { error: 'tether lost' } }); } catch (e) { }
+    });
     if (token) {
       setChip('tether lost — answering in-browser · reconnecting…', '#d29922');
       scheduleReconnect();
@@ -276,6 +304,18 @@
         var conn = peer.connect(HOST_PEER, { reliable: true });
         S.conn = conn;
         conn.on('open', function () {
+          heartbeat();
+          // ICE state flips to disconnected/failed well before PeerJS emits
+          // close when the other tab dies — watch it directly.
+          try {
+            var pc = conn.peerConnection;
+            if (pc) pc.addEventListener('iceconnectionstatechange', function () {
+              if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+                try { conn.close(); } catch (e) { }
+                markLost();
+              }
+            });
+          } catch (e) { }
           if (token) sendResume(); else sendPairRequest();
         });
         conn.on('data', onData);

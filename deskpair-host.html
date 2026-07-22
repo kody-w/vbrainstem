@@ -290,6 +290,10 @@
     if (!msg || msg.schema !== 'rapp-twin-chat/1.0') return;
     var p = msg.payload || {};
 
+    if (sealed && msg.kind === 'ping') {
+      conn.send(await seal(state.token, { schema: 'rapp-twin-chat/1.0', kind: 'pong', from_rappid: myRappid() }));
+      return;
+    }
     if (msg.kind === 'pair-request') {
       if (state.pairedPeer) { log('ignored pair-request while paired'); return; }
       state.pairing = { conn: conn, salt: p.salt, code_hash: p.code_hash, device: p.device };
