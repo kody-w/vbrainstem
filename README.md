@@ -74,6 +74,24 @@ Deliberate browser deltas, all minimal:
   before each dispatch, instead of `pip install` at agent import time.
 - **No LAN mode** / Host checks (a browser tab has no LAN surface).
 
+## Desk Pair — phone as a sealed remote (Apple-style)
+
+**Live:** https://kody-w.github.io/vbrainstem/deskpair-host.html
+
+Open the page and a QR appears — the **real vBrainstem use case**: the page
+boots `brainstem_web.py` (Pyodide) in-page, signed in with the same
+`vb_gh_token` as the main vBrainstem, so the "computer" side of the pair is
+just a browser tab. Scan the QR with a phone (`deskpair.html`), the phone
+shows a **6-digit code**, and typing that code **into the computer** completes
+the pair — the human sign-off. The QR carries only a peer-id; the code never
+crosses the network (salted hash, one attempt); the session token is released
+sealed (`rapp-sealed/1.0`) under a code-derived key. The phone then drives the
+brainstem over sealed `5a-tether`, and a dropped connection (Wi-Fi→cellular,
+reload) **resumes by key possession** — no new code. `?bs=http://localhost:7071`
+fronts an on-device brainstem instead (add `&secret=<X-Brainstem-Secret>`).
+The drop-in agent for on-device brainstems is
+[`desk_pair_agent.py`](https://github.com/kody-w/rapp-brainstem-walkthrough/blob/main/desk_pair_agent.py).
+
 ## The Brainstem Tether
 
 When you outgrow the sandbox — agents that shell out, raw sockets, local files,

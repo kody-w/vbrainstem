@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Desk Pair — vBrainstem</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#0d1117; color:#e6edf3;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:22px;
+    padding:34px 38px; width:min(430px, 94vw); text-align:center;
+    box-shadow:0 18px 60px rgba(1,4,9,.6); }
+  h1 { font-size:22px; font-weight:650; letter-spacing:-.01em; margin:0 0 6px; }
+  .sub { color:#8b949e; font-size:14px; margin:0 0 18px; }
+  #qr { border-radius:14px; background:#fff; padding:8px; width:220px; height:220px; }
+  .pill { display:inline-flex; align-items:center; gap:7px; background:#0d1117;
+    border:1px solid #30363d; border-radius:20px; padding:5px 13px; font-size:12.5px;
+    color:#8b949e; margin:16px 4px 0; }
+  .pill .dot { width:8px; height:8px; border-radius:50%; background:#d29922;
+    animation: pulse 1.2s ease-in-out infinite; }
+  .pill.ok .dot { background:#3fb950; animation:none; }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.3 } }
+  .code-entry { display:none; }
+  .code-entry.active { display:block; animation: rise .4s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes rise { from { opacity:0; transform: translateY(14px) scale(.98); } }
+  .device { font-weight:600; color:#e6edf3; }
+  .boxes { display:flex; justify-content:center; gap:9px; margin:20px 0 6px; }
+  .boxes input { width:46px; height:60px; text-align:center; background:#0d1117;
+    border:1px solid #30363d; border-radius:12px; color:#e6edf3;
+    font:600 30px ui-monospace,SFMono-Regular,Menlo,monospace; outline:none; }
+  .boxes input:focus { border-color:#58a6ff; box-shadow:0 0 0 3px rgba(88,166,255,.25); }
+  .err { color:#f85149; font-size:13px; min-height:20px; margin-top:8px; }
+  .tick { width:72px; height:72px; border-radius:50%; background:#238636; display:flex;
+    align-items:center; justify-content:center; margin:6px auto 18px;
+    animation: pop .4s cubic-bezier(.2,.9,.3,1.4); }
+  .tick svg { width:36px; height:36px; fill:none; stroke:#fff; stroke-width:3;
+    stroke-linecap:round; stroke-linejoin:round; }
+  @keyframes pop { from { transform: scale(.4); opacity:0; } }
+  #log { display:none; background:#0d1117; border:1px solid #30363d; border-radius:10px;
+    padding:10px; font:11.5px/1.5 ui-monospace,monospace; max-height:150px; overflow:auto;
+    white-space:pre-wrap; text-align:left; margin-top:16px; color:#8b949e; }
+  .paired #log { display:block; }
+  .foot { color:#484f58; font-size:11.5px; margin-top:18px; }
+  a { color:#58a6ff; }
+</style>
+</head><body>
+<div class="card" id="card">
+  <div id="scan-panel">
+    <h1>Desk Pair</h1>
+    <p class="sub">Scan with your phone's camera to pair it with this brainstem.</p>
+    <img id="qr" alt="Scan to pair">
+    <div>
+      <span class="pill" id="status"><span class="dot"></span><span id="status-text">starting…</span></span>
+      <span class="pill" id="backend"><span class="dot" style="background:#8b949e;animation:none"></span><span id="backend-text">…</span></span>
+    </div>
+  </div>
+  <div class="code-entry" id="code-panel">
+    <h1>Enter the code shown on <span class="device" id="dev-name">the device</span></h1>
+    <p class="sub">This confirms you — a human at this computer — approve the pair.</p>
+    <div class="boxes" id="boxes"></div>
+    <div class="err" id="code-err"></div>
+  </div>
+  <div class="code-entry" id="done-panel">
+    <div class="tick"><svg viewBox="0 0 24 24"><polyline points="4 12.5 10 18.5 20 6.5"/></svg></div>
+    <h1>Paired</h1>
+    <p class="sub"><span class="device" id="dev-name2">The device</span> now drives this brainstem
+      over a sealed channel. Close this tab to end the session.</p>
+    <div id="log"></div>
+  </div>
+  <div class="foot">rapp-neighborhood-protocol/1.0 · rapp-sealed/1.0 (AES-256-GCM) ·
+    the QR grants nothing without the typed code</div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  // ── Backend selection ──
+  // Default: THE REAL vBRAINSTEM USE CASE — boot brainstem_web.py (Pyodide)
+  // in a worker inside THIS page. Zero install: the "computer" side of the
+  // pair is just this tab, signed in with the same vb_gh_token the vBrainstem
+  // page uses (same origin). Alternative: ?bs=http://localhost:7071 fronts an
+  // on-device brainstem instead (add &secret=<X-Brainstem-Secret> if its
+  // origin gate requires it).
+  var qs = new URLSearchParams(location.search);
+  var BS_URL = qs.get('bs') || '';
+  var BS_SECRET = qs.get('secret') || '';
+  var HOST_NAME = qs.get('host') || 'your computer';
+  var PHONE_PAGE = new URL('deskpair.html', location.href).href;
+
+  var $ = function (s) { return document.querySelector(s); };
+  var logEl = $('#log');
+  function log(msg) {
+    var d = document.createElement('div');
+    d.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+    logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight;
+  }
+  function status(t, ok) {
+    $('#status-text').textContent = t;
+    $('#status').classList.toggle('ok', !!ok);
+  }
+  function myRappid() {
+    var r = localStorage.getItem('vb_rappid');
+    if (!r) { r = (crypto.randomUUID ? crypto.randomUUID() : 'host-' + Date.now().toString(36)); localStorage.setItem('vb_rappid', r); }
+    return r;
+  }
+
+  // ── Brainstem backends ──
+  var bsChat, bsGet;
+  if (BS_URL) {
+    $('#backend-text').textContent = 'on-device: ' + BS_URL.replace(/^https?:\/\//, '');
+    var bsHeaders = function (extra) {
+      var h = extra || {};
+      if (BS_SECRET) h['X-Brainstem-Secret'] = BS_SECRET;
+      return h;
+    };
+    bsChat = async function (text, history, session) {
+      var r = await fetch(BS_URL.replace(/\/$/, '') + '/chat', {
+        method: 'POST', headers: bsHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ user_input: String(text || ''), conversation_history: history || [], session_id: session || 'deskpair' })
+      });
+      if (!r.ok) throw new Error('brainstem ' + r.status);
+      return await r.json();
+    };
+    bsGet = async function (path) {
+      var r = await fetch(BS_URL.replace(/\/$/, '') + path, { headers: bsHeaders() });
+      if (!r.ok) throw new Error('brainstem ' + r.status);
+      return await r.json();
+    };
+  } else {
+    $('#backend-text').textContent = 'in-browser vBrainstem (Pyodide)';
+    // Boot the same worker the vBrainstem page uses; same-origin localStorage
+    // shares the GitHub sign-in.
+    var worker = new Worker('vbrainstem-worker.js');
+    var readyResolve, readyReject;
+    var ready = new Promise(function (res, rej) { readyResolve = res; readyReject = rej; });
+    var pending = new Map();
+    var wseq = 0;
+    worker.onmessage = function (ev) {
+      var m = ev.data || {};
+      if (m.type === 'boot-status') { status('brainstem: ' + m.text, false); return; }
+      if (m.type === 'ready') { status('waiting for a scan', false); log('vBrainstem ready in-page'); readyResolve(); return; }
+      if (m.type === 'boot-error') { status('brainstem boot failed', false); log('boot error: ' + m.error); readyReject(new Error(m.error)); return; }
+      if (m.type === 'auth-state') {
+        try {
+          if (m.ghToken) localStorage.setItem('vb_gh_token', m.ghToken);
+          else localStorage.removeItem('vb_gh_token');
+        } catch (e) { }
+        return;
+      }
+      if (m.type === 'response') {
+        var cb = pending.get(m.id);
+        if (cb) { pending.delete(m.id); cb(m); }
+      }
+    };
+    worker.postMessage({
+      type: 'init', base: './',
+      ghToken: localStorage.getItem('vb_gh_token') || null,
+      env: JSON.parse(localStorage.getItem('vb_env') || '{}'),
+    });
+    var wcall = function (method, path, bodyJson) {
+      return ready.then(function () {
+        return new Promise(function (resolve, reject) {
+          var id = 'dp' + (++wseq);
+          pending.set(id, function (m) {
+            if (m.status >= 400) reject(new Error((m.json && m.json.error) || ('brainstem ' + m.status)));
+            else resolve(m.json || {});
+          });
+          worker.postMessage({ type: 'request', id: id, method: method, path: path, bodyJson: bodyJson || null });
+        });
+      });
+    };
+    bsChat = function (text, history, session) {
+      return wcall('POST', '/chat', {
+        user_input: String(text || ''), conversation_history: history || [], session_id: session || 'deskpair'
+      });
+    };
+    bsGet = function (path) { return wcall('GET', path); };
+  }
+
+  // ── rapp-sealed/1.0 codec — identical scheme/salt to the vBrainstem (§8) ──
+  var _b64 = function (u8) { return btoa(String.fromCharCode.apply(null, new Uint8Array(u8))); };
+  var _ub64 = function (s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); };
+  var _keyCache = {};
+  async function _channelKey(secret) {
+    if (!secret) throw new Error('sealed channel needs a secret');
+    if (_keyCache[secret]) return _keyCache[secret];
+    var enc = new TextEncoder();
+    var base = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']);
+    var key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: enc.encode('rapp-neighborhood-5a/1'), iterations: 210000, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    _keyCache[secret] = key; return key;
+  }
+  async function seal(secret, obj) {
+    var key = await _channelKey(secret);
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    var ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+    return { schema: 'rapp-sealed/1.0', iv: _b64(iv), ct: _b64(ct) };
+  }
+  async function open_(secret, sealed) {
+    var key = await _channelKey(secret);
+    var pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: _ub64(sealed.iv) }, key, _ub64(sealed.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+  async function sha256hex(s) {
+    var d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(d), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+
+  // ── Pairing state (token never in the QR; released only after the human
+  //    types the phone's code here; resume = sealed key possession) ──
+  var state = { peer: null, id: null, token: null, conns: {}, pairing: null, pairedPeer: null };
+
+  function showCodeEntry(pairing) {
+    $('#scan-panel').style.display = 'none';
+    $('#done-panel').classList.remove('active');
+    var p = $('#code-panel');
+    p.classList.add('active');
+    $('#dev-name').textContent = pairing.device || 'the device';
+    $('#code-err').textContent = '';
+    var boxes = $('#boxes');
+    boxes.innerHTML = '';
+    var inputs = [];
+    for (var i = 0; i < 6; i++) {
+      var inp = document.createElement('input');
+      inp.maxLength = 1; inp.inputMode = 'numeric'; inp.autocomplete = 'off';
+      boxes.appendChild(inp); inputs.push(inp);
+    }
+    inputs.forEach(function (inp, i) {
+      inp.addEventListener('input', function () {
+        inp.value = inp.value.replace(/\D/g, '').slice(0, 1);
+        if (inp.value && i < 5) inputs[i + 1].focus();
+        if (inputs.every(function (x) { return x.value; })) submitCode(inputs.map(function (x) { return x.value; }).join(''));
+      });
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Backspace' && !inp.value && i > 0) inputs[i - 1].focus();
+      });
+      inp.addEventListener('paste', function (e) {
+        var t = (e.clipboardData.getData('text') || '').replace(/\D/g, '');
+        if (t.length >= 6) {
+          e.preventDefault();
+          inputs.forEach(function (x, j) { x.value = t[j] || ''; });
+          submitCode(t.slice(0, 6));
+        }
+      });
+    });
+    inputs[0].focus();
+  }
+
+  async function submitCode(code) {
+    var pairing = state.pairing;
+    if (!pairing) return;
+    state.pairing = null;                       // ONE attempt per pair-request
+    var conn = pairing.conn;
+    var hash = await sha256hex(code + '|' + pairing.salt + '|' + state.id + '|' + conn.peer);
+    if (hash !== pairing.code_hash) {
+      $('#code-err').textContent = "That code didn't match — ask the phone for a new one.";
+      log('DENIED pairing (wrong code) from ' + conn.peer.slice(0, 8));
+      try { conn.send({ schema: 'rapp-twin-chat/1.0', kind: 'pair-denied', from_rappid: myRappid() }); } catch (e) { }
+      return;
+    }
+    var pairSecret = code + '|' + pairing.salt + '|' + state.id + '|' + conn.peer;
+    state.token = state.token || (crypto.randomUUID ? crypto.randomUUID() : 'tk-' + Date.now().toString(36));
+    state.pairedPeer = conn.peer;
+    conn.send(await seal(pairSecret, {
+      schema: 'rapp-twin-chat/1.0', kind: 'pair-grant', from_rappid: myRappid(),
+      response: { token: state.token, host: HOST_NAME }
+    }));
+    $('#code-panel').classList.remove('active');
+    $('#done-panel').classList.add('active');
+    $('#dev-name2').textContent = pairing.device || 'The device';
+    document.getElementById('card').classList.add('paired');
+    log('PAIRED — ' + conn.peer.slice(0, 8) + '… now drives this brainstem');
+  }
+
+  async function handle(conn, raw) {
+    var msg = raw, sealed = false;
+    if (raw && raw.schema === 'rapp-sealed/1.0') {
+      sealed = true;
+      try { msg = await open_(state.token, raw); }
+      catch (e) {
+        log('DENIED sealed message (decrypt/auth failed)');
+        try { conn.send({ schema: 'rapp-twin-chat/1.0', kind: 'resume-denied', from_rappid: myRappid() }); } catch (err) { }
+        return;
+      }
+    }
+    if (!msg || msg.schema !== 'rapp-twin-chat/1.0') return;
+    var p = msg.payload || {};
+
+    if (msg.kind === 'pair-request') {
+      if (state.pairedPeer) { log('ignored pair-request while paired'); return; }
+      state.pairing = { conn: conn, salt: p.salt, code_hash: p.code_hash, device: p.device };
+      log('pair-request from ' + conn.peer.slice(0, 8) + '… (' + (p.device || 'device') + ')');
+      showCodeEntry(state.pairing);
+      return;
+    }
+    if (sealed && msg.kind === 'resume') {
+      state.pairedPeer = conn.peer;
+      log('RESUMED — ' + conn.peer.slice(0, 8) + '… re-attached by key possession');
+      $('#scan-panel').style.display = 'none';
+      $('#code-panel').classList.remove('active');
+      $('#done-panel').classList.add('active');
+      document.getElementById('card').classList.add('paired');
+      conn.send(await seal(state.token, {
+        schema: 'rapp-twin-chat/1.0', kind: 'resume-grant', from_rappid: myRappid(),
+        response: { host: HOST_NAME }
+      }));
+      return;
+    }
+    if (!sealed || conn.peer !== state.pairedPeer) {
+      log('DENIED ' + msg.kind + ' (unsealed or unpaired peer)');
+      return;
+    }
+    var respond = async function (kind, statusCode, response) {
+      var out = {
+        schema: 'rapp-twin-chat-response/1.0', channel: '5a-tether-sealed',
+        from_rappid: myRappid(), to_rappid: msg.from_rappid,
+        kind: kind, envelope: msg, status: statusCode, response: response
+      };
+      conn.send(await seal(state.token, out));
+    };
+    try {
+      if (msg.kind === 'say') {
+        log('🔒 say ← ' + JSON.stringify(String(p.text || '').slice(0, 60)));
+        var reply = await bsChat(p.text, p.conversation_history, p.session_id);
+        log('/chat → ' + JSON.stringify(String(reply && reply.response || '').slice(0, 60)));
+        await respond('say', 200, reply);
+      } else if (msg.kind === 'console') {
+        if (p.method === 'health') await respond('console', 200, await bsGet('/health'));
+        else if (p.method === 'agents') { var h = await bsGet('/health'); await respond('console', 200, { agents: h.agents || [] }); }
+        else await respond('console', 400, { error: 'desk pair supports: say, console.health, console.agents' });
+      }
+    } catch (e) {
+      log('ERR ' + ((e && e.message) || e));
+      respond(msg.kind, 502, { error: (e && e.message) || String(e) });
+    }
+  }
+
+  bsGet('/health').then(function (h) {
+    log('brainstem ok — v' + (h.version || '?') + ', ' + ((h.agents || []).length) + ' agents' +
+      (h.status !== 'ok' ? ' (status: ' + h.status + ' — sign in on the vBrainstem page, then reload)' : ''));
+  }).catch(function (e) { log('warning: brainstem not answering yet (' + ((e && e.message) || e) + ')'); });
+
+  var RETRYABLE = { 'server-error': 1, 'network': 1, 'socket-error': 1, 'socket-closed': 1, 'unavailable-id': 1 };
+  function startPeer(attempt) {
+    attempt = attempt || 1;
+    status(attempt > 1 ? 'reconnecting to the broker (try ' + attempt + ')…' : 'starting…', false);
+    var peer = new Peer();
+    state.peer = peer;
+    peer.on('open', function (id) {
+      state.id = id;
+      var join = PHONE_PAGE + '?peer=' + encodeURIComponent(id) +
+        '&host=' + encodeURIComponent(HOST_NAME);
+      $('#qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=440x440&margin=8&data=' + encodeURIComponent(join);
+      status('waiting for a scan', false);
+      window.__DESKPAIR__ = { id: id, join: join };   // test hook
+      log('hosting — peer ' + id);
+    });
+    peer.on('connection', function (c) {
+      state.conns[c.peer] = c;
+      status('device connected — waiting for the code', true);
+      c.on('data', function (m) { handle(c, m); });
+      c.on('close', function () {
+        delete state.conns[c.peer];
+        if (c.peer === state.pairedPeer) {
+          state.pairedPeer = null;
+          log('paired device disconnected — waiting for it to resume');
+        }
+      });
+    });
+    peer.on('error', function (e) {
+      var t = (e && e.type) || String(e);
+      log('peer error: ' + t);
+      if (!state.id && RETRYABLE[t] && attempt < 6) {
+        try { peer.destroy(); } catch (err) { }
+        setTimeout(function () { startPeer(attempt + 1); }, 1000 * attempt);
+      } else if (!state.id) {
+        status('cannot reach the broker — check the network, then reload this tab', false);
+      } else {
+        status('error: ' + t, false);
+      }
+    });
+  }
+  startPeer();
+})();
+</script>
+</body></html>

@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>RAPP Desk Pair</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='%2358a6ff'%3E%3Cpath d='M184 0c-30.9 0-56.5 22.7-61.1 52.3C54.5 67 0 130 0 206.8c0 41.6 17.4 79.2 45.3 105.9-2 9.2-3.3 18.8-3.3 28.7 0 55.3 35.8 102.2 85.5 119C142.2 493 172.6 512 208 512h16c35.3 0 64-28.7 64-64V86c0-8.8-7.2-16-16-16h-16c-8.8 0-16 7.2-16 16v16c0 8.8-7.2 16-16 16s-16-7.2-16-16V64c0-35.3-28.7-64-64-64h40zm144 0c30.9 0 56.5 22.7 61.1 52.3C457.5 67 512 130 512 206.8c0 41.6-17.4 79.2-45.3 105.9 2 9.2 3.3 18.8 3.3 28.7 0 55.3-35.8 102.2-85.5 119C369.8 493 339.4 512 304 512h-16c-35.3 0-64-28.7-64-64V86c0-8.8 7.2-16 16-16h16c8.8 0 16 7.2 16 16v16c0 8.8 7.2 16 16 16s16-7.2 16-16V64c0-35.3 28.7-64 64-64h-40z'/%3E%3C/svg%3E">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body { margin:0; background:#0d1117; color:#e6edf3;
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    display:flex; flex-direction:column; }
+  .stage { flex:1; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; padding:28px 22px; text-align:center; }
+  .brand { display:flex; align-items:center; gap:10px; color:#8b949e; font-size:13px;
+    letter-spacing:.14em; text-transform:uppercase; margin-bottom:26px; }
+  .brand svg { width:20px; height:20px; fill:#58a6ff; }
+  h1 { font-size:26px; font-weight:650; letter-spacing:-.02em; margin:0 0 8px; }
+  .sub { color:#8b949e; font-size:15px; max-width:340px; margin:0 auto; }
+  .dev-card { margin:34px 0 0; background:#161b22; border:1px solid #30363d; border-radius:22px;
+    padding:30px 26px 26px; width:min(360px, 92vw); box-shadow:0 18px 50px rgba(1,4,9,.55);
+    animation: rise .45s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes rise { from { opacity:0; transform: translateY(18px) scale(.97); } }
+  .code { display:flex; justify-content:center; gap:10px; margin:22px 0 8px; }
+  .code span { width:44px; height:60px; display:flex; align-items:center; justify-content:center;
+    background:#0d1117; border:1px solid #30363d; border-radius:12px;
+    font:600 32px ui-monospace,SFMono-Regular,Menlo,monospace; color:#e6edf3; }
+  .hint { color:#8b949e; font-size:13px; margin-top:16px; }
+  .spinner { width:26px; height:26px; border:3px solid #30363d; border-top-color:#58a6ff;
+    border-radius:50%; animation:spin .9s linear infinite; margin:0 auto 18px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tick { width:64px; height:64px; border-radius:50%; background:#238636; display:flex;
+    align-items:center; justify-content:center; margin:0 auto 18px;
+    animation: pop .4s cubic-bezier(.2,.9,.3,1.4); }
+  .tick svg { width:32px; height:32px; fill:none; stroke:#fff; stroke-width:3;
+    stroke-linecap:round; stroke-linejoin:round; }
+  @keyframes pop { from { transform: scale(.4); opacity:0; } }
+  .err { color:#f85149; }
+  button.retry { margin-top:18px; background:#21262d; color:#e6edf3; border:1px solid #30363d;
+    border-radius:10px; padding:10px 18px; font-size:14px; cursor:pointer; }
+
+  /* remote-control surface */
+  .remote { flex:1; display:none; flex-direction:column; height:100%; }
+  .remote header { display:flex; align-items:center; gap:10px; padding:14px 16px;
+    border-bottom:1px solid #21262d; background:#161b22; }
+  .remote header .dot { width:9px; height:9px; border-radius:50%; background:#3fb950; }
+  .remote header .title { font-weight:600; font-size:15px; }
+  .remote header .sub2 { color:#8b949e; font-size:12px; }
+  #msgs { flex:1; overflow-y:auto; padding:16px 14px; display:flex; flex-direction:column; gap:10px; }
+  .m { max-width:86%; padding:10px 14px; border-radius:16px; font-size:15px;
+    white-space:pre-wrap; word-break:break-word; }
+  .m.you { align-self:flex-end; background:#1f6feb; color:#fff; border-bottom-right-radius:4px; }
+  .m.bs { align-self:flex-start; background:#161b22; border:1px solid #30363d; border-bottom-left-radius:4px; }
+  .m.sys { align-self:center; background:none; color:#8b949e; font-size:12.5px; }
+  .composer { display:flex; gap:8px; padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    border-top:1px solid #21262d; background:#0d1117; }
+  .composer textarea { flex:1; resize:none; background:#161b22; border:1px solid #30363d;
+    border-radius:18px; color:#e6edf3; padding:10px 14px; font:15px/1.4 inherit; max-height:110px; }
+  .composer button { background:#1f6feb; border:0; color:#fff; border-radius:50%;
+    width:42px; height:42px; font-size:17px; cursor:pointer; flex:none; align-self:flex-end; }
+</style>
+</head><body>
+
+<div class="stage" id="stage">
+  <div class="brand">
+    <svg viewBox="0 0 512 512"><path d="M184 0c-30.9 0-56.5 22.7-61.1 52.3C54.5 67 0 130 0 206.8c0 41.6 17.4 79.2 45.3 105.9-2 9.2-3.3 18.8-3.3 28.7 0 55.3 35.8 102.2 85.5 119C142.2 493 172.6 512 208 512h16c35.3 0 64-28.7 64-64V86c0-8.8-7.2-16-16-16h-16c-8.8 0-16 7.2-16 16v16c0 8.8-7.2 16-16 16s-16-7.2-16-16V64c0-35.3-28.7-64-64-64h40zm144 0c30.9 0 56.5 22.7 61.1 52.3C457.5 67 512 130 512 206.8c0 41.6-17.4 79.2-45.3 105.9 2 9.2 3.3 18.8 3.3 28.7 0 55.3-35.8 102.2-85.5 119C369.8 493 339.4 512 304 512h-16c-35.3 0-64-28.7-64-64V86c0-8.8 7.2-16 16-16h16c8.8 0 16 7.2 16 16v16c0 8.8 7.2 16 16 16s16-7.2 16-16V64c0-35.3 28.7-64 64-64h-40z"/></svg>
+    RAPP Desk Pair
+  </div>
+  <div id="panel">
+    <div class="spinner"></div>
+    <h1>Connecting…</h1>
+    <p class="sub">Reaching the brainstem that showed you the QR code.</p>
+  </div>
+</div>
+
+<div class="remote" id="remote">
+  <header>
+    <span class="dot"></span>
+    <div>
+      <div class="title">Desk Pair</div>
+      <div class="sub2" id="remote-sub">sealed · end-to-end encrypted</div>
+    </div>
+  </header>
+  <div id="msgs"></div>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="Message the brainstem…"></textarea>
+    <button id="send" aria-label="Send">↑</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var qs = new URLSearchParams(location.search);
+  var HOST_PEER = qs.get('peer') || '';
+  var HOST_NAME = qs.get('host') || 'this computer';
+  var stage = document.getElementById('stage');
+  var panel = document.getElementById('panel');
+  var remote = document.getElementById('remote');
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+
+  function myRappid() {
+    var r = localStorage.getItem('vb_rappid');
+    if (!r) { r = (crypto.randomUUID ? crypto.randomUUID() : 'ph-' + Date.now().toString(36)); localStorage.setItem('vb_rappid', r); }
+    return r;
+  }
+
+  // ── rapp-sealed/1.0 codec — identical scheme/salt to the vBrainstem (§8) ──
+  var _b64 = function (u8) { return btoa(String.fromCharCode.apply(null, new Uint8Array(u8))); };
+  var _ub64 = function (s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); };
+  var _keyCache = {};
+  async function _channelKey(secret) {
+    if (!secret) throw new Error('sealed channel needs a secret');
+    if (_keyCache[secret]) return _keyCache[secret];
+    var enc = new TextEncoder();
+    var base = await crypto.subtle.importKey('raw', enc.encode(secret), 'PBKDF2', false, ['deriveKey']);
+    var key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: enc.encode('rapp-neighborhood-5a/1'), iterations: 210000, hash: 'SHA-256' },
+      base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    _keyCache[secret] = key; return key;
+  }
+  async function seal(secret, obj) {
+    var key = await _channelKey(secret);
+    var iv = crypto.getRandomValues(new Uint8Array(12));
+    var ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+    return { schema: 'rapp-sealed/1.0', iv: _b64(iv), ct: _b64(ct) };
+  }
+  async function open_(secret, sealed) {
+    var key = await _channelKey(secret);
+    var pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: _ub64(sealed.iv) }, key, _ub64(sealed.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+  async function sha256hex(s) {
+    var d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(d), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+
+  // ── Pairing state ──
+  var conn = null;
+  var code = '', salt = '', token = null;
+  var history = [];
+  var pendingSay = {};
+  var inRemote = false;
+
+  // Desk Pair resume: the granted token is the session. Keep it (per host
+  // peer-id) so a network hop — Wi-Fi to cellular, a page reload — resumes
+  // the pair by sealed key possession, no new code ceremony. The token was
+  // human-approved once; possession IS the authorization (§8).
+  var SESSION_KEY = 'deskpair_session';
+  function saveSession() {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify({ peer: HOST_PEER, token: token, host: HOST_NAME, ts: Date.now() })); } catch (e) { }
+  }
+  function loadSession() {
+    try {
+      var s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+      return (s && s.peer === HOST_PEER && s.token) ? s : null;
+    } catch (e) { return null; }
+  }
+  function clearSession() { try { localStorage.removeItem(SESSION_KEY); } catch (e) { } }
+
+  function newCode() {
+    var digits = crypto.getRandomValues(new Uint8Array(6));
+    code = Array.from(digits, function (b) { return String(b % 10); }).join('');
+    salt = _b64(crypto.getRandomValues(new Uint8Array(12)));
+  }
+  function pairSecret() {
+    // Key material for the ONE grant message: binds the human-verified code
+    // to this exact peer pair. Never leaves the two devices.
+    return code + '|' + salt + '|' + HOST_PEER + '|' + (conn ? conn.provider.id : '');
+  }
+
+  function showCode() {
+    panel.innerHTML =
+      '<h1>Enter this code on ' + esc(HOST_NAME) + '</h1>' +
+      '<p class="sub">Typing it there confirms a human is at the computer — nothing can control it until you do.</p>' +
+      '<div class="dev-card">' +
+      '<div style="color:#8b949e;font-size:13px;letter-spacing:.1em;text-transform:uppercase">Tether code</div>' +
+      '<div class="code">' + code.split('').map(function (d) { return '<span>' + d + '</span>'; }).join('') + '</div>' +
+      '<div class="hint">🔒 The code never travels the network — only proof you typed it does.</div>' +
+      '</div>';
+  }
+  function showError(msg, retry) {
+    panel.innerHTML = '<h1 class="err">' + esc(msg) + '</h1>' +
+      '<p class="sub">' + (retry ? 'Generate a fresh code and try again.' : 'Re-scan the QR on the computer to start over.') + '</p>' +
+      (retry ? '<button class="retry" id="retry">New code</button>' : '');
+    var b = document.getElementById('retry');
+    if (b) b.onclick = sendPairRequest;
+  }
+  function enterRemote(note) {
+    stage.style.display = 'none';
+    remote.style.display = 'flex';
+    inRemote = true;
+    document.getElementById('remote-sub').textContent =
+      'on ' + HOST_NAME + ' · sealed · end-to-end encrypted';
+    if (note) sysMsg(note);
+  }
+  function showPaired() {
+    saveSession();
+    panel.innerHTML =
+      '<div class="tick"><svg viewBox="0 0 24 24"><polyline points="4 12.5 10 18.5 20 6.5"/></svg></div>' +
+      '<h1>Paired</h1>' +
+      '<p class="sub">This phone now drives the brainstem on ' + esc(HOST_NAME) + ' over a sealed channel.</p>';
+    setTimeout(function () {
+      enterRemote('Connected. Every message runs on the computer\'s brainstem — its agents, its memory.');
+    }, 1200);
+  }
+
+  async function sendPairRequest() {
+    newCode();
+    var hash = await sha256hex(code + '|' + salt + '|' + HOST_PEER + '|' + conn.provider.id);
+    conn.send({
+      schema: 'rapp-twin-chat/1.0', from_rappid: myRappid(), to_rappid: HOST_PEER,
+      utc: new Date().toISOString(), nonce: crypto.randomUUID ? crypto.randomUUID() : String(Math.random()),
+      kind: 'pair-request',
+      payload: { salt: salt, code_hash: hash, device: navigator.platform || 'phone' }
+    });
+    showCode();
+  }
+
+  // ── Remote-control chat ──
+  function addMsg(cls, text) {
+    var m = document.createElement('div');
+    m.className = 'm ' + cls;
+    m.textContent = text;
+    document.getElementById('msgs').appendChild(m);
+    m.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  }
+  function sysMsg(t) { addMsg('sys', t); }
+
+  async function sendSay(text) {
+    addMsg('you', text);
+    history.push({ role: 'user', content: text });
+    var nonce = crypto.randomUUID ? crypto.randomUUID() : String(Math.random());
+    pendingSay[nonce] = true;
+    var env = {
+      schema: 'rapp-twin-chat/1.0', from_rappid: myRappid(), to_rappid: HOST_PEER,
+      utc: new Date().toISOString(), nonce: nonce, kind: 'say',
+      payload: { text: text, conversation_history: history.slice(-40), session_id: 'tether-' + myRappid().slice(0, 8), token: token }
+    };
+    conn.send(await seal(token, env));
+  }
+
+  var input = document.getElementById('input');
+  document.getElementById('send').onclick = function () {
+    var t = input.value.trim();
+    if (!t || !token) return;
+    input.value = '';
+    sendSay(t);
+  };
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('send').onclick(); }
+  });
+
+  // ── Wire ──
+  async function onData(raw) {
+    var msg = raw;
+    if (raw && raw.schema === 'rapp-sealed/1.0') {
+      // Grant arrives under the code-derived key; everything after under the token.
+      try { msg = token ? await open_(token, raw) : await open_(pairSecret(), raw); }
+      catch (e) { return; }
+    }
+    if (!msg || !msg.schema) return;
+    if (msg.kind === 'pair-grant' && msg.response && msg.response.token) {
+      token = msg.response.token;
+      showPaired();
+      return;
+    }
+    if (msg.kind === 'resume-grant') {
+      saveSession();
+      if (inRemote) sysMsg('Reconnected — the pair resumed.');
+      else enterRemote('Resumed. Still paired with ' + HOST_NAME + ' — no new code needed.');
+      return;
+    }
+    if (msg.kind === 'resume-denied') {
+      // Host no longer recognizes the token (fresh pairing page) — full ceremony.
+      clearSession(); token = null;
+      sendPairRequest();
+      return;
+    }
+    if (msg.kind === 'pair-denied') {
+      showError('Code didn\'t match', true);
+      return;
+    }
+    if (msg.schema === 'rapp-twin-chat-response/1.0' && msg.envelope && pendingSay[msg.envelope.nonce]) {
+      delete pendingSay[msg.envelope.nonce];
+      var r = (msg.response && (msg.response.response || msg.response.error)) || '(no response)';
+      addMsg(msg.response && msg.response.error ? 'sys' : 'bs', r);
+      if (msg.response && msg.response.response) history.push({ role: 'assistant', content: msg.response.response });
+    }
+  }
+
+  async function sendResume() {
+    conn.send(await seal(token, {
+      schema: 'rapp-twin-chat/1.0', from_rappid: myRappid(), to_rappid: HOST_PEER,
+      utc: new Date().toISOString(), nonce: crypto.randomUUID ? crypto.randomUUID() : String(Math.random()),
+      kind: 'resume', payload: {}
+    }));
+  }
+
+  if (!HOST_PEER) {
+    showError('No pairing target in this link', false);
+    return;
+  }
+  // The public PeerJS broker occasionally refuses a connection — retry with
+  // backoff. When a session token is held, a drop (network hop, reload) is
+  // not fatal: keep dialing the same host peer and resume by key possession.
+  var RETRYABLE = { 'server-error': 1, 'network': 1, 'socket-error': 1, 'socket-closed': 1, 'unavailable-id': 1 };
+  var connected = false;
+  var stored = loadSession();
+  if (stored) token = stored.token;
+
+  function startPeer(attempt) {
+    attempt = attempt || 1;
+    var peer = new Peer();
+    peer.on('open', function () {
+      conn = peer.connect(HOST_PEER, { reliable: true });
+      conn.on('open', function () {
+        connected = true;
+        if (token) sendResume(); else sendPairRequest();
+      });
+      conn.on('data', onData);
+      conn.on('close', function () {
+        connected = false;
+        try { peer.destroy(); } catch (err) { }
+        if (token) {
+          if (inRemote) sysMsg('Connection dropped — resuming…');
+          setTimeout(function () { startPeer(1); }, 1200);
+        } else {
+          showError('Connection closed', false);
+        }
+      });
+    });
+    peer.on('error', function (e) {
+      var t = (e && e.type) || 'network';
+      if (t === 'peer-unavailable') {
+        // The pairing page on the computer is gone (or reloaded into a new
+        // peer-id) — this session can't resume; a fresh scan is required.
+        clearSession(); token = null;
+        showError('The computer\'s pairing page changed — scan its new QR', false);
+        return;
+      }
+      if (!connected && RETRYABLE[t] && attempt < 6) {
+        try { peer.destroy(); } catch (err) { }
+        setTimeout(function () { startPeer(attempt + 1); }, 1000 * attempt);
+        return;
+      }
+      if (token && RETRYABLE[t]) {
+        if (inRemote) sysMsg('Still reconnecting…');
+        try { peer.destroy(); } catch (err) { }
+        setTimeout(function () { startPeer(1); }, 4000);
+        return;
+      }
+      showError('Could not reach the computer (' + t + ')', false);
+    });
+  }
+  startPeer();
+})();
+</script>
+</body></html>
