@@ -90,7 +90,7 @@ brainstem over sealed `5a-tether`, and a dropped connection (Wi-Fi→cellular,
 reload) **resumes by key possession** — no new code. `?bs=http://localhost:7071`
 fronts an on-device brainstem instead (add `&secret=<X-Brainstem-Secret>`).
 The drop-in agent for on-device brainstems is
-[`desk_pair_agent.py`](https://github.com/kody-w/rapp-brainstem-walkthrough/blob/main/desk_pair_agent.py).
+[`desk_pair_agent.py`](desk_pair_agent.py) (in this repo).
 
 ## The Brainstem Tether
 
