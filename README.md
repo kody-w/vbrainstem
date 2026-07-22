@@ -94,6 +94,31 @@ VS Code, no install. It runs on your signed-in GitHub Copilot account.
 - Files: [`surgeon.js`](surgeon.js) (loop + side panel), `brainstem_web.py`
   (`/surgeon/complete`). This is how the Brain Surgeon builds agents without VS Code.
 
+## Burrow — the Brain Surgeon builds on your REAL machine (experimental)
+
+The Copilot agent loop above is sandboxed to the browser VM. When the vBrainstem
+is **Desk Paired** to a real on-device brainstem, it can **burrow** out of the
+sandbox and run on the actual computer — so you can command the in-browser
+GitHub Copilot to autonomously build and iterate on your on-device brainstem's
+agents, **without opening VS Code**, and get essentially the same thing.
+
+Enable it (off by default, every gate must hold):
+1. On the computer: run the Desk Pair agent with host control —
+   *"desk pair my phone with allow_host_control set to true"*
+   ([`desk_pair_agent.py`](desk_pair_agent.py)).
+2. Pair the vBrainstem (scan → type the 6-digit code on the computer — the human
+   sign-off). The grant carries `host_control`.
+3. In the Brain Surgeon, click **🕳️ Burrow** and confirm.
+
+Then `run_python`, `run_shell`, `read_file`, `write_file`, `list_dir` and
+`delete_file` execute on the **real machine** over the sealed channel
+(`rapp-sealed/1.0`), and `test_brainstem` tests the on-device brainstem. Proof:
+`run_python` reports `darwin` / your real hostname, while the sandbox reports
+`emscripten`. Security: loopback-only `/exec` executor, armed only by the
+explicit opt-in, gated by the per-install secret, over the human-approved sealed
+tether. It runs in the brainstem's native Python process — so it *is* the real
+computer. Experimental; treat it like giving Copilot a terminal on your machine.
+
 ## Desk Pair — the vBrainstem as your desk's remote (Apple-style)
 
 Ask your on-device brainstem to *"desk pair my phone"*

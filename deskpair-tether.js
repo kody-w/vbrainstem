@@ -208,6 +208,7 @@
     if (msg.kind === 'pair-grant' && msg.response && msg.response.token) {
       token = msg.response.token;
       S.up = true; S.ceremonyDone = true; S.backoff = 2000;
+      S.hostControl = !!msg.response.host_control;
       saveSession();
       showOverlay('<div style="width:64px;height:64px;border-radius:50%;background:#238636;display:flex;' +
         'align-items:center;justify-content:center;margin:4px auto 14px">' +
@@ -221,6 +222,7 @@
     }
     if (msg.kind === 'resume-grant') {
       S.up = true; S.backoff = 2000;
+      if (msg.response) S.hostControl = !!msg.response.host_control;
       saveSession();
       hideOverlay();
       setChip('desk-paired · turns run on ' + HOST_NAME, '#3fb950');
@@ -371,6 +373,36 @@
       seal(token, env).then(function (sealed) { S.conn.send(sealed); }).catch(reject);
     });
   }
+
+  // Sealed host op over the tether — EXPERIMENTAL "burrow": run on the desk's
+  // REAL machine (python/shell/files) via its /exec executor. Same nonce
+  // round-trip as tetherSay; resolves the executor's JSON.
+  function hostOp(req) {
+    return new Promise(function (resolve, reject) {
+      if (!S.up || !S.conn || !token) return reject(new Error('tether down'));
+      if (!S.hostControl) return reject(new Error('host control not enabled on the desk computer'));
+      var nonce = crypto.randomUUID ? crypto.randomUUID() : String(Math.random());
+      var timer = setTimeout(function () { delete pendingSay[nonce]; reject(new Error('host op timeout')); }, 180000);
+      pendingSay[nonce] = function (msg) {
+        clearTimeout(timer);
+        if (msg.status && msg.status >= 400) reject(new Error((msg.response && msg.response.error) || ('host ' + msg.status)));
+        else resolve(msg.response || {});
+      };
+      var env = {
+        schema: 'rapp-twin-chat/1.0', from_rappid: myRappid(), to_rappid: HOST_PEER,
+        utc: new Date().toISOString(), nonce: nonce, kind: 'host', payload: { req: req, token: token }
+      };
+      seal(token, env).then(function (sealed) { S.conn.send(sealed); }).catch(reject);
+    });
+  }
+
+  // Bridge for the Brain Surgeon: is a real desk reachable, and run on it.
+  window.__DESKPAIR_BRIDGE__ = {
+    isPaired: function () { return !!(S.up && token); },
+    canBurrow: function () { return !!(S.up && token && S.hostControl); },
+    hostName: function () { return HOST_NAME; },
+    hostOp: hostOp
+  };
 
   // ── fetch layering: desk-first for /chat; everything else untouched ──
   var prevFetch = window.fetch.bind(window);

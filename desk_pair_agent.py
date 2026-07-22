@@ -58,21 +58,105 @@ def _read_or_create_secret(brainstem_dir):
         return ""
 
 
+# ── EXPERIMENTAL: host control (the "burrowed brainstem") ──────────────────────
+# When explicitly enabled (allow_host_control=True), a paired vBrainstem can
+# reach OUT of its browser sandbox and run code on THIS real machine — the same
+# power the brainstem has running locally. Off by default. Every gate must hold:
+#   1. Desk Pair ceremony done (human typed the 6-digit code) → sealed channel.
+#   2. Host control armed here (the opt-in below), else /exec 403s.
+#   3. The /exec endpoint is loopback-only and requires the per-install secret.
+#   4. All tether traffic is rapp-sealed (AES-256-GCM).
+# This runs in the brainstem's native Python process, so it IS the real machine.
+_HOST_CONTROL = {"armed": False, "secret": "", "ns": {"__name__": "_deskpair_host_"}}
+
+
+def _host_exec(req):
+    op = (req or {}).get("op")
+    try:
+        if op == "python":
+            import contextlib
+            import io as _io
+            buf = _io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                code = req.get("code", "")
+                try:
+                    val = eval(code, _HOST_CONTROL["ns"])  # noqa: S307 — operator-approved
+                    if val is not None:
+                        print(repr(val))
+                except SyntaxError:
+                    exec(code, _HOST_CONTROL["ns"])  # noqa: S102 — operator-approved
+            return {"output": buf.getvalue()}
+        if op == "shell":
+            import subprocess
+            r = subprocess.run(
+                req.get("command", ""), shell=True, capture_output=True,
+                text=True, timeout=req.get("timeout", 120))
+            return {"output": (r.stdout or "") + (r.stderr or ""), "code": r.returncode}
+        if op == "read":
+            with open(os.path.expanduser(req.get("path", "")), encoding="utf-8", errors="replace") as f:
+                return {"content": f.read()}
+        if op == "write":
+            p = os.path.expanduser(req.get("path", ""))
+            d = os.path.dirname(p)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(req.get("content", ""))
+            return {"ok": True, "path": p}
+        if op == "list":
+            p = os.path.expanduser(req.get("path", ".") or ".")
+            return {"path": p, "files": sorted(os.listdir(p))}
+        return {"error": "unknown op: " + str(op)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 class _TetherPageHandler(http.server.SimpleHTTPRequestHandler):
-    """Serves ONLY the tether directory, loopback Host values only, no listing."""
+    """Serves ONLY the tether directory, loopback Host values only, no listing.
+    Also hosts POST /exec (host control) — armed + secret-gated + loopback."""
 
     def log_message(self, *args):
         pass
 
-    def do_GET(self):
+    def _loopback(self):
         host = (self.headers.get("Host") or "").split(":")[0].lower()
-        if host not in ("localhost", "127.0.0.1", "[::1]", "::1"):
+        return host in ("localhost", "127.0.0.1", "[::1]", "::1")
+
+    def do_GET(self):
+        if not self._loopback():
             self.send_error(400, "loopback only")
             return
         if self.path.split("?")[0] not in ("/desk_pair_host.html",):
             self.send_error(404)
             return
         super().do_GET()
+
+    def do_POST(self):
+        if self.path.split("?")[0] != "/exec":
+            self.send_error(404)
+            return
+        if not self._loopback():
+            self.send_error(400, "loopback only")
+            return
+        if not _HOST_CONTROL["armed"]:
+            self.send_error(403, "host control not enabled")
+            return
+        supplied = self.headers.get("X-Brainstem-Secret", "") or ""
+        if not _HOST_CONTROL["secret"] or supplied != _HOST_CONTROL["secret"]:
+            self.send_error(403, "bad secret")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0") or 0)
+            req = json.loads(self.rfile.read(length) or b"{}")
+        except Exception:
+            self.send_error(400, "bad json")
+            return
+        body = json.dumps(_host_exec(req)).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
 
 def _serve_tether_dir(directory, start_port):
@@ -87,14 +171,29 @@ def _serve_tether_dir(directory, start_port):
         in_use = probe.connect_ex(("127.0.0.1", port)) == 0
         probe.close()
         if in_use:
+            # Reuse ONLY a server of the current code version: it must serve the
+            # page AND expose POST /exec (a stale thread from an older agent
+            # version 501s on POST and would break host control). A 403 here =
+            # the new handler (host-control/secret gate); reuse it.
             try:
                 r = urllib.request.urlopen(
                     f"http://127.0.0.1:{port}/desk_pair_host.html", timeout=1)
-                if r.status == 200:
-                    return port
+                if r.status != 200:
+                    continue
             except Exception:
-                pass
-            continue
+                continue
+            try:
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{port}/exec", data=b"{}", method="POST",
+                    headers={"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=1)
+                continue  # 2xx without a secret should never happen — treat as foreign
+            except urllib.error.HTTPError as he:
+                if he.code == 403:
+                    return port      # current-version handler
+                continue             # 501/404/etc → stale version, keep walking
+            except Exception:
+                continue
         try:
             handler = functools.partial(_TetherPageHandler, directory=directory)
             server = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
@@ -149,6 +248,16 @@ class DeskPairAgent(BasicAgent):
                             "Set false to only write the page and return its path."
                         ),
                     },
+                    "allow_host_control": {
+                        "type": "boolean",
+                        "description": (
+                            "EXPERIMENTAL. Default false. When true, a paired device may run "
+                            "code, shell commands, and file operations on THIS real computer "
+                            "(the 'burrowed brainstem') over the sealed channel — the same power "
+                            "the brainstem has locally. Only enable when the user explicitly asks "
+                            "to control the full computer from the paired device."
+                        ),
+                    },
                 },
                 "required": [],
             },
@@ -160,17 +269,25 @@ class DeskPairAgent(BasicAgent):
         open_browser = kwargs.get("open_browser", True)
         if isinstance(open_browser, str):
             open_browser = open_browser.strip().lower() not in ("false", "0", "no")
+        allow_host_control = kwargs.get("allow_host_control", False)
+        if isinstance(allow_host_control, str):
+            allow_host_control = allow_host_control.strip().lower() in ("true", "1", "yes")
 
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         out_dir = os.path.join(base_dir, ".brainstem_data", "deskpair")
         os.makedirs(out_dir, exist_ok=True)
         out_path = os.path.join(out_dir, "desk_pair_host.html")
 
+        secret = _read_or_create_secret(base_dir)
+        # Arm (or disarm) host control for this run. Off unless explicitly asked.
+        _HOST_CONTROL["armed"] = bool(allow_host_control)
+        _HOST_CONTROL["secret"] = secret
         config = {
             "bs": bs_url,
-            "secret": _read_or_create_secret(base_dir),
+            "secret": secret,
             "phone_page": os.environ.get("DESKPAIR_PHONE_PAGE", os.environ.get("TETHER_PHONE_PAGE", PHONE_PAGE)),
             "host_name": os.environ.get("DESKPAIR_HOST_NAME", os.environ.get("TETHER_HOST_NAME", "your computer")),
+            "host_control": bool(allow_host_control),
             "session": secrets.token_hex(4),
         }
         html = _HOST_PAGE.replace("%%CONFIG%%", json.dumps(config))
@@ -422,7 +539,7 @@ _HOST_PAGE = r"""<!doctype html>
     state.pairedPeer = conn.peer;
     conn.send(await seal(pairSecret, {
       schema: 'rapp-twin-chat/1.0', kind: 'pair-grant', from_rappid: myRappid(),
-      response: { token: state.token, host: CFG.host_name }
+      response: { token: state.token, host: CFG.host_name, host_control: !!CFG.host_control }
     }));
     $('#code-panel').classList.remove('active');
     $('#done-panel').classList.add('active');
@@ -473,7 +590,7 @@ _HOST_PAGE = r"""<!doctype html>
       document.getElementById('card').classList.add('paired');
       conn.send(await seal(state.token, {
         schema: 'rapp-twin-chat/1.0', kind: 'resume-grant', from_rappid: myRappid(),
-        response: { host: CFG.host_name }
+        response: { host: CFG.host_name, host_control: !!CFG.host_control }
       }));
       return;
     }
@@ -501,6 +618,18 @@ _HOST_PAGE = r"""<!doctype html>
         if (p.method === 'health') await respond('console', 200, await bsGet('/health'));
         else if (p.method === 'agents') { var h = await bsGet('/health'); await respond('console', 200, { agents: h.agents || [] }); }
         else await respond('console', 400, { error: 'desk pair supports: say, console.health, console.agents' });
+      } else if (msg.kind === 'host') {
+        // EXPERIMENTAL burrow: run on THIS real machine via the loopback /exec
+        // executor (armed by allow_host_control; secret-gated; loopback-only).
+        if (!CFG.host_control) { await respond('host', 403, { error: 'host control not enabled on this computer' }); return; }
+        log('🕳️ host.' + ((p.req && p.req.op) || '?') + ' ← burrow');
+        var er = await fetch('/exec', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Brainstem-Secret': CFG.secret || '' },
+          body: JSON.stringify(p.req || {})
+        });
+        var ej = await er.json().catch(function () { return { error: 'exec ' + er.status }; });
+        await respond('host', er.status, ej);
       }
     } catch (e) {
       log('ERR ' + ((e && e.message) || e));
