@@ -74,23 +74,28 @@ Deliberate browser deltas, all minimal:
   before each dispatch, instead of `pip install` at agent import time.
 - **No LAN mode** / Host checks (a browser tab has no LAN surface).
 
-## Desk Pair — phone as a sealed remote (Apple-style)
+## Desk Pair — the vBrainstem as your desk's remote (Apple-style)
 
-**Live:** https://kody-w.github.io/vbrainstem/deskpair-host.html
+Ask your on-device brainstem to *"desk pair my phone"*
+([`desk_pair_agent.py`](desk_pair_agent.py), drop-in) — a pairing page opens
+with a QR. **Scanning it opens the vBrainstem itself** (`?deskpair=<peer>`):
+the full UI runs the ceremony — the phone shows a **6-digit code**, and typing
+that code **into the computer** is the human sign-off. The QR carries only a
+peer-id; the code never crosses the network (salted hash, one attempt); the
+session token is released sealed (`rapp-sealed/1.0`) under a code-derived key.
 
-Open the page and a QR appears — the **real vBrainstem use case**: the page
-boots `brainstem_web.py` (Pyodide) in-page, signed in with the same
-`vb_gh_token` as the main vBrainstem, so the "computer" side of the pair is
-just a browser tab. Scan the QR with a phone (`deskpair.html`), the phone
-shows a **6-digit code**, and typing that code **into the computer** completes
-the pair — the human sign-off. The QR carries only a peer-id; the code never
-crosses the network (salted hash, one attempt); the session token is released
-sealed (`rapp-sealed/1.0`) under a code-derived key. The phone then drives the
-brainstem over sealed `5a-tether`, and a dropped connection (Wi-Fi→cellular,
-reload) **resumes by key possession** — no new code. `?bs=http://localhost:7071`
-fronts an on-device brainstem instead (add `&secret=<X-Brainstem-Secret>`).
-The drop-in agent for on-device brainstems is
-[`desk_pair_agent.py`](desk_pair_agent.py) (in this repo).
+While paired, the vBrainstem is **tethered**: every `/chat` turn rides the
+sealed `5a-tether` to the DESK brainstem — chat is the only wire (§3). When
+the tether is lost (desk tab closed, network hop), turns **fall back to the
+in-browser Pyodide brainstem** and a background loop keeps re-attaching by
+sealed key possession (no new code) — heartbeat + ICE-state watch declare loss
+within seconds, and in-flight turns fail over immediately
+(`deskpair-tether.js`).
+
+Also here: [`deskpair-host.html`](https://kody-w.github.io/vbrainstem/deskpair-host.html)
+— a zero-install host that boots `brainstem_web.py` in-page (or fronts an
+on-device brainstem via `?bs=…&secret=…`), and `deskpair.html`, a minimal
+phone remote.
 
 ## The Brainstem Tether
 
