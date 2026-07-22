@@ -88,7 +88,7 @@
   var BS_URL = qs.get('bs') || '';
   var BS_SECRET = qs.get('secret') || '';
   var HOST_NAME = qs.get('host') || 'your computer';
-  var PHONE_PAGE = new URL('deskpair.html', location.href).href;
+  var PHONE_PAGE = new URL('index.html', location.href).href;
 
   var $ = function (s) { return document.querySelector(s); };
   var logEl = $('#log');
@@ -352,7 +352,7 @@
     state.peer = peer;
     peer.on('open', function (id) {
       state.id = id;
-      var join = PHONE_PAGE + '?peer=' + encodeURIComponent(id) +
+      var join = PHONE_PAGE + '?deskpair=' + encodeURIComponent(id) +
         '&host=' + encodeURIComponent(HOST_NAME);
       $('#qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=440x440&margin=8&data=' + encodeURIComponent(join);
       status('waiting for a scan', false);

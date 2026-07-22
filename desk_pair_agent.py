@@ -32,7 +32,7 @@ import webbrowser
 
 from agents.basic_agent import BasicAgent
 
-PHONE_PAGE = "https://kody-w.github.io/vbrainstem/deskpair.html"
+PHONE_PAGE = "https://kody-w.github.io/vbrainstem/index.html"
 DESKPAIR_PORT = int(os.environ.get("DESKPAIR_PORT", os.environ.get("TETHER_PORT", "7099")))
 
 
@@ -519,7 +519,7 @@ _HOST_PAGE = r"""<!doctype html>
     state.peer = peer;
     peer.on('open', function (id) {
       state.id = id;
-      var join = CFG.phone_page + '?peer=' + encodeURIComponent(id) +
+      var join = CFG.phone_page + '?deskpair=' + encodeURIComponent(id) +
         '&host=' + encodeURIComponent(CFG.host_name);
       $('#qr').src = 'https://api.qrserver.com/v1/create-qr-code/?size=440x440&margin=8&data=' + encodeURIComponent(join);
       status('waiting for a scan', false);
