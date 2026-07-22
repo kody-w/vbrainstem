@@ -1511,11 +1511,26 @@
     return reply.content;
   }
 
+  // Direct worker request — bypasses window.fetch (and therefore the desk-pair
+  // tether). The Brain Surgeon builds agents in THIS vBrainstem's workspace, so
+  // its /surgeon/complete, /chat tests and /agents calls must always hit the
+  // local Pyodide brainstem even while /chat turns are tethered to a desk.
+  function localRequest(method, path, bodyJson) {
+    return workerCall({
+      type: 'request', method: method, path: path,
+      bodyJson: bodyJson != null ? bodyJson : null,
+    }).then(function (msg) {
+      if (msg.download) return { status: msg.status, download: msg.download };
+      return { status: msg.status, json: msg.json == null ? {} : msg.json };
+    });
+  }
+
   window.__vbrainstem = {
     ready: ready,
     worker: worker,
     info: function () { return bootInfo; },
     fs: fsCall,
+    local: localRequest,
     openEditor: openEditor,
     editorChat: function (text) { return openEditor().then(function () { return editorChatSend(text); }); },
   };

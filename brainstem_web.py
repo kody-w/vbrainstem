@@ -2036,6 +2036,42 @@ def chat_stream(data):
 # ── Route handlers (non-chat) ─────────────────────────────────────────────────
 
 
+def route_surgeon_complete(body):
+    """Browser-only route (§12 delta): one raw Copilot chat-completion with
+    tools, for the in-page Brain Surgeon's agent loop. Unlike /chat (which runs
+    the brainstem's OWN agents as tools), this returns the model's assistant
+    message verbatim — content + tool_calls — so the page drives its own
+    agentic loop with tools that build agents in this vBrainstem's workspace.
+    Reuses call_copilot: same signed-in Copilot token, model, and fallbacks."""
+    body = body or {}
+    messages = body.get("messages")
+    tools = body.get("tools") or None
+    if not isinstance(messages, list) or not messages:
+        return {"error": "messages[] required"}, 400
+    if not get_github_token():
+        return {"error": "Not signed in. Sign in with GitHub to use the Brain Surgeon."}, 401
+    try:
+        result, model = call_copilot(messages, tools=tools)
+    except RuntimeError as e:
+        err = str(e)
+        if err.startswith("NO_COPILOT_ACCESS:"):
+            return {"error": err}, 403
+        return {"error": err}, 502
+    except Exception as e:
+        return {"error": str(e)[:500]}, 502
+    choice = (result.get("choices") or [{}])[0]
+    msg = choice.get("message", {}) or {}
+    return {
+        "message": {
+            "role": "assistant",
+            "content": msg.get("content"),
+            "tool_calls": msg.get("tool_calls") or [],
+        },
+        "finish_reason": choice.get("finish_reason", "stop"),
+        "model": model,
+    }, 200
+
+
 def route_login():
     try:
         return start_device_code_login(), 200
@@ -2797,6 +2833,8 @@ def dispatch(method, path, query=None, body=None, form=None, files=None, headers
             return _finish(*route_diagnostics_report(body, form, is_json))
         if method == "GET" and path == "/workspace/export":
             return _finish(*route_workspace_export())
+        if method == "POST" and path == "/surgeon/complete":
+            return _finish(*route_surgeon_complete(body))
         return {"status": 404, "json": {"error": "not found", "path": path}}
     except Exception as e:
         traceback.print_exc()

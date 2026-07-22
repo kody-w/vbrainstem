@@ -74,6 +74,26 @@ Deliberate browser deltas, all minimal:
   before each dispatch, instead of `pip install` at agent import time.
 - **No LAN mode** / Host checks (a browser tab has no LAN surface).
 
+## Brain Surgeon — the GitHub Copilot agent loop, in the browser
+
+**Live:** open the [vBrainstem](https://kody-w.github.io/vbrainstem/) and click the
+**🩺 Brain Surgeon** tab on the right edge.
+
+Not a shell — the **real GitHub Copilot agent loop** (the same think→edit→test loop
+VS Code's Agent mode runs), side-by-side with the brainstem chat. Describe an agent
+and Copilot writes the single-file `*_agent.py` into this vBrainstem's workspace,
+**hot-loads it, and tests it live** against `/chat`, iterating until it works — no
+VS Code, no install. It runs on your signed-in GitHub Copilot account.
+
+- Completions: `POST /surgeon/complete` → `brainstem_web.call_copilot()` (real
+  Copilot token, model, and fallbacks) returns the assistant message verbatim;
+  the **page** drives the loop with tools (`list_agents`, `read_file`,
+  `write_agent`, `delete_agent`, `test_brainstem`).
+- Tools operate on the LOCAL vBrainstem via `__vbrainstem.local()` / `.fs()`, so
+  the Surgeon always builds here even while `/chat` is tethered to a desk brainstem.
+- Files: [`surgeon.js`](surgeon.js) (loop + side panel), `brainstem_web.py`
+  (`/surgeon/complete`). This is how the Brain Surgeon builds agents without VS Code.
+
 ## Desk Pair — the vBrainstem as your desk's remote (Apple-style)
 
 Ask your on-device brainstem to *"desk pair my phone"*
