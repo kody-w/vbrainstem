@@ -528,8 +528,11 @@
     // In the browser there's no VS Code to open (that's a local-brainstem
     // thing) — repurpose the header's VS Code button as the Copilot launcher.
     // boot.js routes clicks on the header's (repurposed) VS Code button to
-    // window.__openSurgeon — expose it and give the button the Copilot look.
-    window.__openSurgeon = function () { if (!els.panel.classList.contains("open")) toggle(); };
+    // window.__openSurgeon — the header button TOGGLES the panel (open ↔ hide);
+    // hiding keeps every chat's DOM/state intact, so re-showing loses nothing.
+    window.__openSurgeon = function () { toggle(); };
+    // Open-only variant for the refresh auto-reopen (never closes).
+    window.__showSurgeon = function () { if (!els.panel.classList.contains("open")) toggle(); };
     var vscodeLink = document.getElementById("vscode-link");
     if (vscodeLink) {
       vscodeLink.title = "GitHub Copilot — build agents (agent mode)";
@@ -903,7 +906,7 @@
       // A refresh clears the brainstem chat but keeps the Copilot chats. If any
       // restored surgery has real history, reopen the panel so it isn't lost.
       if (sessions.some(function (s) { return s.convo && s.convo.length > 1; }) &&
-          typeof window.__openSurgeon === "function") window.__openSurgeon();
+          typeof window.__showSurgeon === "function") window.__showSurgeon();
     }).catch(build);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
