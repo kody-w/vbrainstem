@@ -729,6 +729,16 @@
   .rar-add-btn:hover { background: #2ea043; }
   .rar-add-btn:disabled { opacity: 0.6; cursor: default; }
   .rar-add-btn.added { background: transparent; color: #3fb950; border-color: #238636; }
+  .rar-actions { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+  .rar-upvote-btn {
+    background: transparent; color: #8b949e; border: 1px solid #30363d;
+    border-radius: 4px; padding: 3px 8px; font-size: 10px; line-height: 1; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .rar-upvote-btn:hover { color: #3fb950; border-color: #238636; }
+  .rar-upvote-btn:disabled { cursor: default; }
+  .rar-upvote-btn.voted { color: #3fb950; border-color: #238636; background: rgba(35,134,54,.12); }
+  body.light-mode .rar-upvote-btn { color: #57606a; border-color: #d0d7de; }
   .rar-browse-all {
     display: block; width: 100%; margin-top: 10px;
     background: transparent; color: #58a6ff; border: 1px solid #30363d;
@@ -2016,15 +2026,51 @@
     meta.appendChild(name);
     if (desc.textContent) meta.appendChild(desc);
 
+    const actions = document.createElement('div');
+    actions.className = 'rar-actions';
+
+    const up = document.createElement('button');
+    up.className = 'rar-upvote-btn';
+    up.innerHTML = '▲';
+    up.title = 'Upvote this agent on its RAR discussion';
+    up.setAttribute('aria-label', 'Upvote ' + (a.name || ''));
+    up.onclick = () => upvoteRarItem(a, up);
+
     const btn = document.createElement('button');
     btn.className = 'rar-add-btn';
     btn.textContent = 'Add';
     btn.title = a._file || '';
     btn.onclick = () => installRarAgent(a, btn);
 
+    actions.appendChild(up);
+    actions.appendChild(btn);
     item.appendChild(meta);
-    item.appendChild(btn);
+    item.appendChild(actions);
     return item;
+  }
+
+  // Upvote = 👍 the agent's RAR discussion (feeds the same ratings snapshot as
+  // downloads). Prompts sign-in when there's no token; best-effort, non-blocking.
+  async function upvoteRarItem(a, btn) {
+    const name = a.name || a.display_name;
+    if (btn.classList.contains('voted')) return;
+    const prev = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '…';
+    try {
+      await upvoteRarAgent(name);
+      btn.innerHTML = '▲';
+      btn.classList.add('voted');
+      btn.title = 'Upvoted ✓';
+    } catch (e) {
+      btn.disabled = false;
+      btn.innerHTML = prev;
+      if (e && e.message === 'signin') {
+        alert('Sign in with GitHub to upvote — your upvote is a 👍 on the agent’s RAR discussion.');
+      } else {
+        alert('Could not record upvote: ' + (e && e.message || e));
+      }
+    }
   }
 
   // ── Featured groups (empty-state discoverability) ──
@@ -2138,6 +2184,70 @@
     box.append(chips, list, toggle);
   }
 
+  // ── RAR usage tracking (same pattern as store.html) ──────────────────────
+  // Each agent has a GitHub Discussion in kody-w/RAR titled with its @scope/slug.
+  // Downloads  = 👍 on that thread's <!-- rar:download-tally --> comment (one per
+  //              GitHub user = one unique installer), fired automatically on install.
+  // Upvotes    = 👍 on the discussion itself.
+  // Both are scraped daily into state/discussion_ratings.json (score = 2*up + downloads).
+  // Shares the signed-in GitHub token with RAPPterBook / the live tier; a silent
+  // no-op when signed out — metrics must never break an install.
+  const RAR_TRACK_REPO = 'kody-w/RAR';
+  function rarGhToken() {
+    return localStorage.getItem('rb_access_token')
+      || localStorage.getItem('gh_token')
+      || localStorage.getItem('vb_gh_token') || null;
+  }
+  async function rarGql(query, variables) {
+    const token = rarGhToken();
+    if (!token) return null;
+    const res = await fetch('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    });
+    const payload = await res.json();
+    if (payload.errors) throw new Error(payload.errors[0]?.message || 'graphql');
+    return payload.data || {};
+  }
+  // Find the agent's discussion (and its download-tally comment) by exact title.
+  async function rarFindDiscussion(name) {
+    const data = await rarGql(
+      'query($q: String!) { search(query: $q, type: DISCUSSION, first: 10) {' +
+      ' nodes { ... on Discussion { id title repository { nameWithOwner }' +
+      ' comments(first: 10) { nodes { id body } } } } } }',
+      { q: `repo:${RAR_TRACK_REPO} in:title "${name}"` });
+    if (!data) return null;
+    const node = (data.search?.nodes || []).find(n =>
+      n && n.title === name && n.repository?.nameWithOwner === RAR_TRACK_REPO);
+    if (!node) return null;
+    const tally = (node.comments?.nodes || []).find(c =>
+      (c.body || '').includes('<!-- rar:download-tally -->'));
+    return { id: node.id, tallyId: tally?.id || null };
+  }
+  async function rarAddReaction(subjectId) {
+    return rarGql(
+      'mutation($id: ID!) { addReaction(input: {subjectId: $id, content: THUMBS_UP})' +
+      ' { reaction { content } } }', { id: subjectId });
+  }
+  // Register an install as a download (👍 the tally comment). Silent, best-effort.
+  async function trackRarDownload(name) {
+    try {
+      if (!rarGhToken()) return;
+      const d = await rarFindDiscussion(name);
+      if (d && d.tallyId) await rarAddReaction(d.tallyId);
+    } catch (_) { /* metrics never break a download */ }
+  }
+  // Upvote the agent's discussion (👍 the thread). Returns true on success so the
+  // UI can reflect it; throws 'signin' when there's no token so callers can prompt.
+  async function upvoteRarAgent(name) {
+    if (!rarGhToken()) throw new Error('signin');
+    const d = await rarFindDiscussion(name);
+    if (!d) throw new Error('no discussion for this agent yet');
+    await rarAddReaction(d.id);
+    return true;
+  }
+
   async function installRarAgent(agent, btn) {
     const path = agent._file;
     if (!path) { alert('This registry entry has no file path.'); return; }
@@ -2176,6 +2286,8 @@
         btn.textContent = 'Added ✓';
         btn.classList.add('added');
         loadAgentsList();
+        // Count this install as a download on the agent's RAR discussion.
+        trackRarDownload(agent.name || agent.display_name);
       } else {
         throw new Error(data.error || 'import failed');
       }
