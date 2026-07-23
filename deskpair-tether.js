@@ -212,6 +212,7 @@
       // A burrow-only host (no brainstem) sets chat:false — keep /chat in the
       // browser, only route host ops to the machine.
       S.chatEnabled = msg.response.chat !== false;
+      S.hostOs = msg.response.os || null;
       saveSession();
       showOverlay('<div style="width:64px;height:64px;border-radius:50%;background:#238636;display:flex;' +
         'align-items:center;justify-content:center;margin:4px auto 14px">' +
@@ -225,7 +226,7 @@
     }
     if (msg.kind === 'resume-grant') {
       S.up = true; S.backoff = 2000;
-      if (msg.response) { S.hostControl = !!msg.response.host_control; S.chatEnabled = msg.response.chat !== false; }
+      if (msg.response) { S.hostControl = !!msg.response.host_control; S.chatEnabled = msg.response.chat !== false; S.hostOs = msg.response.os || S.hostOs; }
       saveSession();
       hideOverlay();
       setChip(S.chatEnabled === false ? ('burrowed · Copilot can run on ' + HOST_NAME) : ('desk-paired · turns run on ' + HOST_NAME), '#3fb950');
@@ -404,6 +405,7 @@
     isPaired: function () { return !!(S.up && token); },
     canBurrow: function () { return !!(S.up && token && S.hostControl); },
     hostName: function () { return HOST_NAME; },
+    hostOs: function () { return S.hostOs || null; },
     hostOp: hostOp
   };
 

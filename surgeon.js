@@ -153,9 +153,13 @@
   function toolsFor() { return burrow ? TOOLS.concat([RUN_SHELL_TOOL]) : TOOLS; }
   function systemFor() {
     if (!burrow) return SYSTEM_PROMPT;
+    var os = (bridge().hostOs && bridge().hostOs()) || "";
     return SYSTEM_PROMPT + "\n\n=== BURROW MODE IS ON ===\nrun_python, run_shell, read_file, write_file, list_dir and " +
       "delete_file now execute on the user's REAL computer (" + (bridge().hostName ? bridge().hostName() : "the desk") +
-      ") over a sealed channel — real shell, real disk, real network, the same power the brainstem has running locally. " +
+      (os ? ", running " + os : "") + ") over a sealed channel — real shell, real disk, real network, the same power the brainstem has running locally. " +
+      (os === "Windows"
+        ? "This machine is WINDOWS: run_shell uses cmd.exe — use Windows commands (dir, type, echo, PowerShell via 'powershell -c \"...\"'), not Unix (ls/cat). Paths use backslashes. "
+        : (os ? "This machine is " + os + ": run_shell uses a POSIX shell (ls, cat, grep, etc.). " : "")) +
       "This is powerful and can be irreversible. Prefer read-only exploration first; state your plan in prose before any " +
       "destructive or system-changing command; never run something the user didn't ask for.";
   }

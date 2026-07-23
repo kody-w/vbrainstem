@@ -25,12 +25,24 @@ Stop: Ctrl-C, or close the pairing tab.
 import http.server
 import json
 import os
+import platform
 import secrets
 import socket
+import sys
 import threading
 import webbrowser
 
+
+def _os_label():
+    if sys.platform.startswith("win"):
+        return "Windows"
+    if sys.platform == "darwin":
+        return "macOS"
+    return platform.system() or sys.platform
+
+
 PORT = int(os.environ.get("BURROW_PORT", "7188"))
+OS_LABEL = _os_label()
 HOST_NAME = os.environ.get("BURROW_HOST_NAME", socket.gethostname() or "this computer")
 VBRAINSTEM = os.environ.get("BURROW_VBRAINSTEM", "https://kody-w.github.io/vbrainstem/")
 HOME = os.path.expanduser("~/.rapp-burrow")
@@ -198,7 +210,7 @@ PAGE = r"""<!doctype html>
     var pairSecret=code+'|'+pairing.salt+'|'+state.id+'|'+conn.peer;
     state.token=state.token||(crypto.randomUUID?crypto.randomUUID():'tk-'+Date.now().toString(36));
     state.pairedPeer=conn.peer;
-    conn.send(await seal(pairSecret,{schema:'rapp-twin-chat/1.0',kind:'pair-grant',from_rappid:myRappid(),response:{token:state.token,host:CFG.host_name,host_control:true,chat:false}}));
+    conn.send(await seal(pairSecret,{schema:'rapp-twin-chat/1.0',kind:'pair-grant',from_rappid:myRappid(),response:{token:state.token,host:CFG.host_name,host_control:true,chat:false,os:CFG.os}}));
     $('#code-panel').classList.remove('active'); $('#done-panel').classList.add('active'); $('#card').classList.add('paired');
     log('BURROWED — '+conn.peer.slice(0,8)+'… can run on '+CFG.host_name);
   }
@@ -209,7 +221,7 @@ PAGE = r"""<!doctype html>
     if(!msg||msg.schema!=='rapp-twin-chat/1.0') return;
     var p=msg.payload||{};
     if(msg.kind==='pair-request'){ if(state.pairedPeer){return;} state.pairing={conn:conn,salt:p.salt,code_hash:p.code_hash,device:p.device}; log('pair-request from '+conn.peer.slice(0,8)+'…'); showCode(state.pairing); return; }
-    if(sealed&&msg.kind==='resume'){ state.pairedPeer=conn.peer; log('RESUMED '+conn.peer.slice(0,8)+'…'); $('#pair-panel').style.display='none'; $('#code-panel').classList.remove('active'); $('#done-panel').classList.add('active'); $('#card').classList.add('paired'); conn.send(await seal(state.token,{schema:'rapp-twin-chat/1.0',kind:'resume-grant',from_rappid:myRappid(),response:{host:CFG.host_name,host_control:true,chat:false}})); return; }
+    if(sealed&&msg.kind==='resume'){ state.pairedPeer=conn.peer; log('RESUMED '+conn.peer.slice(0,8)+'…'); $('#pair-panel').style.display='none'; $('#code-panel').classList.remove('active'); $('#done-panel').classList.add('active'); $('#card').classList.add('paired'); conn.send(await seal(state.token,{schema:'rapp-twin-chat/1.0',kind:'resume-grant',from_rappid:myRappid(),response:{host:CFG.host_name,host_control:true,chat:false,os:CFG.os}})); return; }
     if(!sealed||conn.peer!==state.pairedPeer){ log('DENIED '+msg.kind); return; }
     var respond=async function(kind,st,resp){ conn.send(await seal(state.token,{schema:'rapp-twin-chat-response/1.0',channel:'5a-tether-sealed',from_rappid:myRappid(),to_rappid:msg.from_rappid,kind:kind,envelope:msg,status:st,response:resp})); };
     if(sealed&&msg.kind==='ping'){ conn.send(await seal(state.token,{schema:'rapp-twin-chat/1.0',kind:'pong',from_rappid:myRappid()})); return; }
@@ -250,7 +262,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path.split("?")[0] not in ("/", "/burrow_host.html"):
             self.send_error(404)
             return
-        cfg = {"host_name": HOST_NAME, "secret": SECRET, "vbrainstem": VBRAINSTEM}
+        cfg = {"host_name": HOST_NAME, "secret": SECRET, "vbrainstem": VBRAINSTEM, "os": OS_LABEL}
         body = PAGE.replace("%%CONFIG%%", json.dumps(cfg)).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
