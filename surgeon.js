@@ -305,7 +305,12 @@
   }
 
   var CSS =
-    ":root{--surg-w:min(500px,100vw)}" +
+    ":root{--surg-w:min(460px,100vw)}" +
+    // True side-by-side: shrink the brainstem's flex-column body so the panel
+    // takes the freed right strip — both stay fully usable. On narrow screens
+    // the panel overlays instead (no room to split).
+    "@media(min-width:820px){html.surg-open body{width:calc(100vw - var(--surg-w));" +
+    "transition:width .28s cubic-bezier(.22,.9,.3,1)}}" +
     "#surg-btn{position:fixed;top:50%;right:0;transform:translateY(-50%);z-index:9987;" +
     "background:#1c1e22;color:#e7e8ea;border:1px solid #2f3238;border-right:none;border-radius:12px 0 0 12px;" +
     "padding:14px 9px;cursor:pointer;font:600 12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;" +
@@ -388,12 +393,25 @@
     style.textContent = CSS;
     document.head.appendChild(style);
 
-    var btn = document.createElement("button");
-    btn.id = "surg-btn";
-    btn.innerHTML = COPILOT_SVG + " GitHub Copilot";
-    btn.title = "GitHub Copilot agent loop, in your brainstem — full Python VM, no VS Code";
-    btn.onclick = toggle;
-    document.body.appendChild(btn);
+    // In the browser there's no VS Code to open (that's a local-brainstem
+    // thing) — repurpose the header's VS Code button as the Copilot launcher.
+    // boot.js routes clicks on the header's (repurposed) VS Code button to
+    // window.__openSurgeon — expose it and give the button the Copilot look.
+    window.__openSurgeon = function () { if (!els.panel.classList.contains("open")) toggle(); };
+    var vscodeLink = document.getElementById("vscode-link");
+    if (vscodeLink) {
+      vscodeLink.title = "GitHub Copilot — build agents (agent mode)";
+      vscodeLink.style.cursor = "pointer";
+      vscodeLink.innerHTML = '<span class="icon">' + COPILOT_SVG.replace('width="15" height="15"', 'width="16" height="16"') + "</span>";
+    } else {
+      // Fallback: a pull-out tab on the right edge.
+      var btn = document.createElement("button");
+      btn.id = "surg-btn";
+      btn.innerHTML = COPILOT_SVG + " GitHub Copilot";
+      btn.title = "GitHub Copilot agent loop, in your brainstem — full Python VM";
+      btn.onclick = toggle;
+      document.body.appendChild(btn);
+    }
 
     var panel = document.createElement("div");
     panel.id = "surg";
@@ -456,6 +474,7 @@
   function toggle() {
     build();
     var open = els.panel.classList.toggle("open");
+    document.documentElement.classList.toggle("surg-open", open);   // side-by-side
     if (open) {
       checkAuth();
       refreshBurrow();

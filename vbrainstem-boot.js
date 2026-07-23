@@ -415,18 +415,18 @@
     virtualDownload(vp);
   }, true);
 
-  // ── "Open in VS Code" -> in-browser editor ─────────────────────────────────
+  // ── Header "VS Code" button -> GitHub Copilot (Brain Surgeon) ──────────────
+  // There's no VS Code to open in the browser; the button launches the Copilot
+  // agent panel (surgeon.js) instead. Falls back to the Monaco editor if the
+  // Surgeon isn't present.
   document.addEventListener('click', function (event) {
     var link = event.target && event.target.closest ? event.target.closest('#vscode-link') : null;
     if (!link) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    openEditor();
+    if (typeof window.__openSurgeon === 'function') window.__openSurgeon();
+    else openEditor();
   }, true);
-  document.addEventListener('DOMContentLoaded', function () {
-    var link = document.getElementById('vscode-link');
-    if (link) link.title = 'Open the workspace in VS Code (in your browser)';
-  });
 
   // ── Secrets vault (AES-GCM, PBKDF2-SHA256 / 210000) ────────────────────────
   var VAULT_ITER = 210000;
