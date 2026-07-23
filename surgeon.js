@@ -168,8 +168,9 @@
     return res || {};
   }
 
-  async function execTool(name, args) {
+  async function execTool(name, args, sid) {
     var vb = VB();
+    var testSid = sid || "surgeon-test";
     // BURROW: capability tools execute on the REAL desk machine.
     if (burrow && canBurrow()) {
       if (name === "run_python") return await hostExec({ op: "python", code: String(args.code || "") });
@@ -180,7 +181,7 @@
       if (name === "delete_file") return await hostExec({ op: "shell", command: "rm -f " + JSON.stringify(cleanPath(args.path)) });
       if (name === "test_brainstem") {
         // Test against the DESK brainstem (window.fetch is tether-routed).
-        var dr = await window.fetch("/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_input: String(args.message || ""), conversation_history: [] }) });
+        var dr = await window.fetch("/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_input: String(args.message || ""), conversation_history: [], session_id: testSid }) });
         var dj = await dr.json();
         return { response: dj.response, agent_logs: dj.agent_logs || "", error: dj.error };
       }
@@ -220,7 +221,7 @@
     }
     if (name === "test_brainstem") {
       var chat = await vb.local("POST", "/chat", {
-        user_input: String(args.message || ""), conversation_history: [], session_id: "surgeon-test"
+        user_input: String(args.message || ""), conversation_history: [], session_id: testSid
       });
       var j = chat.json || {};
       return { response: j.response, agent_logs: j.agent_logs || "", error: j.error };
@@ -228,9 +229,20 @@
     throw new Error("unknown tool: " + name);
   }
 
-  // ── the agent loop ──
-  var running = false;
-  var convo = [];
+  // ── sessions: independent Copilot chats over the same brainstem ──
+  // Each session is its own agent-loop conversation with its own transcript;
+  // all operate on the SAME shared vBrainstem workspace. Sessions run
+  // concurrently — start one building while another runs.
+  var sessions = [];
+  var activeId = 0;
+  var sseq = 0;
+  var herd = false;   // grid view: chat with several Copilots at once
+  var els = {};
+
+  function activeSession() {
+    for (var i = 0; i < sessions.length; i++) if (sessions[i].id === activeId) return sessions[i];
+    return null;
+  }
 
   async function complete(messages) {
     var r = await VB().local("POST", "/surgeon/complete", { messages: messages, tools: toolsFor() });
@@ -239,28 +251,32 @@
     return r.json;
   }
 
-  async function runTask(task) {
-    if (running) return;
-    running = true;
-    setBusy(true);
-    if (!convo.length) convo.push({ role: "system", content: systemFor() });
-    else convo[0] = { role: "system", content: systemFor() };  // reflect burrow state
-    convo.push({ role: "user", content: task });
-    addBubble("user", task);
-    var think = addThinking();
+  async function runTask(session, task) {
+    if (session.running) return;
+    session.running = true;
+    var emptyEl = session.logEl.querySelector(".empty");
+    if (emptyEl) emptyEl.remove();
+    if (session.title === session.defaultTitle) { session.title = task.slice(0, 40); }
+    refresh(session);
+    if (!session.convo.length) session.convo.push({ role: "system", content: systemFor() });
+    else session.convo[0] = { role: "system", content: systemFor() };
+    session.convo.push({ role: "user", content: task });
+    addBubble(session, "user", task);
+    var think = addThinking(session);
 
     try {
       for (var round = 0; round < MAX_ROUNDS; round++) {
-        var out = await complete(convo);
+        var out = await complete(session.convo);
         var msg = out.message || {};
-        setModel(out.model);
+        session.model = out.model;
+        if (session.id === activeId) setModel(out.model);
         var assistant = { role: "assistant", content: msg.content || "", tool_calls: msg.tool_calls || [] };
         if (!assistant.tool_calls.length) delete assistant.tool_calls;
-        convo.push(assistant);
+        session.convo.push(assistant);
 
-        if (msg.content) addBubble("assistant", msg.content);
+        if (msg.content) addBubble(session, "assistant", msg.content);
         if (!msg.tool_calls || !msg.tool_calls.length) {
-          if (!msg.content) addBubble("assistant", "(done)");
+          if (!msg.content) addBubble(session, "assistant", "(done)");
           break;
         }
         for (var i = 0; i < msg.tool_calls.length; i++) {
@@ -268,26 +284,25 @@
           var fname = tc.function && tc.function.name;
           var args = {};
           try { args = JSON.parse((tc.function && tc.function.arguments) || "{}"); } catch (e) { args = {}; }
-          var chip = addToolChip(fname, args);
+          var chip = addToolChip(session, fname, args);
           var result;
-          try { result = await execTool(fname, args); chip.done(result); }
+          try { result = await execTool(fname, args, "surgeon-" + session.id); chip.done(result); }
           catch (e) { result = { error: (e && e.message) || String(e) }; chip.fail(result.error); }
-          convo.push({ role: "tool", tool_call_id: tc.id, name: fname, content: JSON.stringify(result).slice(0, 12000) });
+          session.convo.push({ role: "tool", tool_call_id: tc.id, name: fname, content: JSON.stringify(result).slice(0, 12000) });
         }
-        if (round === MAX_ROUNDS - 1) addBubble("system", "Reached the step limit — ask me to continue if it isn't finished.");
+        if (round === MAX_ROUNDS - 1) addBubble(session, "system", "Reached the step limit — ask me to continue if it isn't finished.");
       }
       try { if (typeof window.loadAgentsList === "function") window.loadAgentsList(); } catch (e) {}
     } catch (e) {
-      addBubble("error", (e && e.message) || String(e));
+      addBubble(session, "error", (e && e.message) || String(e));
     } finally {
       think.remove();
-      running = false;
-      setBusy(false);
+      session.running = false;
+      refresh(session);
     }
   }
 
   // ── UI ──
-  var els = {};
   var STARTERS = [
     "Build an agent that reverses a string",
     "Build a weather agent for a city (use a free API)",
@@ -332,10 +347,50 @@
     "#surg header .sub{font-size:10.5px;color:#8b8f98;letter-spacing:.01em}" +
     "#surg header .m{margin-left:auto;font-size:11px;color:#9aa0a9;background:#1e2025;border:1px solid #2c2f35;" +
     "border-radius:20px;padding:3px 10px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,Menlo,monospace}" +
+    "#surg header .herd{background:#1e2025;border:1px solid #2c2f35;color:#9aa0a9;border-radius:8px;width:28px;height:26px;font-size:14px;cursor:pointer;line-height:1;flex:none}" +
+    "#surg header .herd:hover,#surg header .herd.on{border-color:#3d7cf0;color:#e7e8ea}" +
     "#surg header .x{background:none;border:none;color:#8b8f98;font-size:20px;cursor:pointer;padding:0 2px;line-height:1}" +
     "#surg header .x:hover{color:#fff}" +
-    "#surg-log{flex:1;overflow-y:auto;padding:16px 15px;display:flex;flex-direction:column;gap:11px;scrollbar-width:thin;scrollbar-color:#33363c transparent}" +
+    // Herd view — a grid of independent Copilot chats, all on one brainstem.
+    "#surg-herd{position:fixed;inset:0;z-index:9990;background:#0f1013;display:none;flex-direction:column;font:13px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e7e8ea}" +
+    "#surg-herd.open{display:flex}#surg-herd *{box-sizing:border-box}" +
+    "#surg-herd .hbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #26282d;background:linear-gradient(180deg,#1c1e22,#17181b)}" +
+    "#surg-herd .hbar .badge{width:28px;height:28px;border-radius:8px;background:#22252b;display:flex;align-items:center;justify-content:center;border:1px solid #2f3238}" +
+    "#surg-herd .hbar .t{font-weight:650;font-size:14px}#surg-herd .hbar .sub{font-size:11px;color:#8b8f98}" +
+    "#surg-herd .hbar .hnew{margin-left:auto;background:#1a1c21;border:1px solid #2a2d33;color:#d7dae0;border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer}" +
+    "#surg-herd .hbar .hnew:hover{border-color:#3d7cf0}" +
+    "#surg-herd .hbar .hclose{background:linear-gradient(180deg,#3d7cf0,#2f66d8);border:none;color:#fff;border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer}" +
+    "#surg-herd .grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;padding:14px;align-content:start}" +
+    "#surg-herd .htile{display:flex;flex-direction:column;background:#141518;border:1px solid #2a2c31;border-radius:12px;overflow:hidden;height:min(74vh,620px)}" +
+    "#surg-herd .htile .hh{display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid #26282d;background:#181a1e;font-size:12.5px}" +
+    "#surg-herd .htile .hh .tt{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    "#surg-herd .htile .hh .hsp{width:11px;height:11px;flex:none}" +
+    "#surg-herd .htile .hh .hsp.on{border:2px solid #33363c;border-top-color:#3d7cf0;border-radius:50%;animation:surg-spin .8s linear infinite}" +
+    "#surg-herd .htile .hh .hst{font-size:10px;text-transform:uppercase;letter-spacing:.08em;padding:2px 7px;border-radius:20px;border:1px solid #2a2d33;color:#8b8f98}" +
+    "#surg-herd .htile .hh .hst.working{color:#8fc4ff;border-color:#284a73}#surg-herd .htile .hh .hst.done{color:#5cc271;border-color:#2c5a38}" +
+    "#surg-herd .htile .hh .cl{margin-left:auto;color:#6c7079;font-size:16px;cursor:pointer;line-height:1}#surg-herd .htile .hh .cl:hover{color:#fff}" +
+    "#surg-herd .htile .hh .tt{flex:1}" +
+    "#surg-herd .htile .htrans{flex:1;overflow:auto;scrollbar-width:thin;scrollbar-color:#33363c transparent}" +
+    "#surg-herd .htile .htrans .sess{min-height:auto}" +
+    "#surg-herd .htile .hcomp{display:flex;gap:7px;padding:9px;border-top:1px solid #26282d;background:#17181b}" +
+    "#surg-herd .htile .hcomp textarea{flex:1;resize:none;background:#1c1e23;border:1px solid #2c2f35;border-radius:9px;color:#e7e8ea;padding:8px 10px;font:13px inherit;max-height:90px}" +
+    "#surg-herd .htile .hcomp textarea:focus{outline:none;border-color:#3d7cf0}" +
+    "#surg-herd .htile .hcomp button{flex:none;background:linear-gradient(180deg,#3d7cf0,#2f66d8);border:none;color:#fff;border-radius:9px;width:40px;font-size:15px;cursor:pointer}" +
+    "#surg-herd .htile .hcomp button:disabled{opacity:.5;cursor:default}" +
+    // Tab strip — one tab per independent Copilot chat over the same brainstem.
+    "#surg-tabs{display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid #26282d;background:#181a1e;overflow-x:auto;scrollbar-width:none}" +
+    "#surg-tabs::-webkit-scrollbar{display:none}" +
+    "#surg-tabs .tab{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:8px;font-size:12px;color:#9aa0a9;cursor:pointer;white-space:nowrap;border:1px solid transparent;flex:none}" +
+    "#surg-tabs .tab:hover{background:#1e2126}" +
+    "#surg-tabs .tab.active{background:#22252b;border-color:#2f3238;color:#e7e8ea}" +
+    "#surg-tabs .tab .tt{overflow:hidden;text-overflow:ellipsis;max-width:120px}" +
+    "#surg-tabs .tab .cl{color:#6c7079;font-size:14px;line-height:1;padding:0 1px}#surg-tabs .tab .cl:hover{color:#fff}" +
+    "#surg-tabs .tab .sp{width:10px;height:10px;border:2px solid #33363c;border-top-color:#3d7cf0;border-radius:50%;animation:surg-spin .8s linear infinite;flex:none}" +
+    "#surg-tabs .new{flex:none;background:#1a1c21;border:1px solid #2a2d33;color:#9aa0a9;border-radius:8px;width:26px;height:26px;font-size:16px;cursor:pointer;line-height:1}" +
+    "#surg-tabs .new:hover{border-color:#3d7cf0;color:#e7e8ea}" +
+    "#surg-log{flex:1;overflow-y:auto;position:relative;scrollbar-width:thin;scrollbar-color:#33363c transparent}" +
     "#surg-log::-webkit-scrollbar{width:9px}#surg-log::-webkit-scrollbar-thumb{background:#2f3238;border-radius:9px;border:2px solid #141518}" +
+    "#surg .sess{display:flex;flex-direction:column;gap:11px;padding:16px 15px;min-height:100%}" +
     "#surg .empty{margin:auto 0;text-align:center;color:#9a9ea7;font-size:13px;line-height:1.75;padding:8px 6px}" +
     "#surg .empty .hero{font-size:34px;margin-bottom:10px}" +
     "#surg .empty h3{color:#e7e8ea;font-size:16px;font-weight:650;margin:0 0 6px}" +
@@ -420,7 +475,9 @@
       '<span class="ttl"><span class="t">GitHub Copilot</span>' +
       '<span class="sub">Brain Surgeon · agent mode</span></span>' +
       '<span class="m" id="surg-model">Agent</span>' +
-      '<button class="x" title="Close">×</button></header>' +
+      '<button class="herd" id="surg-herd-btn" title="Herd view — chat with several Copilots at once">⊞</button>' +
+      '<button class="x" title="Close panel">×</button></header>' +
+      '<div id="surg-tabs"></div>' +
       '<div id="surg-log"></div>' +
       '<div class="comp"><div class="box">' +
       '<textarea id="surg-in" rows="2" placeholder="Describe what to build, or ask Copilot to run something…"></textarea>' +
@@ -431,12 +488,15 @@
     document.body.appendChild(panel);
     els.panel = panel;
     els.log = panel.querySelector("#surg-log");
+    els.tabs = panel.querySelector("#surg-tabs");
     els.input = panel.querySelector("#surg-in");
     els.send = panel.querySelector("#surg-send");
     els.model = panel.querySelector("#surg-model");
     els.mode = panel.querySelector("#surg-mode");
     els.burrow = panel.querySelector("#surg-burrow");
     els.burrow.onclick = toggleBurrow;
+    els.herdBtn = panel.querySelector("#surg-herd-btn");
+    els.herdBtn.onclick = toggleHerd;
     panel.querySelector(".x").onclick = toggle;
     els.send.onclick = submit;
     els.input.addEventListener("input", function () {
@@ -446,29 +506,168 @@
     els.input.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
     });
-    renderEmpty();
+    newSession();   // first chat
   }
 
-  function renderEmpty() {
+  // ── session management ──
+  function newSession() {
+    var s = { id: ++sseq, defaultTitle: "New chat", title: "New chat", convo: [], running: false, model: null, logEl: null, thinkEl: null, tileEl: null };
+    var log = document.createElement("div");
+    log.className = "sess";
+    els.log.appendChild(log);
+    s.logEl = log;
+    sessions.push(s);
+    renderEmptyInto(s);
+    if (herd) { addTile(s); renderTabs(); }
+    else { setActive(s.id); if (els.input) els.input.focus(); }
+    return s;
+  }
+  function setActive(id) {
+    activeId = id;
+    for (var i = 0; i < sessions.length; i++) {
+      sessions[i].logEl.style.display = (sessions[i].id === id) ? "" : "none";
+    }
+    var s = activeSession();
+    if (s) { setModel(s.model); s.logEl.scrollTop = s.logEl.scrollHeight; }
+    renderTabs();
+    syncComposer();
+  }
+  function closeSession(id) {
+    var i = -1;
+    for (var k = 0; k < sessions.length; k++) if (sessions[k].id === id) { i = k; break; }
+    if (i < 0) return;
+    if (sessions[i].tileEl) sessions[i].tileEl.remove();
+    sessions[i].logEl.remove();
+    sessions.splice(i, 1);
+    if (!sessions.length) { newSession(); return; }
+    if (herd) { renderTabs(); if (activeId === id) activeId = sessions[Math.max(0, i - 1)].id; }
+    else if (activeId === id) setActive(sessions[Math.max(0, i - 1)].id);
+    else renderTabs();
+  }
+  function renderTabs() {
+    if (!els.tabs) return;
+    els.tabs.innerHTML = "";
+    sessions.forEach(function (s) {
+      var tab = document.createElement("div");
+      tab.className = "tab" + (s.id === activeId ? " active" : "");
+      var title = s.title.length > 22 ? s.title.slice(0, 22) + "…" : s.title;
+      tab.innerHTML = (s.running ? '<span class="sp"></span>' : "") +
+        '<span class="tt">' + esc(title) + "</span>" +
+        (sessions.length > 1 ? '<span class="cl" title="Close chat">×</span>' : "");
+      tab.onclick = function (e) {
+        if (e.target && e.target.classList.contains("cl")) { e.stopPropagation(); closeSession(s.id); }
+        else setActive(s.id);
+      };
+      els.tabs.appendChild(tab);
+    });
+    var add = document.createElement("button");
+    add.className = "new";
+    add.textContent = "+";
+    add.title = "New Copilot chat (same brainstem)";
+    add.onclick = function () { newSession(); };
+    els.tabs.appendChild(add);
+  }
+
+  // Reflect a session's running/title state wherever it's shown.
+  function refresh(session) {
+    renderTabs();
+    updateTile(session);
+    if (session.id === activeId) syncComposer();
+  }
+
+  // ── Herd view: every session as a live tile in a grid ──
+  function ensureHerdDom() {
+    if (els.herd) return;
+    var h = document.createElement("div");
+    h.id = "surg-herd";
+    h.innerHTML =
+      '<div class="hbar"><span class="badge">' + COPILOT_SVG + '</span>' +
+      '<span class="t">GitHub Copilot · Herd</span>' +
+      '<span class="sub">multiple agents, one brainstem</span>' +
+      '<button class="hnew">+ New chat</button>' +
+      '<button class="hclose">Dock ▸</button></div>' +
+      '<div class="grid" id="surg-grid"></div>';
+    document.body.appendChild(h);
+    els.herd = h;
+    els.grid = h.querySelector("#surg-grid");
+    h.querySelector(".hnew").onclick = function () { var s = newSession(); if (herd) addTile(s); };
+    h.querySelector(".hclose").onclick = exitHerd;
+  }
+  function tileFor(s) {
+    var tile = document.createElement("div");
+    tile.className = "htile";
+    tile.innerHTML =
+      '<div class="hh"><span class="hsp"></span><span class="tt"></span>' +
+      '<span class="hst">ready</span><span class="cl" title="Close chat">×</span></div>' +
+      '<div class="htrans"></div>' +
+      '<div class="hcomp"><textarea rows="1" placeholder="Message this Copilot…"></textarea><button class="hsend">➤</button></div>';
+    tile.querySelector(".htrans").appendChild(s.logEl);
+    s.logEl.style.display = "";
+    // Scope the selectors: the moved-in transcript also contains buttons, so
+    // querySelector('button') would grab a starter button, not this composer's.
+    var ta = tile.querySelector(".hcomp textarea"), btn = tile.querySelector(".hcomp button");
+    function send() { var t = (ta.value || "").trim(); if (!t || s.running) return; ta.value = ""; ta.style.height = "auto"; runTask(s, t); }
+    btn.onclick = send;
+    ta.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+    ta.addEventListener("input", function () { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 90) + "px"; });
+    tile.querySelector(".cl").onclick = function () { closeSession(s.id); };
+    s.tileEl = tile;
+    updateTile(s);
+    return tile;
+  }
+  function updateTile(s) {
+    if (!s.tileEl) return;
+    s.tileEl.querySelector(".tt").textContent = s.title;
+    s.tileEl.querySelector(".hsp").className = "hsp" + (s.running ? " on" : "");
+    var st = s.tileEl.querySelector(".hst");
+    if (st) {
+      var state = s.running ? "working" : (s.convo.length ? "done" : "ready");
+      st.textContent = state;
+      st.className = "hst " + state;
+    }
+    var b = s.tileEl.querySelector(".hcomp button");
+    if (b) b.disabled = s.running;
+  }
+  function addTile(s) { ensureHerdDom(); els.grid.appendChild(tileFor(s)); }
+  function enterHerd() {
+    ensureHerdDom();
+    els.grid.innerHTML = "";
+    sessions.forEach(function (s) { s.tileEl = null; els.grid.appendChild(tileFor(s)); });
+    els.herd.classList.add("open");
+    herd = true;
+    if (els.herdBtn) els.herdBtn.classList.add("on");
+  }
+  function exitHerd() {
+    herd = false;
+    if (els.herd) els.herd.classList.remove("open");
+    if (els.herdBtn) els.herdBtn.classList.remove("on");
+    sessions.forEach(function (s) { s.tileEl = null; els.log.appendChild(s.logEl); });
+    setActive(activeId);
+  }
+  function toggleHerd() { if (herd) exitHerd(); else enterHerd(); }
+
+  function renderEmptyInto(session) {
     var wrap = document.createElement("div");
     wrap.className = "empty";
     wrap.innerHTML =
       '<div class="hero">' + COPILOT_SVG.replace('width="15" height="15"', 'width="38" height="38"') + '</div>' +
       '<h3>GitHub Copilot, in your brainstem</h3>' +
       'The real Copilot agent loop — describe an agent and it writes the file into your ' +
-      'workspace, <b>hot-loads it, and tests it live</b>. Same think→edit→test loop as VS Code, ' +
-      'in a full Python VM, no install.' +
+      'workspace, <b>hot-loads it, and tests it live</b>. Open more tabs with <b>+</b> to build ' +
+      'several agents at once on the same brainstem.' +
       '<div class="caps"><span>▶ run python</span><span>📄 read/write files</span><span>🧠 test the brainstem</span></div>' +
       '<div class="st"></div>';
     var st = wrap.querySelector(".st");
-    STARTERS.forEach(function (s) {
+    STARTERS.forEach(function (str) {
       var b = document.createElement("button");
-      b.textContent = s;
-      b.onclick = function () { els.input.value = s; submit(); };
+      b.textContent = str;
+      b.onclick = function () {
+        if (herd) { runTask(session, str); }
+        else { setActive(session.id); els.input.value = str; submit(); }
+      };
       st.appendChild(b);
     });
-    els.log.innerHTML = "";
-    els.log.appendChild(wrap);
+    session.logEl.appendChild(wrap);
   }
 
   function toggle() {
@@ -515,38 +714,46 @@
 
   function submit() {
     var t = (els.input.value || "").trim();
-    if (!t || running) return;
+    if (!t) return;
+    var s = activeSession() || newSession();
+    if (s.running) return;   // this chat is busy — open a new tab (+) to run in parallel
     els.input.value = "";
     els.input.style.height = "auto";
-    var empty = els.log.querySelector(".empty");
-    if (empty) empty.remove();
-    runTask(t);
+    runTask(s, t);
   }
 
-  function setBusy(b) {
-    if (els.send) { els.send.disabled = b; els.send.textContent = b ? "Working…" : "Build"; }
+  function syncComposer() {
+    var s = activeSession();
+    var busy = !!(s && s.running);
+    if (els.send) { els.send.disabled = busy; els.send.textContent = busy ? "Working…" : "Build"; }
   }
-  function setModel(m) { if (m && els.model) els.model.textContent = "Agent · " + m; }
+  function setModel(m) { if (els.model) els.model.textContent = m ? ("Agent · " + m) : "Agent"; }
 
-  function addBubble(role, text) {
+  // Insert new content just ABOVE the session's "working…" indicator so it
+  // stays pinned at the bottom — no MutationObserver (that caused a re-append
+  // loop that froze the page).
+  function place(session, node) {
+    if (session.thinkEl && session.thinkEl.parentNode === session.logEl) session.logEl.insertBefore(node, session.thinkEl);
+    else session.logEl.appendChild(node);
+    if (session.id === activeId) session.logEl.scrollTop = session.logEl.scrollHeight;
+  }
+
+  function addBubble(session, role, text) {
     var d = document.createElement("div");
     d.className = "b " + role;
     d.innerHTML = (role === "user") ? esc(text) : mdInline(text);
-    els.log.appendChild(d);
-    els.log.scrollTop = els.log.scrollHeight;
+    place(session, d);
     return d;
   }
 
-  function addThinking() {
+  function addThinking(session) {
     var d = document.createElement("div");
     d.className = "think";
     d.innerHTML = '<span class="dots"><span></span><span></span><span></span></span> Copilot is working…';
-    els.log.appendChild(d);
-    els.log.scrollTop = els.log.scrollHeight;
-    // Keep it pinned at the bottom as new bubbles arrive.
-    var mo = new MutationObserver(function () { if (d.parentNode) els.log.appendChild(d); });
-    mo.observe(els.log, { childList: true });
-    return { remove: function () { mo.disconnect(); d.remove(); } };
+    session.logEl.appendChild(d);
+    session.thinkEl = d;
+    if (session.id === activeId) session.logEl.scrollTop = session.logEl.scrollHeight;
+    return { remove: function () { if (session.thinkEl === d) session.thinkEl = null; d.remove(); } };
   }
 
   var TOOL_ICON = { run_python: "▶", run_shell: "🕳️", list_dir: "📁", read_file: "📄", write_file: "✏️", delete_file: "🗑️", list_agents: "📋", test_brainstem: "🧠" };
@@ -557,7 +764,7 @@
     if (name === "list_dir") return args.path || "workspace";
     return args.path || args.filename || "";
   }
-  function addToolChip(name, args) {
+  function addToolChip(session, name, args) {
     var wrap = document.createElement("div");
     wrap.className = "tool";
     wrap.innerHTML =
@@ -567,8 +774,7 @@
       '<span class="st"><span class="spin"></span></span></div>' +
       '<div class="body"></div>';
     wrap.querySelector(".h").onclick = function () { wrap.classList.toggle("open"); };
-    els.log.appendChild(wrap);
-    els.log.scrollTop = els.log.scrollHeight;
+    place(session, wrap);
     function setStatus(sym, color) { var st = wrap.querySelector(".st"); st.innerHTML = ""; st.textContent = sym; st.style.color = color; }
     return {
       done: function (result) {
@@ -593,7 +799,7 @@
     try {
       var r = await VB().local("GET", "/health");
       var h = r.json || {};
-      if (h.status !== "ok") addBubble("system", "Sign in with GitHub (top-right of the brainstem) to use the Brain Surgeon — it runs on your Copilot account.");
+      if (h.status !== "ok") { var s = activeSession(); if (s) addBubble(s, "system", "Sign in with GitHub (top-right of the brainstem) to use GitHub Copilot — it runs on your Copilot account."); }
     } catch (e) {}
   }
 
