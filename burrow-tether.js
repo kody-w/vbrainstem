@@ -228,6 +228,7 @@
         '<p style="color:#8b949e;font-size:13.5px;margin:0">Copilot can now run on ' + esc(HOST_NAME) + '.</p>');
       setTimeout(hideOverlay, 1400);
       setChip('burrowed · Copilot can run on ' + HOST_NAME, '#3fb950');
+      updateTargetPill();
       return;
     }
     if (msg.kind === 'resume-grant') {
@@ -236,6 +237,7 @@
       saveSession();
       hideOverlay();
       setChip('burrowed · Copilot can run on ' + HOST_NAME, '#3fb950');
+      updateTargetPill();
       return;
     }
     if (msg.kind === 'resume-denied') {
@@ -285,6 +287,7 @@
   }
 
   function markLost() {
+    try { if (chatTarget === 'twin') { chatTarget = 'local'; } updateTargetPill(); } catch (e) {}
     if (!S.up && !S.ceremonyDone) return;
     S.up = false;
     if (hbTimer) { clearInterval(hbTimer); hbTimer = null; }
@@ -383,13 +386,66 @@
   }
 
   // Bridge for the Brain Surgeon: is the burrow reachable, and run on it.
+  // Chat WITH the burrow twin (its own /chat, on-device). Returns the kernel
+  // envelope {response, session_id, agent_logs, ...} — same shape the stock UI
+  // and the Surgeon expect, so both can talk to the twin like a local brainstem.
+  function twinChat(body) {
+    return hostOp({ op: 'chat', message: (body && body.user_input) || '',
+                    session_id: body && body.session_id, history: (body && body.conversation_history) || [] });
+  }
+
   window.__BURROW_BRIDGE__ = {
     isPaired: function () { return !!(S.up && token); },
     canBurrow: function () { return !!(S.up && token && S.hostControl); },
     hostName: function () { return HOST_NAME; },
     hostOs: function () { return S.hostOs || null; },
-    hostOp: hostOp
+    hostOp: hostOp,
+    chat: twinChat,
+    chatTarget: function () { return chatTarget; },
+    setChatTarget: function (t) { chatTarget = (t === 'twin') ? 'twin' : 'local'; updateTargetPill(); }
   };
+
+  // ── vBrainstem chat → burrow twin routing ──
+  // When the user points the vBrainstem chat at the twin, POST /chat rides the
+  // sealed tether to the twin's on-device /chat; otherwise it stays in-browser.
+  var chatTarget = 'local';
+  function isChatPath(url) {
+    try { var u = new URL(url, location.href); if (u.origin !== location.origin) return null;
+      var p = u.pathname; if (p.indexOf(BASE) === 0) p = '/' + p.slice(BASE.length);
+      return (p === '/chat' || p === '/chat/stream') ? p : null; } catch (e) { return null; }
+  }
+  var prevFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    if (chatTarget !== 'twin' || !S.up || !token) return prevFetch(input, init);
+    var url = (typeof input === 'string') ? input : ((input && input.url) || '');
+    var p = isChatPath(url);
+    if (!p) return prevFetch(input, init);
+    if (p === '/chat/stream') return Promise.resolve(new Response(JSON.stringify({ error: 'twin: use /chat' }), { status: 503, headers: { 'Content-Type': 'application/json' } }));
+    var body = {}; try { body = JSON.parse((init && init.body) || '{}'); } catch (e) { }
+    return twinChat(body).then(function (env) {
+      return new Response(JSON.stringify(env || {}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }).catch(function () { return prevFetch(input, init); });
+  };
+
+  // A small pill (by the burrow chip) to switch the vBrainstem chat target.
+  var tpill = null;
+  function updateTargetPill() {
+    if (!S.up || !token) { if (tpill) { tpill.remove(); tpill = null; } return; }
+    if (!document.body) { document.addEventListener('DOMContentLoaded', updateTargetPill, { once: true }); return; }
+    if (!tpill) {
+      tpill = document.createElement('button');
+      tpill.id = 'burrow-chat-target';
+      tpill.style.cssText = 'position:fixed;bottom:44px;right:14px;z-index:9989;cursor:pointer;' +
+        'background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:20px;' +
+        'padding:5px 12px;font:12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;' +
+        'display:flex;align-items:center;gap:7px;box-shadow:0 4px 16px rgba(0,0,0,.35)';
+      tpill.onclick = function () { window.__BURROW_BRIDGE__.setChatTarget(chatTarget === 'twin' ? 'local' : 'twin'); };
+      document.body.appendChild(tpill);
+    }
+    tpill.innerHTML = (chatTarget === 'twin')
+      ? '<span style="width:8px;height:8px;border-radius:50%;background:#d29922"></span>brainstem chat → ' + esc(HOST_NAME) + ' (twin) · click for in-browser'
+      : '<span style="width:8px;height:8px;border-radius:50%;background:#3fb950"></span>brainstem chat → in-browser · click to use ' + esc(HOST_NAME);
+  }
 
   setChip(token ? 'resuming burrow…' : 'connecting to ' + HOST_NAME + '…', '#d29922');
   connect();

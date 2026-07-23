@@ -11,7 +11,7 @@
  *   - run_python : execute arbitrary Python in the live CPython runtime
  *                  (the sandbox's shell/REPL; state persists across calls)
  *   - read_file / write_file / list_dir / delete_file : the whole workspace
- *   - test_brainstem : run a turn through the brainstem to verify agents fire
+ *   - chat           : run a turn through the brainstem to verify agents fire
  *
  * — but it cannot reach the host machine's disk, shell, or anything the
  * browser sandbox doesn't allow. That IS the feature: the Copilot agent loop
@@ -45,15 +45,17 @@
     "Pyodide) runtime and the brainstem's workspace. Think like a senior engineer:",
     "explore before you change, keep edits minimal, and PROVE your work by running it.",
     "",
-    "Your powers (a real agent loop, sandboxed to this in-browser VM — you cannot",
-    "touch the host machine's disk or shell, only this workspace and runtime):",
+    "Your powers (a real agent loop; by default sandboxed to this in-browser VM — you",
+    "reach only this workspace and runtime, not the host machine's disk or shell):",
     "- run_python: execute arbitrary Python in the live runtime. This is your shell and",
     "  REPL — inspect state, compute, import stdlib, make network calls with `requests`,",
     "  os.listdir, etc. Print what you want to see; state persists between calls.",
     "- read_file / write_file / list_dir / delete_file: the whole workspace filesystem.",
-    "- list_agents: the installed agents with their loaded class names.",
-    "- test_brainstem: send a natural-language message to the brainstem and read the",
-    "  reply + agent_logs — your end-to-end verification that an agent actually fires.",
+    "- list_agents / install_agent / run_agent: inspect, add, and run agents directly.",
+    "- chat: send a natural-language message to the brainstem and read the reply +",
+    "  agent_logs — your end-to-end verification that an agent actually fires.",
+    "Every tool takes an optional where: 'local' (this vBrainstem, the default) or",
+    "'twin' (a burrowed device, when one is paired). Same shape — only the address changes.",
     "",
     "RAPP agents: one Python file in agents/ named <snake>_agent.py, a class extending",
     "BasicAgent with a `metadata` dict (OpenAI function schema: name, description,",
@@ -79,119 +81,129 @@
     "```",
     "",
     "Workflow: explore (list_agents / list_dir / read_file / run_python) → write the",
-    "file → ALWAYS test_brainstem with a message that should trigger it, and confirm from",
+    "file → ALWAYS chat with a message that should trigger it, and confirm from",
     "agent_logs that it ran and returned the right thing → fix and re-test if not. When it",
     "works, stop and give a one-paragraph summary with the proof (the tested message and",
     "result). Prefer the stdlib; avoid heavy third-party packages. Keep prose short",
     "between tool calls."
   ].join("\n");
 
+  // One neighborhood, one shape. Every capability takes `where`: 'local' (this
+  // in-browser vBrainstem, the default) or 'twin' (a burrowed device on the real
+  // machine — same agents/ folder, same agent contract, same chat envelope). The
+  // twin is just a different address; nothing else about the shape changes.
+  var WHERE = {
+    type: "string", enum: ["local", "twin"],
+    description: "Which brainstem in the neighborhood runs this: 'local' (default) = THIS in-browser vBrainstem; 'twin' = the burrowed device on the real machine (only when Burrow is paired). Same shape either way — 'twin' is just a different address."
+  };
   var TOOLS = [
     { type: "function", function: {
       name: "run_python",
-      description: "Execute Python in the live CPython (Pyodide) runtime — your shell/REPL. Returns captured stdout/stderr and the repr of the last expression. State persists across calls (same process as the brainstem). Use `requests` for network.",
+      description: "Execute Python in the live CPython runtime — your shell/REPL. Returns captured stdout/stderr and the repr of the last expression. State persists across calls. Use `requests` for network. where:'twin' runs it in the burrowed device's real CPython instead of the sandbox.",
       parameters: { type: "object", properties: {
-        code: { type: "string", description: "Python source to run." }
+        code: { type: "string", description: "Python source to run." },
+        where: WHERE
       }, required: ["code"] }
     }},
     { type: "function", function: {
       name: "list_dir",
-      description: "List workspace files, optionally under a path prefix (e.g. 'agents').",
+      description: "List files, optionally under a path prefix (e.g. 'agents'). Empty = whole workspace. where:'twin' lists on the burrowed device.",
       parameters: { type: "object", properties: {
-        path: { type: "string", description: "Optional path prefix, e.g. 'agents'. Empty = whole workspace." }
+        path: { type: "string", description: "Optional path prefix, e.g. 'agents'." },
+        where: WHERE
       }, required: [] }
     }},
     { type: "function", function: {
       name: "read_file",
-      description: "Read a workspace file (e.g. 'agents/foo_agent.py', 'soul.md').",
+      description: "Read a file (e.g. 'agents/foo_agent.py', 'soul.md'). where:'twin' reads from the burrowed device.",
       parameters: { type: "object", properties: {
-        path: { type: "string", description: "Workspace-relative path." }
+        path: { type: "string", description: "Relative path." },
+        where: WHERE
       }, required: ["path"] }
     }},
     { type: "function", function: {
       name: "write_file",
-      description: "Create or overwrite a workspace file. RAPP agents go in agents/ as <snake>_agent.py and hot-load on the next request.",
+      description: "Create or overwrite a file. RAPP agents go in agents/ as <snake>_agent.py and hot-load on the next request. where:'twin' writes on the burrowed device.",
       parameters: { type: "object", properties: {
-        path: { type: "string", description: "Workspace-relative path, e.g. agents/reverse_string_agent.py" },
-        content: { type: "string", description: "Full file contents." }
+        path: { type: "string", description: "Relative path, e.g. agents/reverse_string_agent.py" },
+        content: { type: "string", description: "Full file contents." },
+        where: WHERE
       }, required: ["path", "content"] }
     }},
     { type: "function", function: {
       name: "delete_file",
-      description: "Delete a workspace file.",
+      description: "Delete a file. where:'twin' deletes on the burrowed device.",
       parameters: { type: "object", properties: {
-        path: { type: "string", description: "Workspace-relative path." }
+        path: { type: "string", description: "Relative path." },
+        where: WHERE
       }, required: ["path"] }
     }},
     { type: "function", function: {
       name: "list_agents",
-      description: "List installed agents with their loaded class names.",
-      parameters: { type: "object", properties: {}, required: [] }
+      description: "List installed agents with their loaded class names. where:'twin' lists the burrowed device's agents (same shape).",
+      parameters: { type: "object", properties: { where: WHERE }, required: [] }
     }},
     { type: "function", function: {
-      name: "test_brainstem",
-      description: "Send a natural-language message to THIS brainstem and return its reply plus agent_logs — verify a new agent actually fires and is correct.",
+      name: "install_agent",
+      description: "Install a RAPP agent .py into agents/ so it hot-loads. where:'twin' installs it onto the burrowed device — for on-device-only agents (subprocess to pac/az/gh, native libs, local files). Get the source with read_file or run_python (e.g. fetch from RAR) first.",
       parameters: { type: "object", properties: {
-        message: { type: "string", description: "What a user would type to trigger the agent, e.g. 'reverse the word hello'." }
+        filename: { type: "string", description: "e.g. power_apps_code_app_agent.py (must end with _agent.py)." },
+        source: { type: "string", description: "The complete Python source of the agent file." },
+        where: WHERE
+      }, required: ["filename", "source"] }
+    }},
+    { type: "function", function: {
+      name: "run_agent",
+      description: "Run one agent directly — by `name` (an installed agent's filename) or ad-hoc `source` — with kwargs, and get its string result + logs. where:'twin' runs it on the burrowed device (use for agents that need the native OS).",
+      parameters: { type: "object", properties: {
+        name: { type: "string", description: "Filename of an installed agent, e.g. power_apps_code_app_agent.py." },
+        source: { type: "string", description: "Ad-hoc agent source to run instead of name." },
+        kwargs: { type: "object", description: "Arguments for the agent's perform(**kwargs). Defaults to {}." },
+        where: WHERE
+      }, required: [] }
+    }},
+    { type: "function", function: {
+      name: "chat",
+      description: "Send a natural-language message to a brainstem and get its full reply + agent_logs — your end-to-end verification that an agent fires. where:'twin' chats the burrowed device twin instead (it answers in its own voice / runs its own agents on the real machine).",
+      parameters: { type: "object", properties: {
+        message: { type: "string", description: "What a user would type, e.g. 'reverse the word hello'." },
+        where: WHERE
       }, required: ["message"] }
+    }},
+    { type: "function", function: {
+      name: "identity",
+      description: "Who a brainstem is — its rapp/1 rappid, host, OS, and installed agents. where:'twin' returns the burrowed device twin's identity.",
+      parameters: { type: "object", properties: { where: WHERE }, required: [] }
     }}
   ];
 
-  // Only offered in Burrow mode (real desk machine reachable over the tether).
+  // The one capability with no in-browser equivalent: a real OS shell. Twin only.
   var RUN_SHELL_TOOL = { type: "function", function: {
     name: "run_shell",
-    description: "Run a shell command on the user's REAL computer (Burrow mode). Returns combined stdout/stderr and the exit code.",
+    description: "Run a shell command on the burrowed device's REAL machine. Returns combined stdout/stderr and the exit code. (There is no local shell — use run_python for the sandbox.)",
     parameters: { type: "object", properties: {
       command: { type: "string", description: "The shell command to run." }
     }, required: ["command"] }
   }};
 
-  // Burrow-only: the device is a TWIN with its own agents/ folder (same shape as
-  // this brainstem). Copilot lists/installs/runs agents on it just like locally —
-  // for on-device-only agents (subprocess to pac/az/gh CLIs, local files, native
-  // libs) that can't run in the sandbox.
-  var BURROW_TWIN_TOOLS = [
-    { type: "function", function: {
-      name: "burrow_list_agents",
-      description: "List the agents installed on the burrowed device twin (same shape as list_agents here). Use it to see what the real machine can already run.",
-      parameters: { type: "object", properties: {}, required: [] }
-    }},
-    { type: "function", function: {
-      name: "burrow_install_agent",
-      description: "Install a RAPP agent .py onto the burrowed device twin's agents/ folder so it can run on the real machine. Get the source with read_file (a workspace agent) or run_python (fetch from the RAR registry) first.",
-      parameters: { type: "object", properties: {
-        filename: { type: "string", description: "e.g. power_apps_code_app_agent.py (must end with _agent.py)." },
-        source: { type: "string", description: "The complete Python source of the agent file." }
-      }, required: ["filename", "source"] }
-    }},
-    { type: "function", function: {
-      name: "burrow_run_agent",
-      description: "Run an agent on the burrowed device twin — by `name` (an installed agent's filename) or ad-hoc `source` — with kwargs. Use for agents that need the native OS. Returns the agent's string result plus logs.",
-      parameters: { type: "object", properties: {
-        name: { type: "string", description: "Filename of an installed twin agent, e.g. power_apps_code_app_agent.py." },
-        source: { type: "string", description: "Ad-hoc agent source to run (instead of name)." },
-        kwargs: { type: "object", description: "Arguments to pass to the agent's perform(**kwargs). Defaults to {}." }
-      }, required: [] }
-    }}
-  ];
-
   function bridge() { return window.__BURROW_BRIDGE__; }
   function canBurrow() { var b = bridge(); return !!(b && b.canBurrow && b.canBurrow()); }
   var burrow = false;
 
-  function toolsFor() { return burrow ? TOOLS.concat([RUN_SHELL_TOOL]).concat(BURROW_TWIN_TOOLS) : TOOLS; }
+  // Same tools always; Burrow just unlocks where:'twin' and adds the one twin-only shell.
+  function toolsFor() { return burrow ? TOOLS.concat([RUN_SHELL_TOOL]) : TOOLS; }
   function systemFor() {
     if (!burrow) return SYSTEM_PROMPT;
     var os = (bridge().hostOs && bridge().hostOs()) || "";
-    return SYSTEM_PROMPT + "\n\n=== BURROW MODE IS ON ===\nrun_python, run_shell, read_file, write_file, list_dir and " +
-      "delete_file now execute on the user's REAL computer (" + (bridge().hostName ? bridge().hostName() : "the desk") +
-      (os ? ", running " + os : "") + ") over a sealed channel — real shell, real disk, real network, the same power the brainstem has running locally. " +
+    var host = (bridge().hostName && bridge().hostName()) || "the device";
+    return SYSTEM_PROMPT + "\n\n=== BURROW IS ON — ONE NEIGHBORHOOD, TWO ADDRESSES ===\n" +
+      "A burrowed device twin (" + host + (os ? ", " + os : "") + ") is paired. It is a brainstem of the EXACT same shape as this one — same agents/ folder, same agent contract, same chat envelope — it just lives on the real machine. Every tool takes where: 'local' (this in-browser vBrainstem, the default) or 'twin' (that device). Nothing changes but the address. " +
+      "Use where:'twin' whenever the work needs the native OS — a real shell (run_shell), real disk, real network, or an on-device-only agent (subprocess to pac/az/gh CLIs, native libs, local files). " +
       (os === "Windows"
-        ? "This machine is WINDOWS: run_shell uses cmd.exe — use Windows commands (dir, type, echo, PowerShell via 'powershell -c \"...\"'), not Unix (ls/cat). Paths use backslashes. "
-        : (os ? "This machine is " + os + ": run_shell uses a POSIX shell (ls, cat, grep, etc.). " : "")) +
-      "The burrowed device is a TWIN with its OWN agents/ folder, same shape as this brainstem. To run an on-device-only agent (needs subprocess/pac/az/gh, local files): (1) check list_agents here, (2) check burrow_list_agents on the device twin, (3) if the agent is not on the twin, get its source (read_file here, or run_python to fetch from RAR) and burrow_install_agent it, (4) burrow_run_agent by name on the twin. Prefer running native-OS agents on the twin. " +
-      "This is powerful and can be irreversible. Prefer read-only exploration first; state your plan in prose before any " +
-      "destructive or system-changing command; never run something the user didn't ask for.";
+        ? "The twin is WINDOWS: run_shell uses cmd.exe (dir, type, PowerShell via 'powershell -c \"...\"'); paths use backslashes. "
+        : (os ? "The twin runs " + os + ": run_shell is a POSIX shell (ls, cat, grep). " : "")) +
+      "To run an on-device-only agent: (1) list_agents where:'twin' to see what the device already has, (2) if it's missing, get the source (read_file here, or run_python to fetch from RAR) and install_agent where:'twin', (3) run_agent where:'twin' by name — or just chat where:'twin' and let the twin pick the agent itself. " +
+      "Running on the twin is powerful and can be irreversible: prefer read-only exploration first, state your plan in prose before any destructive or system-changing command, and never run something the user didn't ask for.";
   }
 
   function cleanPath(p) { return String(p || "").replace(/\\/g, "/").replace(/^\/+/, ""); }
@@ -205,26 +217,30 @@
   async function execTool(name, args, sid) {
     var vb = VB();
     var testSid = sid || "surgeon-test";
-    // BURROW: capability tools execute on the REAL desk machine.
-    if (burrow && canBurrow()) {
+    args = args || {};
+    var where = (args.where === "twin") ? "twin" : "local";
+    if (name === "run_shell") where = "twin";   // no local shell exists
+    if (where === "twin" && !(burrow && canBurrow()))
+      throw new Error("where:'twin' needs Burrow — pair to a device first.");
+
+    // ── TWIN: run on the real device over the sealed tether (same shape) ──
+    if (where === "twin") {
       if (name === "run_python") return await hostExec({ op: "python", code: String(args.code || "") });
       if (name === "run_shell") return await hostExec({ op: "shell", command: String(args.command || "") });
-      if (name === "burrow_list_agents") return await hostExec({ op: "list_agents" });
-      if (name === "burrow_install_agent") return await hostExec({ op: "install_agent", filename: String(args.filename || ""), source: String(args.source || "") });
-      if (name === "burrow_run_agent") return await hostExec({ op: "agent", name: String(args.name || ""), source: String(args.source || ""), kwargs: args.kwargs || {} });
+      if (name === "list_agents") return await hostExec({ op: "list_agents" });
+      if (name === "install_agent") return await hostExec({ op: "install_agent", filename: String(args.filename || ""), source: String(args.source || "") });
+      if (name === "run_agent") return await hostExec({ op: "agent", name: String(args.name || ""), source: String(args.source || ""), kwargs: args.kwargs || {} });
+      if (name === "chat") return await hostExec({ op: "chat", message: String(args.message || "") });
+      if (name === "identity") return await hostExec({ op: "identity" });
       if (name === "read_file") { var rr = await hostExec({ op: "read", path: cleanPath(args.path) }); return { path: cleanPath(args.path), content: rr.content }; }
       if (name === "write_file") { await hostExec({ op: "write", path: cleanPath(args.path), content: String(args.content || "") }); return { ok: true, path: cleanPath(args.path), bytes: (args.content || "").length }; }
       if (name === "list_dir") return await hostExec({ op: "list", path: cleanPath(args.path) || "." });
       if (name === "delete_file") return await hostExec({ op: "shell", command: "rm -f " + JSON.stringify(cleanPath(args.path)) });
-      if (name === "test_brainstem") {
-        // Test against the DESK brainstem (window.fetch is tether-routed).
-        var dr = await window.fetch("/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_input: String(args.message || ""), conversation_history: [], session_id: testSid }) });
-        var dj = await dr.json();
-        return { response: dj.response, agent_logs: dj.agent_logs || "", error: dj.error };
-      }
-      // list_agents falls through to the local list below.
+      throw new Error("unknown tool for twin: " + name);
     }
-    if (/^(run_shell|burrow_)/.test(name)) throw new Error(name + " needs Burrow enabled — pair to a device with host control.");
+
+    // ── LOCAL: this in-browser vBrainstem ──
+    if (name === "run_shell") throw new Error("no local shell — use run_python, or run_shell (twin) with Burrow.");
     if (name === "run_python") {
       var out = await window.rapp.eval(String(args.code || ""));
       return { output: (out && out.output) != null ? out.output : "" };
@@ -256,14 +272,72 @@
       var r = await vb.local("GET", "/agents");
       return { files: (r.json && r.json.files) || [] };
     }
-    if (name === "test_brainstem") {
+    if (name === "install_agent") {
+      var fn = cleanPath(args.filename).replace(/^agents\//, "");
+      if (!/_agent\.py$/.test(fn)) throw new Error("filename must end with _agent.py");
+      await vb.fs("write", "agents/" + fn, String(args.source || ""));
+      return { ok: true, filename: fn };
+    }
+    if (name === "run_agent") {
+      return await localRunAgent(args);
+    }
+    if (name === "chat") {
       var chat = await vb.local("POST", "/chat", {
         user_input: String(args.message || ""), conversation_history: [], session_id: testSid
       });
-      var j = chat.json || {};
-      return { response: j.response, agent_logs: j.agent_logs || "", error: j.error };
+      return chat.json || {};
+    }
+    if (name === "identity") {
+      var la = await vb.local("GET", "/agents");
+      var hv = { json: {} };
+      try { hv = await vb.local("GET", "/health"); } catch (e) { }
+      var hj = hv.json || {};
+      return {
+        rappid: hj.rappid || "(browser vBrainstem)", host: "in-browser vBrainstem",
+        os: "pyodide", version: hj.version, agents: (la.json && la.json.files) || []
+      };
     }
     throw new Error("unknown tool: " + name);
+  }
+  // Gated test seam: exercise the real tool dispatch from an E2E harness.
+  if (location.search.indexOf("surgeondbg=1") > -1) {
+    window.__surgeonExec = function (n, a) { return execTool(n, a, "surgeon-dbg"); };
+    window.__surgeonSetBurrow = function (v) { burrow = !!v; };
+  }
+
+  // Run one agent in THIS vBrainstem's CPython — the local mirror of the twin's
+  // op:agent, so run_agent has the same shape whichever address it targets.
+  async function localRunAgent(args) {
+    var src = args.source ? String(args.source) : "";
+    if (!src && args.name) {
+      var nm = cleanPath(args.name).replace(/^agents\//, "");
+      src = (await VB().fs("read", "agents/" + nm)).content || "";
+    }
+    if (!src) throw new Error("run_agent needs name or source");
+    var harness =
+      "import json, io, contextlib, traceback\n" +
+      "_src = " + JSON.stringify(src) + "\n" +
+      "_kwargs = json.loads(" + JSON.stringify(JSON.stringify(args.kwargs || {})) + ")\n" +
+      "_ns = {}; _buf = io.StringIO(); _result = None; _err = None\n" +
+      "try:\n" +
+      "    with contextlib.redirect_stdout(_buf), contextlib.redirect_stderr(_buf):\n" +
+      "        exec(_src, _ns)\n" +
+      "        from agents.basic_agent import BasicAgent\n" +
+      "        _cls = None\n" +
+      "        for _v in list(_ns.values()):\n" +
+      "            if isinstance(_v, type) and issubclass(_v, BasicAgent) and _v is not BasicAgent:\n" +
+      "                _cls = _v\n" +
+      "        if _cls is None:\n" +
+      "            raise RuntimeError('no BasicAgent subclass found in source')\n" +
+      "        _result = _cls().perform(**_kwargs)\n" +
+      "except Exception:\n" +
+      "    _err = traceback.format_exc()\n" +
+      "print('<<RAPPRUN>>' + json.dumps({'result': None if _result is None else str(_result), 'logs': _buf.getvalue(), 'error': _err}) + '<<END>>')\n";
+    var out = await window.rapp.eval(harness);
+    var raw = (out && out.output != null) ? String(out.output) : "";
+    var m = /<<RAPPRUN>>([\s\S]*?)<<END>>/.exec(raw);
+    if (m) { try { return JSON.parse(m[1]); } catch (e) { } }
+    return { result: raw, logs: "", error: null };
   }
 
   // ── sessions: independent Copilot chats over the same brainstem ──
@@ -867,15 +941,18 @@
     return { remove: function () { if (session.thinkEl === d) session.thinkEl = null; d.remove(); } };
   }
 
-  var TOOL_ICON = { run_python: "▶", run_shell: "🕳️", burrow_run_agent: "🧩", burrow_install_agent: "📥", burrow_list_agents: "📋", list_dir: "📁", read_file: "📄", write_file: "✏️", delete_file: "🗑️", list_agents: "📋", test_brainstem: "🧠" };
+  var TOOL_ICON = { run_python: "▶", run_shell: "🕳️", run_agent: "🧩", install_agent: "📥", list_agents: "📋", chat: "💬", identity: "🪪", list_dir: "📁", read_file: "📄", write_file: "✏️", delete_file: "🗑️" };
   function argLabel(name, args) {
-    if (name === "run_python") return (args.code || "").replace(/\s+/g, " ").slice(0, 70);
-    if (name === "run_shell") return (args.command || "").slice(0, 70);
-    if (name === "burrow_run_agent") return args.name || ("agent (" + (args.source || "").length + " bytes)");
-    if (name === "burrow_install_agent") return args.filename || "";
-    if (name === "test_brainstem") return JSON.stringify(args.message || "");
-    if (name === "list_dir") return args.path || "workspace";
-    return args.path || args.filename || "";
+    var tag = args.where === "twin" ? " · twin" : "";
+    if (name === "run_python") return (args.code || "").replace(/\s+/g, " ").slice(0, 68) + tag;
+    if (name === "run_shell") return (args.command || "").slice(0, 68) + " · twin";
+    if (name === "run_agent") return (args.name || ("agent (" + (args.source || "").length + " bytes)")) + tag;
+    if (name === "install_agent") return (args.filename || "") + tag;
+    if (name === "chat") return JSON.stringify(args.message || "") + tag;
+    if (name === "identity") return (args.where === "twin" ? "twin" : "local");
+    if (name === "list_dir") return (args.path || "workspace") + tag;
+    if (name === "list_agents") return (args.where === "twin" ? "twin" : "local");
+    return (args.path || args.filename || "") + tag;
   }
   function addToolChip(session, name, args) {
     var wrap = document.createElement("div");
@@ -894,12 +971,12 @@
         setStatus("✓", "#5cc271");
         var body = wrap.querySelector(".body");
         if (name === "run_python" || name === "run_shell") body.textContent = (result.output != null ? result.output : "") || "(no output)";
-        else if (name === "burrow_run_agent") body.textContent = (result.result != null ? ("result: " + result.result) : ("error: " + (result.error || "?"))) + (result.logs ? "\n\nlogs:\n" + result.logs : "") + (result.traceback ? "\n\n" + result.traceback : "");
-        else if (name === "test_brainstem") body.textContent = "reply: " + (result.response || result.error || "(none)") + (result.agent_logs ? "\n\nagent_logs:\n" + result.agent_logs : "");
+        else if (name === "run_agent") body.textContent = (result.result != null ? ("result: " + result.result) : ("error: " + (result.error || "?"))) + (result.logs ? "\n\nlogs:\n" + result.logs : "") + (result.traceback ? "\n\n" + result.traceback : "");
+        else if (name === "chat") body.textContent = "reply: " + (result.response || result.error || "(none)") + (result.agent_logs ? "\n\nagent_logs:\n" + result.agent_logs : "") + (result.from_rappid ? "\n\n— " + result.from_rappid : "");
         else if (name === "read_file") body.textContent = (result.content || "").slice(0, 6000);
         else if (name === "list_dir") body.textContent = (result.files || []).join("\n");
-        else if (name === "burrow_list_agents") body.textContent = (result.files || []).map(function (f) { return f.filename + (f.agents && f.agents.length ? "  (" + f.agents.join(", ") + ")" : ""); }).join("\n") || "(no agents on the device twin yet)";
-        else if (name === "list_agents") body.textContent = (result.files || []).map(function (f) { return f.filename + (f.agents && f.agents.length ? "  (" + f.agents.join(", ") + ")" : ""); }).join("\n");
+        else if (name === "identity") body.textContent = "rappid: " + (result.rappid || "?") + "\nhost: " + (result.host || "?") + " (" + (result.os || "?") + ")\nagents: " + ((result.agents || []).map(function (a) { return a.filename; }).join(", ") || "(none)");
+        else if (name === "list_agents") body.textContent = (result.files || []).map(function (f) { return f.filename + (f.agents && f.agents.length ? "  (" + f.agents.join(", ") + ")" : ""); }).join("\n") || "(no agents yet)";
         else body.textContent = JSON.stringify(result, null, 2).slice(0, 3000);
       },
       fail: function (err) {
