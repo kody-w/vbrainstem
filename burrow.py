@@ -44,6 +44,16 @@ def _os_label():
 import urllib.parse
 import urllib.request
 
+# The burrowed daemon is a real rapp/1 twin — it needs ECDSA-P256 to hold an
+# identity and sign twin-chat events. Auto-install like the one-liner installs
+# Python (self-heal if launched directly).
+try:
+    import cryptography  # noqa: F401
+except ImportError:
+    import subprocess as _sp
+    print("🕳️  Installing cryptography (for the twin's identity)…")
+    _sp.run([sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "cryptography"])
+
 PORT = int(os.environ.get("BURROW_PORT", "7188"))
 OS_LABEL = _os_label()
 HOST_NAME = os.environ.get("BURROW_HOST_NAME", socket.gethostname() or "this computer")
@@ -128,6 +138,17 @@ def host_exec(req):
             # therefore cannot run in the browser's Pyodide sandbox. Either an
             # installed agent (by `name`) or ad-hoc `source`.
             return _run_device_agent(req.get("source", ""), req.get("kwargs") or {}, req.get("name", ""))
+        if op == "identity":
+            # This twin's rapp/1 §6.2 keyed rappid + public key.
+            data, _ = _identity()
+            return {"rappid": data["rappid"], "pub": data["pub_b64u"], "host": HOST_NAME,
+                    "os": OS_LABEL, "agents": (_twin_list_agents().get("files") or [])}
+        if op == "chat":
+            # Twin-chat 'say': answer as a §17 twin, kernel/PARITY /chat envelope,
+            # signed as a rapp-commons-event/1.0. This is how the neighborhood
+            # (or the browser controller) chats WITH the burrow twin.
+            return _twin_chat(req.get("message", ""), req.get("session_id") or "twin",
+                              req.get("history") or [])
         return {"error": "unknown op: " + str(op)}
     except Exception as e:
         return {"error": str(e)}
@@ -176,6 +197,124 @@ def _ensure_twin_runtime():
     up = os.path.join(_TWIN_UTILS, "azure_file_storage.py")
     if not os.path.exists(up):
         open(up, "w").write(_AGENT_SHIM_STORAGE)
+    # Fully-shaped twin workspace: soul + memory (rapp-neighborhood §17).
+    soul = os.path.join(HOME, "soul.md")
+    if not os.path.exists(soul):
+        open(soul, "w").write(
+            "# " + HOST_NAME + " — burrowed daemon (a RAPP twin)\n\n"
+            "I am a burrowed daemon: a rapp/1 twin bound to " + HOST_NAME + " (" + OS_LABEL + "). "
+            "I run RAPP agents on the real machine — the ones that need the native OS "
+            "(subprocess, pac/az/gh, local files) and can't run in a browser sandbox. "
+            "My controller is the in-browser GitHub Copilot over a sealed channel; I keep my own "
+            "identity, agents, and memory.\n")
+    mem = os.path.join(HOME, "memory.md")
+    if not os.path.exists(mem):
+        open(mem, "w").write("# Memory\n")
+
+
+# ── rapp/1 identity (ECDSA P-256, §6.2 keyed rappid) + signed twin-chat ──
+def _utc():
+    import datetime
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _identity():
+    """This twin's persistent ECDSA P-256 identity + rapp/1 §6.2 keyed rappid:
+    tail = sha256(b'rapp/1:rappid\\n' + SPKI_DER); rappid:@being/<tail12>:<tail>."""
+    import base64
+    import hashlib
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    cached = _identity.__dict__.get("_c")
+    if cached:
+        return cached
+    idpath = os.path.join(HOME, "identity.json")
+    if os.path.exists(idpath):
+        data = json.load(open(idpath, encoding="utf-8"))
+        priv = serialization.load_pem_private_key(data["priv_pem"].encode(), password=None)
+    else:
+        priv = ec.generate_private_key(ec.SECP256R1())
+        pub = priv.public_key()
+        spki = pub.public_bytes(serialization.Encoding.DER,
+                                serialization.PublicFormat.SubjectPublicKeyInfo)
+        tail = hashlib.sha256(b"rapp/1:rappid\n" + spki).hexdigest()
+        pub_raw = pub.public_bytes(serialization.Encoding.X962,
+                                   serialization.PublicFormat.UncompressedPoint)
+        data = {
+            "rappid": "rappid:@being/%s:%s" % (tail[:12], tail),
+            "priv_pem": priv.private_bytes(serialization.Encoding.PEM,
+                                           serialization.PrivateFormat.PKCS8,
+                                           serialization.NoEncryption()).decode(),
+            "pub_b64u": base64.urlsafe_b64encode(pub_raw).decode().rstrip("="),
+            "created_utc": _utc(),
+        }
+        fd = os.open(idpath, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    _identity.__dict__["_c"] = (data, priv)
+    return data, priv
+
+
+def _sign_event(kind, body):
+    """A signed rapp-commons-event/1.0 wrapper (ECDSA-P256 over the canonical
+    event) carrying a §6 twin-chat payload — how a compliant twin posts."""
+    import base64
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec, utils as asym_utils
+    data, priv = _identity()
+    evt = {"schema": "rapp-commons-event/1.0", "from": data["rappid"], "pub": data["pub_b64u"],
+           "alg": "ecdsa-p256", "ts": _utc(), "kind": kind, "body": body}
+    canon = json.dumps(evt, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    der = priv.sign(canon, ec.ECDSA(hashes.SHA256()))
+    r, s = asym_utils.decode_dss_signature(der)
+    raw = r.to_bytes(32, "big") + s.to_bytes(32, "big")
+    evt["sig"] = base64.urlsafe_b64encode(raw).decode().rstrip("=")
+    return evt
+
+
+def _copilot_cli():
+    import shutil
+    return shutil.which("copilot") or shutil.which("gh")
+
+
+def _twin_chat(message, session_id, history):
+    """Answer a twin-chat 'say' as a §17 twin, returning the LOCKED kernel/PARITY
+    /chat envelope (string agent_logs + voice_mode/model/requested_model), plus a
+    signed rapp-commons-event wrapper for provenance. The twin decides in its own
+    voice via the on-device `copilot` CLI if present (§17); otherwise it answers
+    from its own state and defers agent runs to its controller."""
+    _ensure_twin_runtime()
+    data, _ = _identity()
+    agents = _twin_list_agents().get("files") or []
+    logs = []
+    model = "device-twin"
+    cli = _copilot_cli()
+    if cli:
+        try:
+            import subprocess
+            soul = open(os.path.join(HOME, "soul.md"), encoding="utf-8").read()
+            prompt = soul + "\n\nYou can run these on-device agents: " + \
+                ", ".join(a["filename"] for a in agents) + "\n\nUser: " + str(message)
+            args = [cli, "-p", prompt] if os.path.basename(cli) == "copilot" else [cli, "copilot", "suggest", prompt]
+            r = subprocess.run(args, capture_output=True, text=True, timeout=120)
+            response = (r.stdout or r.stderr or "").strip() or "(no output from copilot CLI)"
+            model = "copilot-cli"
+            logs.append("[twin] answered via " + os.path.basename(cli) + " CLI")
+        except Exception as e:
+            response = "copilot CLI error: " + str(e)
+    else:
+        names = ", ".join(", ".join(a["agents"]) or a["filename"] for a in agents) or "(none yet)"
+        response = ("I'm the burrowed daemon %s on %s (%s) — a RAPP twin. My on-device agents: %s. "
+                    "Ask my controller (the browser Copilot) to install or run one on me." %
+                    (data["rappid"], HOST_NAME, OS_LABEL, names))
+        logs.append("[twin] no on-device copilot CLI — answered from own state")
+    envelope = {
+        "response": response, "session_id": session_id, "agent_logs": "\n".join(logs),
+        "voice_mode": False, "model": model, "requested_model": model,
+        "from_rappid": data["rappid"],
+    }
+    envelope["event"] = _sign_event("say-response", {"response": response, "session_id": session_id})
+    return envelope
 
 
 def _agent_names(source):

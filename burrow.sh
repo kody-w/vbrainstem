@@ -58,5 +58,19 @@ mkdir -p "$DIR"
 echo "🕳️  Fetching burrow…"
 if command -v curl >/dev/null 2>&1; then curl -fsSL "$SRC" -o "$DIR/burrow.py"; else wget -qO "$DIR/burrow.py" "$SRC"; fi
 
+# A venv (like the RAPP installer) so `cryptography` installs cleanly even on
+# externally-managed Python (PEP 668). The twin needs it for its ECDSA identity.
+VENV="$DIR/venv"
+if [ ! -x "$VENV/bin/python" ]; then "$PY" -m venv "$VENV" >/dev/null 2>&1 || true; fi
+if [ -x "$VENV/bin/python" ]; then
+  RUN="$VENV/bin/python"
+  "$RUN" -m pip install --quiet --disable-pip-version-check cryptography >/dev/null 2>&1 || true
+else
+  RUN="$PY"
+  "$PY" -m pip install --quiet --disable-pip-version-check cryptography >/dev/null 2>&1 \
+    || "$PY" -m pip install --quiet --user cryptography >/dev/null 2>&1 \
+    || "$PY" -m pip install --quiet --break-system-packages cryptography >/dev/null 2>&1 || true
+fi
+
 echo "🕳️  Starting burrow on this machine ($(hostname))…"
-exec "$PY" "$DIR/burrow.py"
+exec "$RUN" "$DIR/burrow.py"

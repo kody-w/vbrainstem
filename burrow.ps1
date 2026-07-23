@@ -51,5 +51,12 @@ New-Item -ItemType Directory -Force -Path $dir | Out-Null
 Write-Host "Fetching burrow..."
 Invoke-WebRequest -UseBasicParsing -Uri $src -OutFile (Join-Path $dir "burrow.py")
 
+# A venv so `cryptography` (for the twin's ECDSA identity) installs cleanly.
+$venv = Join-Path $dir "venv"
+$venvPy = Join-Path $venv "Scripts\python.exe"
+if (-not (Test-Path $venvPy)) { & $py -m venv $venv 2>$null }
+if (Test-Path $venvPy) { $run = $venvPy } else { $run = $py }
+& $run -m pip install --quiet --disable-pip-version-check cryptography 2>$null
+
 Write-Host "Starting burrow on this machine ($env:COMPUTERNAME)..."
-& $py (Join-Path $dir "burrow.py")
+& $run (Join-Path $dir "burrow.py")
