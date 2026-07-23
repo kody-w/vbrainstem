@@ -94,6 +94,32 @@ VS Code, no install. It runs on your signed-in GitHub Copilot account.
 - Files: [`surgeon.js`](surgeon.js) (loop + side panel), `brainstem_web.py`
   (`/surgeon/complete`). This is how the Brain Surgeon builds agents without VS Code.
 
+## Burrow one-liner — real-machine access, smallest footprint (experimental)
+
+Give the **in-browser** vBrainstem (GitHub Copilot) the same on-device power the
+local brainstem + Copilot have — shell, files, Python on your real machine —
+with **no brainstem, no VS Code, no pip**, from one line:
+
+```bash
+# macOS / Linux
+curl -fsSL https://kody-w.github.io/vbrainstem/burrow.sh | bash
+```
+```powershell
+# Windows (PowerShell)
+irm https://kody-w.github.io/vbrainstem/burrow.ps1 | iex
+```
+
+It installs a single stdlib-only Python daemon ([`burrow.py`](burrow.py), ~250
+lines) to `~/.rapp-burrow/` and runs it. The daemon is the Desk Pair host
+executor, extracted: a loopback server that hosts the sealed pairing page and a
+secret-gated `/exec` that runs shell / python / file ops on the machine. It
+opens the pairing page; **open it in the vBrainstem and type the 6-digit code**
+(human sign-off), then the Brain Surgeon's 🕳️ Burrow tools run on your real
+computer. **Chat stays in the browser** (this host has no brainstem — `chat:false`);
+only sealed host ops cross to the machine. Close the pairing tab or Ctrl-C the
+daemon to end access. Same security model as Desk Pair (loopback `/exec`,
+per-install secret, human-approved sealed tether).
+
 ## Burrow — the Brain Surgeon builds on your REAL machine (experimental)
 
 The Copilot agent loop above is sandboxed to the browser VM. When the vBrainstem

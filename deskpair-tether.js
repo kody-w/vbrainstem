@@ -209,6 +209,9 @@
       token = msg.response.token;
       S.up = true; S.ceremonyDone = true; S.backoff = 2000;
       S.hostControl = !!msg.response.host_control;
+      // A burrow-only host (no brainstem) sets chat:false — keep /chat in the
+      // browser, only route host ops to the machine.
+      S.chatEnabled = msg.response.chat !== false;
       saveSession();
       showOverlay('<div style="width:64px;height:64px;border-radius:50%;background:#238636;display:flex;' +
         'align-items:center;justify-content:center;margin:4px auto 14px">' +
@@ -217,15 +220,15 @@
         '<h2 style="margin:0 0 6px;font-size:20px;font-weight:650">Desk paired</h2>' +
         '<p style="color:#8b949e;font-size:13.5px;margin:0">Your turns now run on ' + esc(HOST_NAME) + '\'s brainstem.</p>');
       setTimeout(hideOverlay, 1400);
-      setChip('desk-paired · turns run on ' + HOST_NAME, '#3fb950');
+      setChip(S.chatEnabled === false ? ('burrowed · Copilot can run on ' + HOST_NAME) : ('desk-paired · turns run on ' + HOST_NAME), '#3fb950');
       return;
     }
     if (msg.kind === 'resume-grant') {
       S.up = true; S.backoff = 2000;
-      if (msg.response) S.hostControl = !!msg.response.host_control;
+      if (msg.response) { S.hostControl = !!msg.response.host_control; S.chatEnabled = msg.response.chat !== false; }
       saveSession();
       hideOverlay();
-      setChip('desk-paired · turns run on ' + HOST_NAME, '#3fb950');
+      setChip(S.chatEnabled === false ? ('burrowed · Copilot can run on ' + HOST_NAME) : ('desk-paired · turns run on ' + HOST_NAME), '#3fb950');
       return;
     }
     if (msg.kind === 'resume-denied') {
@@ -409,7 +412,8 @@
   window.fetch = function (input, init) {
     var url = (typeof input === 'string') ? input : ((input && input.url) || '');
     var p = chatPath(url);
-    if (!p || !S.up || !token) return prevFetch(input, init);
+    // Burrow-only hosts (chat:false) leave chat in the browser — don't route it.
+    if (!p || !S.up || !token || S.chatEnabled === false) return prevFetch(input, init);
     if (p === '/chat/stream') {
       // Fast non-ok → the stock UI takes its documented fallback to POST /chat.
       return Promise.resolve(new Response(JSON.stringify({ error: 'desk pair: use /chat' }), {
