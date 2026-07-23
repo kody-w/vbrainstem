@@ -248,6 +248,55 @@
     return null;
   }
 
+  // Persist Copilot chats across a page refresh — a refresh clears the brainstem
+  // chat but must NOT lose in-progress brain surgeries. We store each session's
+  // full message history; a loop that was mid-flight can't literally survive a
+  // reload, but its transcript + context are restored so you continue seamlessly.
+  var SESSIONS_KEY = "surgeon_sessions_v1";
+  function saveSessions() {
+    try {
+      var data = sessions.map(function (s) { return { id: s.id, title: s.title, model: s.model, convo: s.convo }; });
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify({ active: activeId, sessions: data }));
+    } catch (e) {
+      // Over quota — drop the oldest sessions' detail and retry once.
+      try {
+        var trimmed = sessions.slice(-4).map(function (s) { return { id: s.id, title: s.title, model: s.model, convo: (s.convo || []).slice(-24) }; });
+        localStorage.setItem(SESSIONS_KEY, JSON.stringify({ active: activeId, sessions: trimmed }));
+      } catch (e2) { }
+    }
+  }
+  function loadSessions() {
+    try { var d = JSON.parse(localStorage.getItem(SESSIONS_KEY) || "null"); return (d && Array.isArray(d.sessions) && d.sessions.length) ? d : null; }
+    catch (e) { return null; }
+  }
+  function restoreSession(data) {
+    var s = { id: data.id, defaultTitle: "New chat", title: data.title || "New chat", convo: data.convo || [], running: false, model: data.model || null, logEl: null, thinkEl: null, tileEl: null };
+    var log = document.createElement("div"); log.className = "sess"; els.log.appendChild(log); s.logEl = log;
+    sessions.push(s);
+    if (sseq < s.id) sseq = s.id;
+    replayConvo(s);
+    return s;
+  }
+  function replayConvo(s) {
+    s.logEl.innerHTML = "";
+    var chips = {};
+    (s.convo || []).forEach(function (m) {
+      if (m.role === "user") addBubble(s, "user", m.content);
+      else if (m.role === "assistant") {
+        if (m.content) addBubble(s, "assistant", m.content);
+        (m.tool_calls || []).forEach(function (tc) {
+          var fn = tc.function && tc.function.name; var args = {};
+          try { args = JSON.parse((tc.function && tc.function.arguments) || "{}"); } catch (e) { }
+          chips[tc.id] = addToolChip(s, fn, args);
+        });
+      } else if (m.role === "tool") {
+        var chip = chips[m.tool_call_id];
+        if (chip) { var res = {}; try { res = JSON.parse(m.content); } catch (e) { res = { output: m.content }; } chip.done(res); }
+      }
+    });
+    if (!(s.convo && s.convo.length)) renderEmptyInto(s);
+  }
+
   async function complete(messages) {
     var r = await VB().local("POST", "/surgeon/complete", { messages: messages, tools: toolsFor() });
     if (r.status === 401 || r.status === 403) throw new Error((r.json && r.json.error) || "not signed in");
@@ -295,6 +344,7 @@
           session.convo.push({ role: "tool", tool_call_id: tc.id, name: fname, content: JSON.stringify(result).slice(0, 12000) });
         }
         if (round === MAX_ROUNDS - 1) addBubble(session, "system", "Reached the step limit — ask me to continue if it isn't finished.");
+        saveSessions();   // persist each round so a refresh loses nothing
       }
       try { if (typeof window.loadAgentsList === "function") window.loadAgentsList(); } catch (e) {}
     } catch (e) {
@@ -380,7 +430,7 @@
     "#surg-herd .htile .hh .cl{margin-left:auto;color:#6c7079;font-size:16px;cursor:pointer;line-height:1}#surg-herd .htile .hh .cl:hover{color:#fff}" +
     "#surg-herd .htile .hh .tt{flex:1}" +
     "#surg-herd .htile .htrans{flex:1;overflow:auto;scrollbar-width:thin;scrollbar-color:#33363c transparent}" +
-    "#surg-herd .htile .htrans .sess{min-height:auto}" +
+    "#surg-herd .htile .htrans .sess{min-height:100%}" +
     "#surg-herd .htile .hcomp{display:flex;gap:7px;padding:9px;border-top:1px solid #26282d;background:#17181b}" +
     "#surg-herd .htile .hcomp textarea{flex:1;resize:none;background:#1c1e23;border:1px solid #2c2f35;border-radius:9px;color:#e7e8ea;padding:8px 10px;font:13px inherit;max-height:90px}" +
     "#surg-herd .htile .hcomp textarea:focus{outline:none;border-color:#3d7cf0}" +
@@ -518,7 +568,14 @@
     els.input.addEventListener("keydown", function (e) {
       if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
     });
-    newSession();   // first chat
+    var saved = loadSessions();
+    if (saved) {
+      saved.sessions.forEach(restoreSession);
+      var act = (saved.active && sessions.some(function (s) { return s.id === saved.active; })) ? saved.active : sessions[0].id;
+      setActive(act);
+    } else {
+      newSession();   // first chat
+    }
   }
 
   // ── session management ──
@@ -532,6 +589,7 @@
     renderEmptyInto(s);
     if (herd) { addTile(s); renderTabs(); }
     else { setActive(s.id); if (els.input) els.input.focus(); }
+    saveSessions();
     return s;
   }
   function setActive(id) {
@@ -555,6 +613,7 @@
     if (herd) { renderTabs(); if (activeId === id) activeId = sessions[Math.max(0, i - 1)].id; }
     else if (activeId === id) setActive(sessions[Math.max(0, i - 1)].id);
     else renderTabs();
+    saveSessions();
   }
   function renderTabs() {
     if (!els.tabs) return;
@@ -585,6 +644,7 @@
     renderTabs();
     updateTile(session);
     if (session.id === activeId) syncComposer();
+    saveSessions();
   }
 
   // ── Herd view: every session as a live tile in a grid ──
@@ -602,7 +662,7 @@
     document.body.appendChild(h);
     els.herd = h;
     els.grid = h.querySelector("#surg-grid");
-    h.querySelector(".hnew").onclick = function () { var s = newSession(); if (herd) addTile(s); };
+    h.querySelector(".hnew").onclick = function () { newSession(); };   // newSession adds the tile when herd is open
     h.querySelector(".hclose").onclick = exitHerd;
   }
   function tileFor(s) {
@@ -821,7 +881,13 @@
   function init() {
     var vb = VB();
     if (!vb || !vb.ready) { setTimeout(init, 400); return; }
-    vb.ready.then(build).catch(build);
+    vb.ready.then(function () {
+      build();
+      // A refresh clears the brainstem chat but keeps the Copilot chats. If any
+      // restored surgery has real history, reopen the panel so it isn't lost.
+      if (sessions.some(function (s) { return s.convo && s.convo.length > 1; }) &&
+          typeof window.__openSurgeon === "function") window.__openSurgeon();
+    }).catch(build);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
   else init();
