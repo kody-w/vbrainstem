@@ -41,11 +41,27 @@ def _os_label():
     return platform.system() or sys.platform
 
 
+import urllib.parse
+import urllib.request
+
 PORT = int(os.environ.get("BURROW_PORT", "7188"))
 OS_LABEL = _os_label()
 HOST_NAME = os.environ.get("BURROW_HOST_NAME", socket.gethostname() or "this computer")
 VBRAINSTEM = os.environ.get("BURROW_VBRAINSTEM", "https://kody-w.github.io/vbrainstem/")
 HOME = os.path.expanduser("~/.rapp-burrow")
+
+# The pairing page imports the SPAKE2 crypto module SAME-ORIGIN (loopback), so
+# it never depends on the vBrainstem host's CORS. We fetch it once from the
+# vBrainstem origin and cache it.
+_PC_URL = urllib.parse.urljoin(VBRAINSTEM, "pair-crypto.js")
+_PC_CACHE = {"js": None}
+
+
+def _pair_crypto_js():
+    if _PC_CACHE["js"] is None:
+        with urllib.request.urlopen(_PC_URL, timeout=15) as r:
+            _PC_CACHE["js"] = r.read()
+    return _PC_CACHE["js"]
 
 
 def _secret():
@@ -189,7 +205,14 @@ PAGE = r"""<!doctype html>
   async function open_(secret,s){ var k=await key(secret); var pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:_ub64(s.iv)},k,_ub64(s.ct)); return JSON.parse(new TextDecoder().decode(pt)); }
   async function sha(s){ var d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return Array.from(new Uint8Array(d),function(b){return b.toString(16).padStart(2,'0');}).join(''); }
 
-  var state={ id:null, token:null, pairing:null, pairedPeer:null };
+  var state={ id:null, token:null, pairing:null, pairedPeer:null, pendingFin:null };
+
+  // Audited SPAKE2 + Ed25519 identity (loaded from the vBrainstem origin, CORS-ok).
+  var PC=null, MYID=null;
+  var PCready=import(new URL('pair-crypto.js', location.href).href).then(function(m){ PC=m; MYID=m.loadOrCreateIdentity('rapp_burrow_identity_sk'); return m; });
+  function pinKey(peer){ return 'rapp_pin_'+peer; }
+  function pinPeer(peer,pub){ try{ if(pub) localStorage.setItem(pinKey(peer),pub); }catch(e){} }
+  function showDone(peer){ $('#code-panel').classList.remove('active'); $('#done-panel').classList.add('active'); $('#card').classList.add('paired'); log('BURROWED — '+peer.slice(0,8)+'… can run on '+CFG.host_name); }
 
   function showCode(pairing){
     $('#pair-panel').style.display='none'; $('#done-panel').classList.remove('active');
@@ -205,14 +228,12 @@ PAGE = r"""<!doctype html>
   async function submitCode(code){
     var pairing=state.pairing; if(!pairing)return; state.pairing=null;
     var conn=pairing.conn;
-    var hash=await sha(code+'|'+pairing.salt+'|'+state.id+'|'+conn.peer);
-    if(hash!==pairing.code_hash){ $('#code-err').textContent="That code didn't match — ask the vBrainstem for a new one."; log('DENIED (wrong code)'); try{conn.send({schema:'rapp-twin-chat/1.0',kind:'pair-denied',from_rappid:myRappid()});}catch(e){} return; }
-    var pairSecret=code+'|'+pairing.salt+'|'+state.id+'|'+conn.peer;
-    state.token=state.token||(crypto.randomUUID?crypto.randomUUID():'tk-'+Date.now().toString(36));
-    state.pairedPeer=conn.peer;
-    conn.send(await seal(pairSecret,{schema:'rapp-twin-chat/1.0',kind:'pair-grant',from_rappid:myRappid(),response:{token:state.token,host:CFG.host_name,host_control:true,chat:false,os:CFG.os}}));
-    $('#code-panel').classList.remove('active'); $('#done-panel').classList.add('active'); $('#card').classList.add('paired');
-    log('BURROWED — '+conn.peer.slice(0,8)+'… can run on '+CFG.host_name);
+    var PCm=await PCready;
+    var Bm=PCm.spake2Start('B', code);                                   // B = code enterer, SPAKE2 mask N
+    var fin=PCm.spake2Finish(Bm._state, PCm._util.fromHex(pairing.spake2));
+    state.pendingFin=fin; state.pendingPeer=conn.peer; state.pendingIdPub=pairing.idPub;
+    conn.send({schema:'rapp-twin-chat/1.0',kind:'pair-grant',from_rappid:myRappid(),response:{spake2:PCm._util.hex(Bm.msg),mac:PCm._util.hex(fin.macMine),idPub:(MYID&&MYID.pubHex)||null,host:CFG.host_name,host_control:true,chat:false,os:CFG.os}});
+    log('code entered — verifying with the vBrainstem…');   // finalize on pair-confirm
   }
 
   async function handle(conn, raw){
@@ -220,7 +241,8 @@ PAGE = r"""<!doctype html>
     if(raw&&raw.schema==='rapp-sealed/1.0'){ sealed=true; try{ msg=await open_(state.token,raw); }catch(e){ try{conn.send({schema:'rapp-twin-chat/1.0',kind:'resume-denied',from_rappid:myRappid()});}catch(_){} return; } }
     if(!msg||msg.schema!=='rapp-twin-chat/1.0') return;
     var p=msg.payload||{};
-    if(msg.kind==='pair-request'){ if(state.pairedPeer){return;} state.pairing={conn:conn,salt:p.salt,code_hash:p.code_hash,device:p.device}; log('pair-request from '+conn.peer.slice(0,8)+'…'); showCode(state.pairing); return; }
+    if(msg.kind==='pair-request'){ if(state.pairedPeer){return;} state.pairing={conn:conn,spake2:p.spake2,idPub:p.idPub,device:p.device}; log('pair-request from '+conn.peer.slice(0,8)+'…'); showCode(state.pairing); return; }
+    if(msg.kind==='pair-confirm'){ var PCm=await PCready; var f=state.pendingFin; if(!f||!f.verify(PCm._util.fromHex((msg.response&&msg.response.mac)||''))){ $('#code-err').textContent="Pairing failed — try a fresh code."; log('DENIED (confirm failed)'); return; } state.token=f.keyHex; state.pairedPeer=state.pendingPeer; pinPeer(state.pairedPeer, msg.response&&msg.response.idPub); showDone(state.pairedPeer); return; }
     if(sealed&&msg.kind==='resume'){ state.pairedPeer=conn.peer; log('RESUMED '+conn.peer.slice(0,8)+'…'); $('#pair-panel').style.display='none'; $('#code-panel').classList.remove('active'); $('#done-panel').classList.add('active'); $('#card').classList.add('paired'); conn.send(await seal(state.token,{schema:'rapp-twin-chat/1.0',kind:'resume-grant',from_rappid:myRappid(),response:{host:CFG.host_name,host_control:true,chat:false,os:CFG.os}})); return; }
     if(!sealed||conn.peer!==state.pairedPeer){ log('DENIED '+msg.kind); return; }
     var respond=async function(kind,st,resp){ conn.send(await seal(state.token,{schema:'rapp-twin-chat-response/1.0',channel:'5a-tether-sealed',from_rappid:myRappid(),to_rappid:msg.from_rappid,kind:kind,envelope:msg,status:st,response:resp})); };
@@ -259,7 +281,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self._loopback():
             self.send_error(400, "loopback only")
             return
-        if self.path.split("?")[0] not in ("/", "/burrow_host.html"):
+        route = self.path.split("?")[0]
+        if route == "/pair-crypto.js":
+            try:
+                js = _pair_crypto_js()
+            except Exception as e:
+                self.send_error(502, "pair-crypto fetch failed")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript; charset=utf-8")
+            self.send_header("Content-Length", str(len(js)))
+            self.end_headers()
+            self.wfile.write(js)
+            return
+        if route not in ("/", "/burrow_host.html"):
             self.send_error(404)
             return
         cfg = {"host_name": HOST_NAME, "secret": SECRET, "vbrainstem": VBRAINSTEM, "os": OS_LABEL}

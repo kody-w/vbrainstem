@@ -117,8 +117,12 @@ opens the pairing page; **open it in the vBrainstem and type the 8-digit code**
 (human sign-off), then the Brain Surgeon's 🕳️ Burrow tools run on your real
 computer. **Chat stays in the browser** (this host has no brainstem — `chat:false`);
 only sealed host ops cross to the machine. Close the pairing tab or Ctrl-C the
-daemon to end access. Same security model as Desk Pair (loopback `/exec`,
-per-install secret, human-approved sealed tether).
+daemon to end access. **Apple-grade pairing:** the 8-digit code is a true password via **SPAKE2** (an
+audited-primitive PAKE, P-256) — even an active man-in-the-middle on the
+signaling broker can't learn the code or the session key, and can't brute-force
+it offline. Devices **pin each other's Ed25519 identity** on first pair, so
+re-pairing is code-free (like an iPhone ↔ Apple TV). Plus the same host gates:
+loopback `/exec`, per-install secret, human sign-off.
 
 ## Burrow — the Brain Surgeon builds on your REAL machine (experimental)
 

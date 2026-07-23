@@ -35,6 +35,16 @@
   var quiet = !qs.get('deskpair');
   var token = (stored && stored.peer === HOST_PEER) ? stored.token : null;
 
+  // Audited SPAKE2 (PAKE) + Ed25519 identity — the 8-digit code is a true
+  // password (MITM-resistant), and devices pin each other for code-free re-pair.
+  var PCready = import('./pair-crypto.js');
+  var MYID = null;
+  function myId() { return MYID; }
+  function pinKey(peer) { return 'rapp_pin_' + peer; }
+  function pinPeer(peer, pub) { try { if (pub) localStorage.setItem(pinKey(peer), pub); } catch (e) { } }
+  function pinnedPeer(peer) { try { return localStorage.getItem(pinKey(peer)); } catch (e) { return null; } }
+  PCready.then(function (m) { MYID = m.loadOrCreateIdentity('rapp_pair_identity_sk'); }).catch(function () { });
+
   var BASE = (function () {
     var p = location.pathname;
     return p.endsWith('/') ? p : p.slice(0, p.lastIndexOf('/') + 1);
@@ -200,17 +210,53 @@
     lastSeen = Date.now();
     var msg = raw;
     if (raw && raw.schema === 'rapp-sealed/1.0') {
+      // Post-pairing traffic is sealed under the session key. SPAKE2 handshake
+      // messages are plaintext (elements + MACs are public); a legacy host's
+      // grant is sealed under the code-derived key (pairSecret fallback).
       try { msg = token ? await open_(token, raw) : await open_(pairSecret(), raw); }
       catch (e) { return; }
     }
     if (!msg || !msg.schema) return;
     if (msg.kind === 'pong') return;
-    if (msg.kind === 'pair-grant' && msg.response && msg.response.token) {
-      token = msg.response.token;
+    if (msg.kind === 'pair-grant' && msg.response && msg.response.spake2) {
+      var PCm = await PCready;
+      var fin;
+      try { fin = PCm.spake2Finish(S.spakeA, PCm._util.fromHex(msg.response.spake2)); }
+      catch (e) { return; }
+      if (!fin.verify(PCm._util.fromHex(msg.response.mac || ''))) {
+        // Wrong code or an active MITM — the SPAKE2 confirmation didn't verify.
+        try { S.conn.send({ schema: 'rapp-twin-chat/1.0', kind: 'pair-denied', from_rappid: myRappid() }); } catch (e) { }
+        if (!quiet) { newCode(); sendPairRequest(); }
+        return;
+      }
+      token = fin.keyHex;                       // sealed-channel key = SPAKE2 output
+      pinPeer(HOST_PEER, msg.response.idPub);    // remember this device
+      try {
+        S.conn.send({ schema: 'rapp-twin-chat/1.0', kind: 'pair-confirm', from_rappid: myRappid(),
+          response: { mac: PCm._util.hex(fin.macMine), idPub: (myId() && myId().pubHex) || null } });
+      } catch (e) { }
       S.up = true; S.ceremonyDone = true; S.backoff = 2000;
       S.hostControl = !!msg.response.host_control;
       // A burrow-only host (no brainstem) sets chat:false — keep /chat in the
       // browser, only route host ops to the machine.
+      S.chatEnabled = msg.response.chat !== false;
+      S.hostOs = msg.response.os || null;
+      saveSession();
+      showOverlay('<div style="width:64px;height:64px;border-radius:50%;background:#238636;display:flex;' +
+        'align-items:center;justify-content:center;margin:4px auto 14px">' +
+        '<svg viewBox="0 0 24 24" style="width:32px;height:32px;fill:none;stroke:#fff;stroke-width:3;' +
+        'stroke-linecap:round;stroke-linejoin:round"><polyline points="4 12.5 10 18.5 20 6.5"/></svg></div>' +
+        '<h2 style="margin:0 0 6px;font-size:20px;font-weight:650">Desk paired</h2>' +
+        '<p style="color:#8b949e;font-size:13.5px;margin:0">Your turns now run on ' + esc(HOST_NAME) + '\'s brainstem.</p>');
+      setTimeout(hideOverlay, 1400);
+      setChip(S.chatEnabled === false ? ('burrowed · Copilot can run on ' + HOST_NAME) : ('desk-paired · turns run on ' + HOST_NAME), '#3fb950');
+      return;
+    }
+    // Legacy host (8-digit sealed handshake, no SPAKE2) — unchanged desk pair.
+    if (msg.kind === 'pair-grant' && msg.response && msg.response.token) {
+      token = msg.response.token;
+      S.up = true; S.ceremonyDone = true; S.backoff = 2000;
+      S.hostControl = !!msg.response.host_control;
       S.chatEnabled = msg.response.chat !== false;
       S.hostOs = msg.response.os || null;
       saveSession();
@@ -253,12 +299,21 @@
 
   async function sendPairRequest() {
     newCode();
-    var hash = await sha256hex(code + '|' + salt + '|' + HOST_PEER + '|' + S.conn.provider.id);
+    // Offer SPAKE2 (preferred, MITM-resistant) AND the legacy salted-hash so a
+    // SPAKE2 host uses the PAKE while an older desk host still pairs.
+    var legacyHash = await sha256hex(code + '|' + salt + '|' + HOST_PEER + '|' + S.conn.provider.id);
+    var payload = { salt: salt, code_hash: legacyHash, device: 'vBrainstem (' + (navigator.platform || 'browser') + ')' };
+    try {
+      var PCm = await PCready;
+      var A = PCm.spake2Start('A', code);      // A = code generator, SPAKE2 mask M
+      S.spakeA = A._state;
+      payload.spake2 = PCm._util.hex(A.msg);
+      payload.idPub = (myId() && myId().pubHex) || null;
+    } catch (e) { /* crypto module unavailable — legacy handshake still works */ }
     S.conn.send({
       schema: 'rapp-twin-chat/1.0', from_rappid: myRappid(), to_rappid: HOST_PEER,
       utc: new Date().toISOString(), nonce: crypto.randomUUID ? crypto.randomUUID() : String(Math.random()),
-      kind: 'pair-request',
-      payload: { salt: salt, code_hash: hash, device: 'vBrainstem (' + (navigator.platform || 'browser') + ')' }
+      kind: 'pair-request', payload: payload
     });
     showCode();
   }
