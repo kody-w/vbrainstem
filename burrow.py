@@ -255,7 +255,7 @@ PAGE = r"""<!doctype html>
   function start(attempt){ attempt=attempt||1; status(attempt>1?'reconnecting ('+attempt+')…':'starting…',false);
     var peer=new Peer();
     peer.on('open',function(id){ state.id=id;
-      var join=CFG.vbrainstem+'?deskpair='+encodeURIComponent(id)+'&host='+encodeURIComponent(CFG.host_name)+'&burrow=1';
+      var join=CFG.vbrainstem+'?burrow='+encodeURIComponent(id)+'&host='+encodeURIComponent(CFG.host_name);
       $('#qr').src='https://api.qrserver.com/v1/create-qr-code/?size=420x420&margin=8&data='+encodeURIComponent(join);
       $('#open').href=join;
       status('waiting for the vBrainstem',false); window.__BURROW__={id:id,join:join}; log('hosting — peer '+id);

@@ -1,27 +1,22 @@
 /*
- * deskpair-tether.js — Desk Pair transport for the vBrainstem.
+ * burrow-tether.js — minimal Burrow transport for the vBrainstem.
+ * Pairs the browser Copilot to a tiny on-device burrow daemon over a sealed,
+ * SPAKE2-authenticated WebRTC channel and runs host ops on the real machine.
+ * Chat always stays in the browser; this only carries burrow host ops.
  *
  * Loaded by index.html AFTER vbrainstem-boot.js. Makes THIS vBrainstem the
- * paired device: opened via a Desk Pair QR (?deskpair=<host-peer>), it runs
+ * Opened via a burrow QR/link (?burrow=<host-peer>), it runs
  * the Apple-style ceremony (phone shows a 6-digit code; the human types it
- * on the desk computer), then routes every /chat turn over the sealed
- * 5a-tether to the DESK brainstem. Chat is the only wire (§3) — everything
- * else stays on the in-browser brainstem.
- *
- * Fallback rule: while the tether is up, the desk answers. Only when the
- * tether is LOST does a turn fall back to the in-browser (Pyodide)
- * brainstem — and a background loop keeps re-attaching by sealed key
- * possession (no new code), flipping turns back to the desk when it does.
- *
- * /chat/stream while tethered returns a fast 503 so the stock UI takes its
- * own documented fallback to POST /chat — which rides the tether.
+ * the computer), then the Brain Surgeon's burrow tools run on that machine
+ * over the sealed channel. A background loop re-attaches by sealed key
+ * possession (no new code) if the link drops. Chat never leaves the browser.
  */
 (function () {
   'use strict';
 
   var qs = new URLSearchParams(location.search);
-  var SESSION_KEY = 'deskpair_session';
-  var HOST_PEER = qs.get('deskpair') || '';
+  var SESSION_KEY = 'burrow_session';
+  var HOST_PEER = qs.get('burrow') || '';
   var HOST_NAME = qs.get('host') || 'your computer';
 
   var stored = null;
@@ -31,8 +26,8 @@
     HOST_PEER = stored.peer;
     HOST_NAME = stored.host || HOST_NAME;
   }
-  if (!HOST_PEER) return;   // no desk pair in play — stock vBrainstem
-  var quiet = !qs.get('deskpair');
+  if (!HOST_PEER) return;   // no burrow in play — stock vBrainstem
+  var quiet = !qs.get('burrow');
   var token = (stored && stored.peer === HOST_PEER) ? stored.token : null;
 
   // Audited SPAKE2 (PAKE) + Ed25519 identity — the 8-digit code is a true
@@ -49,15 +44,6 @@
     var p = location.pathname;
     return p.endsWith('/') ? p : p.slice(0, p.lastIndexOf('/') + 1);
   })();
-  function chatPath(url) {
-    var u;
-    try { u = new URL(url, location.href); } catch (e) { return null; }
-    if (u.origin !== location.origin) return null;
-    var p = u.pathname;
-    if (p.indexOf(BASE) === 0) p = '/' + p.slice(BASE.length);
-    return (p === '/chat' || p === '/chat/stream') ? p : null;
-  }
-
   // ── state ──
   var S = { conn: null, up: false, ceremonyDone: !!token, resumeTimer: null, backoff: 2000 };
 
@@ -96,11 +82,6 @@
     var pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: _ub64(sealed.iv) }, key, _ub64(sealed.ct));
     return JSON.parse(new TextDecoder().decode(pt));
   }
-  async function sha256hex(s) {
-    var d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-    return Array.from(new Uint8Array(d), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
-  }
-
   // ── UI: status chip (bottom-right; boot chip owns bottom-left) ──
   var chip = null;
   function setChip(text, color) {
@@ -156,9 +137,7 @@
     var digits = crypto.getRandomValues(new Uint8Array(8));
     code = Array.from(digits, function (b) { return String(b % 10); }).join('');
     salt = _b64(crypto.getRandomValues(new Uint8Array(12)));
-  }
-  function pairSecret() { return code + '|' + salt + '|' + HOST_PEER + '|' + (S.conn ? S.conn.provider.id : ''); }
-  function showCode() {
+  }  function showCode() {
     showOverlay(
       '<h2 style="margin:0 0 8px;font-size:20px;font-weight:650">Enter this code on ' + esc(HOST_NAME) + '</h2>' +
       '<p style="color:#8b949e;font-size:13.5px;margin:0 0 18px">Typing it there is the human sign-off — ' +
@@ -196,7 +175,7 @@
     hbTimer = setInterval(async function () {
       if (!S.up || !S.conn || !token) return;
       if (Date.now() - lastSeen > 30000) {
-        // Three missed beats — the desk is gone even if PeerJS never said so.
+        // Three missed beats — the daemon is gone even if PeerJS never said so.
         try { S.conn.close(); } catch (e) { }
         markLost();
         return;
@@ -213,8 +192,8 @@
       // Post-pairing traffic is sealed under the session key. SPAKE2 handshake
       // messages are plaintext (elements + MACs are public); a legacy host's
       // grant is sealed under the code-derived key (pairSecret fallback).
-      try { msg = token ? await open_(token, raw) : await open_(pairSecret(), raw); }
-      catch (e) { return; }
+      if (!token) return;
+      try { msg = await open_(token, raw); } catch (e) { return; }
     }
     if (!msg || !msg.schema) return;
     if (msg.kind === 'pong') return;
@@ -239,43 +218,24 @@
       S.hostControl = !!msg.response.host_control;
       // A burrow-only host (no brainstem) sets chat:false — keep /chat in the
       // browser, only route host ops to the machine.
-      S.chatEnabled = msg.response.chat !== false;
       S.hostOs = msg.response.os || null;
       saveSession();
       showOverlay('<div style="width:64px;height:64px;border-radius:50%;background:#238636;display:flex;' +
         'align-items:center;justify-content:center;margin:4px auto 14px">' +
         '<svg viewBox="0 0 24 24" style="width:32px;height:32px;fill:none;stroke:#fff;stroke-width:3;' +
         'stroke-linecap:round;stroke-linejoin:round"><polyline points="4 12.5 10 18.5 20 6.5"/></svg></div>' +
-        '<h2 style="margin:0 0 6px;font-size:20px;font-weight:650">Desk paired</h2>' +
-        '<p style="color:#8b949e;font-size:13.5px;margin:0">Your turns now run on ' + esc(HOST_NAME) + '\'s brainstem.</p>');
+        '<h2 style="margin:0 0 6px;font-size:20px;font-weight:650">Burrowed</h2>' +
+        '<p style="color:#8b949e;font-size:13.5px;margin:0">Copilot can now run on ' + esc(HOST_NAME) + '.</p>');
       setTimeout(hideOverlay, 1400);
-      setChip(S.chatEnabled === false ? ('burrowed · Copilot can run on ' + HOST_NAME) : ('desk-paired · turns run on ' + HOST_NAME), '#3fb950');
-      return;
-    }
-    // Legacy host (8-digit sealed handshake, no SPAKE2) — unchanged desk pair.
-    if (msg.kind === 'pair-grant' && msg.response && msg.response.token) {
-      token = msg.response.token;
-      S.up = true; S.ceremonyDone = true; S.backoff = 2000;
-      S.hostControl = !!msg.response.host_control;
-      S.chatEnabled = msg.response.chat !== false;
-      S.hostOs = msg.response.os || null;
-      saveSession();
-      showOverlay('<div style="width:64px;height:64px;border-radius:50%;background:#238636;display:flex;' +
-        'align-items:center;justify-content:center;margin:4px auto 14px">' +
-        '<svg viewBox="0 0 24 24" style="width:32px;height:32px;fill:none;stroke:#fff;stroke-width:3;' +
-        'stroke-linecap:round;stroke-linejoin:round"><polyline points="4 12.5 10 18.5 20 6.5"/></svg></div>' +
-        '<h2 style="margin:0 0 6px;font-size:20px;font-weight:650">Desk paired</h2>' +
-        '<p style="color:#8b949e;font-size:13.5px;margin:0">Your turns now run on ' + esc(HOST_NAME) + '\'s brainstem.</p>');
-      setTimeout(hideOverlay, 1400);
-      setChip(S.chatEnabled === false ? ('burrowed · Copilot can run on ' + HOST_NAME) : ('desk-paired · turns run on ' + HOST_NAME), '#3fb950');
+      setChip('burrowed · Copilot can run on ' + HOST_NAME, '#3fb950');
       return;
     }
     if (msg.kind === 'resume-grant') {
       S.up = true; S.backoff = 2000;
-      if (msg.response) { S.hostControl = !!msg.response.host_control; S.chatEnabled = msg.response.chat !== false; S.hostOs = msg.response.os || S.hostOs; }
+      if (msg.response) { S.hostControl = !!msg.response.host_control; S.hostOs = msg.response.os || S.hostOs; }
       saveSession();
       hideOverlay();
-      setChip(S.chatEnabled === false ? ('burrowed · Copilot can run on ' + HOST_NAME) : ('desk-paired · turns run on ' + HOST_NAME), '#3fb950');
+      setChip('burrowed · Copilot can run on ' + HOST_NAME, '#3fb950');
       return;
     }
     if (msg.kind === 'resume-denied') {
@@ -298,22 +258,15 @@
   }
 
   async function sendPairRequest() {
+    var PCm = await PCready;
     newCode();
-    // Offer SPAKE2 (preferred, MITM-resistant) AND the legacy salted-hash so a
-    // SPAKE2 host uses the PAKE while an older desk host still pairs.
-    var legacyHash = await sha256hex(code + '|' + salt + '|' + HOST_PEER + '|' + S.conn.provider.id);
-    var payload = { salt: salt, code_hash: legacyHash, device: 'vBrainstem (' + (navigator.platform || 'browser') + ')' };
-    try {
-      var PCm = await PCready;
-      var A = PCm.spake2Start('A', code);      // A = code generator, SPAKE2 mask M
-      S.spakeA = A._state;
-      payload.spake2 = PCm._util.hex(A.msg);
-      payload.idPub = (myId() && myId().pubHex) || null;
-    } catch (e) { /* crypto module unavailable — legacy handshake still works */ }
+    var A = PCm.spake2Start('A', code);        // A = code generator, SPAKE2 mask M
+    S.spakeA = A._state;
     S.conn.send({
       schema: 'rapp-twin-chat/1.0', from_rappid: myRappid(), to_rappid: HOST_PEER,
       utc: new Date().toISOString(), nonce: crypto.randomUUID ? crypto.randomUUID() : String(Math.random()),
-      kind: 'pair-request', payload: payload
+      kind: 'pair-request',
+      payload: { spake2: PCm._util.hex(A.msg), device: 'vBrainstem (' + (navigator.platform || 'browser') + ')', idPub: (myId() && myId().pubHex) || null }
     });
     showCode();
   }
@@ -388,11 +341,11 @@
       peer.on('error', function (e) {
         var t = (e && e.type) || 'network';
         if (t === 'peer-unavailable') {
-          // The desk pairing page is gone (or re-minted its peer-id).
+          // The burrow daemon page is gone (or re-minted its peer-id).
           try { peer.destroy(); } catch (err) { }
           if (quiet) { clearSession(); teardown(); return; }
           if (token) { markLost(); return; }   // keep trying — the tab may come back
-          setChip('desk unreachable — using the in-browser brainstem', '#8b949e');
+          setChip('burrow daemon unreachable', '#8b949e');
           hideOverlay();
           return;
         }
@@ -403,43 +356,17 @@
         }
       });
     }).catch(function () {
-      setChip('desk pair unavailable (peerjs blocked) — in-browser brainstem', '#8b949e');
+      setChip('burrow unavailable (peerjs blocked)', '#f85149');
     });
   }
 
-  // Sealed say over the tether; resolves the desk /chat reply verbatim.
-  function tetherSay(body) {
-    return new Promise(function (resolve, reject) {
-      if (!S.up || !S.conn || !token) return reject(new Error('tether down'));
-      var nonce = crypto.randomUUID ? crypto.randomUUID() : String(Math.random());
-      var timer = setTimeout(function () {
-        delete pendingSay[nonce];
-        reject(new Error('tether timeout'));
-      }, 180000);
-      pendingSay[nonce] = function (msg) {
-        clearTimeout(timer);
-        if (msg.status && msg.status >= 400) reject(new Error((msg.response && msg.response.error) || ('desk ' + msg.status)));
-        else resolve(msg.response || {});
-      };
-      var env = {
-        schema: 'rapp-twin-chat/1.0', from_rappid: myRappid(), to_rappid: HOST_PEER,
-        utc: new Date().toISOString(), nonce: nonce, kind: 'say',
-        payload: {
-          text: body.user_input, conversation_history: body.conversation_history || [],
-          session_id: body.session_id || ('deskpair-' + myRappid().slice(0, 8)), token: token
-        }
-      };
-      seal(token, env).then(function (sealed) { S.conn.send(sealed); }).catch(reject);
-    });
-  }
-
-  // Sealed host op over the tether — EXPERIMENTAL "burrow": run on the desk's
-  // REAL machine (python/shell/files) via its /exec executor. Same nonce
-  // round-trip as tetherSay; resolves the executor's JSON.
+  // Sealed host op — run on the REAL machine (python/shell/files) via the
+  // burrow daemon's /exec executor. Same nonce
+  // round-trip; resolves the executor's JSON.
   function hostOp(req) {
     return new Promise(function (resolve, reject) {
       if (!S.up || !S.conn || !token) return reject(new Error('tether down'));
-      if (!S.hostControl) return reject(new Error('host control not enabled on the desk computer'));
+      if (!S.hostControl) return reject(new Error('host control not enabled on this computer'));
       var nonce = crypto.randomUUID ? crypto.randomUUID() : String(Math.random());
       var timer = setTimeout(function () { delete pendingSay[nonce]; reject(new Error('host op timeout')); }, 180000);
       pendingSay[nonce] = function (msg) {
@@ -455,8 +382,8 @@
     });
   }
 
-  // Bridge for the Brain Surgeon: is a real desk reachable, and run on it.
-  window.__DESKPAIR_BRIDGE__ = {
+  // Bridge for the Brain Surgeon: is the burrow reachable, and run on it.
+  window.__BURROW_BRIDGE__ = {
     isPaired: function () { return !!(S.up && token); },
     canBurrow: function () { return !!(S.up && token && S.hostControl); },
     hostName: function () { return HOST_NAME; },
@@ -464,31 +391,6 @@
     hostOp: hostOp
   };
 
-  // ── fetch layering: desk-first for /chat; everything else untouched ──
-  var prevFetch = window.fetch.bind(window);
-  window.fetch = function (input, init) {
-    var url = (typeof input === 'string') ? input : ((input && input.url) || '');
-    var p = chatPath(url);
-    // Burrow-only hosts (chat:false) leave chat in the browser — don't route it.
-    if (!p || !S.up || !token || S.chatEnabled === false) return prevFetch(input, init);
-    if (p === '/chat/stream') {
-      // Fast non-ok → the stock UI takes its documented fallback to POST /chat.
-      return Promise.resolve(new Response(JSON.stringify({ error: 'desk pair: use /chat' }), {
-        status: 503, headers: { 'Content-Type': 'application/json' }
-      }));
-    }
-    var body = {};
-    try { body = JSON.parse((init && init.body) || '{}'); } catch (e) { }
-    return tetherSay(body).then(function (reply) {
-      return new Response(JSON.stringify(reply), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    }).catch(function (err) {
-      // Tether failed mid-turn: THIS turn falls back to the in-browser
-      // brainstem; the background loop keeps trying to re-attach.
-      markLost();
-      return prevFetch(input, init);
-    });
-  };
-
-  setChip(token ? 'resuming desk pair…' : 'desk pair: connecting to ' + HOST_NAME + '…', '#d29922');
+  setChip(token ? 'resuming burrow…' : 'connecting to ' + HOST_NAME + '…', '#d29922');
   connect();
 })();

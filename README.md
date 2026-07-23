@@ -90,7 +90,7 @@ VS Code, no install. It runs on your signed-in GitHub Copilot account.
   the **page** drives the loop with tools (`list_agents`, `read_file`,
   `write_agent`, `delete_agent`, `test_brainstem`).
 - Tools operate on the LOCAL vBrainstem via `__vbrainstem.local()` / `.fs()`, so
-  the Surgeon always builds here even while `/chat` is tethered to a desk brainstem.
+  the Surgeon always builds in this vBrainstem's own workspace.
 - Files: [`surgeon.js`](surgeon.js) (loop + side panel), `brainstem_web.py`
   (`/surgeon/complete`). This is how the Brain Surgeon builds agents without VS Code.
 
@@ -110,8 +110,8 @@ irm https://kody-w.github.io/vbrainstem/burrow.ps1 | iex
 ```
 
 It installs a single stdlib-only Python daemon ([`burrow.py`](burrow.py), ~250
-lines) to `~/.rapp-burrow/` and runs it. The daemon is the Desk Pair host
-executor, extracted: a loopback server that hosts the sealed pairing page and a
+lines) to `~/.rapp-burrow/` and runs it. The daemon is a loopback server that
+hosts the sealed SPAKE2 pairing page and a
 secret-gated `/exec` that runs shell / python / file ops on the machine. It
 opens the pairing page; **open it in the vBrainstem and type the 8-digit code**
 (human sign-off), then the Brain Surgeon's 🕳️ Burrow tools run on your real
@@ -123,54 +123,6 @@ signaling broker can't learn the code or the session key, and can't brute-force
 it offline. Devices **pin each other's Ed25519 identity** on first pair, so
 re-pairing is code-free (like an iPhone ↔ Apple TV). Plus the same host gates:
 loopback `/exec`, per-install secret, human sign-off.
-
-## Burrow — the Brain Surgeon builds on your REAL machine (experimental)
-
-The Copilot agent loop above is sandboxed to the browser VM. When the vBrainstem
-is **Desk Paired** to a real on-device brainstem, it can **burrow** out of the
-sandbox and run on the actual computer — so you can command the in-browser
-GitHub Copilot to autonomously build and iterate on your on-device brainstem's
-agents, **without opening VS Code**, and get essentially the same thing.
-
-Enable it (off by default, every gate must hold):
-1. On the computer: run the Desk Pair agent with host control —
-   *"desk pair my phone with allow_host_control set to true"*
-   ([`desk_pair_agent.py`](desk_pair_agent.py)).
-2. Pair the vBrainstem (scan → type the 8-digit code on the computer — the human
-   sign-off). The grant carries `host_control`.
-3. In the Brain Surgeon, click **🕳️ Burrow** and confirm.
-
-Then `run_python`, `run_shell`, `read_file`, `write_file`, `list_dir` and
-`delete_file` execute on the **real machine** over the sealed channel
-(`rapp-sealed/1.0`), and `test_brainstem` tests the on-device brainstem. Proof:
-`run_python` reports `darwin` / your real hostname, while the sandbox reports
-`emscripten`. Security: loopback-only `/exec` executor, armed only by the
-explicit opt-in, gated by the per-install secret, over the human-approved sealed
-tether. It runs in the brainstem's native Python process — so it *is* the real
-computer. Experimental; treat it like giving Copilot a terminal on your machine.
-
-## Desk Pair — the vBrainstem as your desk's remote (Apple-style)
-
-Ask your on-device brainstem to *"desk pair my phone"*
-([`desk_pair_agent.py`](desk_pair_agent.py), drop-in) — a pairing page opens
-with a QR. **Scanning it opens the vBrainstem itself** (`?deskpair=<peer>`):
-the full UI runs the ceremony — the phone shows a **8-digit code**, and typing
-that code **into the computer** is the human sign-off. The QR carries only a
-peer-id; the code never crosses the network (salted hash, one attempt); the
-session token is released sealed (`rapp-sealed/1.0`) under a code-derived key.
-
-While paired, the vBrainstem is **tethered**: every `/chat` turn rides the
-sealed `5a-tether` to the DESK brainstem — chat is the only wire (§3). When
-the tether is lost (desk tab closed, network hop), turns **fall back to the
-in-browser Pyodide brainstem** and a background loop keeps re-attaching by
-sealed key possession (no new code) — heartbeat + ICE-state watch declare loss
-within seconds, and in-flight turns fail over immediately
-(`deskpair-tether.js`).
-
-Also here: [`deskpair-host.html`](https://kody-w.github.io/vbrainstem/deskpair-host.html)
-— a zero-install host that boots `brainstem_web.py` in-page (or fronts an
-on-device brainstem via `?bs=…&secret=…`), and `deskpair.html`, a minimal
-phone remote.
 
 ## The Brainstem Tether
 

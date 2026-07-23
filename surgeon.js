@@ -146,7 +146,7 @@
     }, required: ["command"] }
   }};
 
-  function bridge() { return window.__DESKPAIR_BRIDGE__; }
+  function bridge() { return window.__BURROW_BRIDGE__; }
   function canBurrow() { var b = bridge(); return !!(b && b.canBurrow && b.canBurrow()); }
   var burrow = false;
 
