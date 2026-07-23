@@ -146,24 +146,40 @@
     }, required: ["command"] }
   }};
 
-  // Burrow-only: run a REAL RAPP agent .py on the machine — for on-device-only
-  // agents (subprocess to pac/az/gh CLIs, local files, native libs) that can't
-  // run in the sandbox. You supply the agent's full source; get it first with
-  // read_file (workspace agent) or run_python (fetch from the RAR registry).
-  var RUN_DEVICE_AGENT_TOOL = { type: "function", function: {
-    name: "run_device_agent",
-    description: "Run a RAPP agent .py on the user's REAL computer via the Burrow — for agents that need the native OS (subprocess/pac/az/gh, local files) and can't run in the browser sandbox. Provide the agent's full Python source and its kwargs; returns the agent's string result plus logs.",
-    parameters: { type: "object", properties: {
-      source: { type: "string", description: "The complete Python source of the agent file (a BasicAgent subclass)." },
-      kwargs: { type: "object", description: "Arguments to pass to the agent's perform(**kwargs). Defaults to {}." }
-    }, required: ["source"] }
-  }};
+  // Burrow-only: the device is a TWIN with its own agents/ folder (same shape as
+  // this brainstem). Copilot lists/installs/runs agents on it just like locally —
+  // for on-device-only agents (subprocess to pac/az/gh CLIs, local files, native
+  // libs) that can't run in the sandbox.
+  var BURROW_TWIN_TOOLS = [
+    { type: "function", function: {
+      name: "burrow_list_agents",
+      description: "List the agents installed on the burrowed device twin (same shape as list_agents here). Use it to see what the real machine can already run.",
+      parameters: { type: "object", properties: {}, required: [] }
+    }},
+    { type: "function", function: {
+      name: "burrow_install_agent",
+      description: "Install a RAPP agent .py onto the burrowed device twin's agents/ folder so it can run on the real machine. Get the source with read_file (a workspace agent) or run_python (fetch from the RAR registry) first.",
+      parameters: { type: "object", properties: {
+        filename: { type: "string", description: "e.g. power_apps_code_app_agent.py (must end with _agent.py)." },
+        source: { type: "string", description: "The complete Python source of the agent file." }
+      }, required: ["filename", "source"] }
+    }},
+    { type: "function", function: {
+      name: "burrow_run_agent",
+      description: "Run an agent on the burrowed device twin — by `name` (an installed agent's filename) or ad-hoc `source` — with kwargs. Use for agents that need the native OS. Returns the agent's string result plus logs.",
+      parameters: { type: "object", properties: {
+        name: { type: "string", description: "Filename of an installed twin agent, e.g. power_apps_code_app_agent.py." },
+        source: { type: "string", description: "Ad-hoc agent source to run (instead of name)." },
+        kwargs: { type: "object", description: "Arguments to pass to the agent's perform(**kwargs). Defaults to {}." }
+      }, required: [] }
+    }}
+  ];
 
   function bridge() { return window.__BURROW_BRIDGE__; }
   function canBurrow() { var b = bridge(); return !!(b && b.canBurrow && b.canBurrow()); }
   var burrow = false;
 
-  function toolsFor() { return burrow ? TOOLS.concat([RUN_SHELL_TOOL, RUN_DEVICE_AGENT_TOOL]) : TOOLS; }
+  function toolsFor() { return burrow ? TOOLS.concat([RUN_SHELL_TOOL]).concat(BURROW_TWIN_TOOLS) : TOOLS; }
   function systemFor() {
     if (!burrow) return SYSTEM_PROMPT;
     var os = (bridge().hostOs && bridge().hostOs()) || "";
@@ -173,7 +189,7 @@
       (os === "Windows"
         ? "This machine is WINDOWS: run_shell uses cmd.exe — use Windows commands (dir, type, echo, PowerShell via 'powershell -c \"...\"'), not Unix (ls/cat). Paths use backslashes. "
         : (os ? "This machine is " + os + ": run_shell uses a POSIX shell (ls, cat, grep, etc.). " : "")) +
-      "Use run_device_agent to run a RAPP agent .py that needs the native OS (e.g. subprocess to pac/az/gh, local files) — get its source with read_file or run_python (fetch from RAR), then run it on the machine. " +
+      "The burrowed device is a TWIN with its OWN agents/ folder, same shape as this brainstem. To run an on-device-only agent (needs subprocess/pac/az/gh, local files): (1) check list_agents here, (2) check burrow_list_agents on the device twin, (3) if the agent is not on the twin, get its source (read_file here, or run_python to fetch from RAR) and burrow_install_agent it, (4) burrow_run_agent by name on the twin. Prefer running native-OS agents on the twin. " +
       "This is powerful and can be irreversible. Prefer read-only exploration first; state your plan in prose before any " +
       "destructive or system-changing command; never run something the user didn't ask for.";
   }
@@ -193,7 +209,9 @@
     if (burrow && canBurrow()) {
       if (name === "run_python") return await hostExec({ op: "python", code: String(args.code || "") });
       if (name === "run_shell") return await hostExec({ op: "shell", command: String(args.command || "") });
-      if (name === "run_device_agent") return await hostExec({ op: "agent", source: String(args.source || ""), kwargs: args.kwargs || {} });
+      if (name === "burrow_list_agents") return await hostExec({ op: "list_agents" });
+      if (name === "burrow_install_agent") return await hostExec({ op: "install_agent", filename: String(args.filename || ""), source: String(args.source || "") });
+      if (name === "burrow_run_agent") return await hostExec({ op: "agent", name: String(args.name || ""), source: String(args.source || ""), kwargs: args.kwargs || {} });
       if (name === "read_file") { var rr = await hostExec({ op: "read", path: cleanPath(args.path) }); return { path: cleanPath(args.path), content: rr.content }; }
       if (name === "write_file") { await hostExec({ op: "write", path: cleanPath(args.path), content: String(args.content || "") }); return { ok: true, path: cleanPath(args.path), bytes: (args.content || "").length }; }
       if (name === "list_dir") return await hostExec({ op: "list", path: cleanPath(args.path) || "." });
@@ -206,7 +224,7 @@
       }
       // list_agents falls through to the local list below.
     }
-    if (name === "run_shell" || name === "run_device_agent") throw new Error(name + " needs Burrow enabled — pair to a device with host control.");
+    if (/^(run_shell|burrow_)/.test(name)) throw new Error(name + " needs Burrow enabled — pair to a device with host control.");
     if (name === "run_python") {
       var out = await window.rapp.eval(String(args.code || ""));
       return { output: (out && out.output) != null ? out.output : "" };
@@ -849,11 +867,12 @@
     return { remove: function () { if (session.thinkEl === d) session.thinkEl = null; d.remove(); } };
   }
 
-  var TOOL_ICON = { run_python: "▶", run_shell: "🕳️", run_device_agent: "🧩", list_dir: "📁", read_file: "📄", write_file: "✏️", delete_file: "🗑️", list_agents: "📋", test_brainstem: "🧠" };
+  var TOOL_ICON = { run_python: "▶", run_shell: "🕳️", burrow_run_agent: "🧩", burrow_install_agent: "📥", burrow_list_agents: "📋", list_dir: "📁", read_file: "📄", write_file: "✏️", delete_file: "🗑️", list_agents: "📋", test_brainstem: "🧠" };
   function argLabel(name, args) {
     if (name === "run_python") return (args.code || "").replace(/\s+/g, " ").slice(0, 70);
     if (name === "run_shell") return (args.command || "").slice(0, 70);
-    if (name === "run_device_agent") return "agent (" + (args.source || "").length + " bytes)";
+    if (name === "burrow_run_agent") return args.name || ("agent (" + (args.source || "").length + " bytes)");
+    if (name === "burrow_install_agent") return args.filename || "";
     if (name === "test_brainstem") return JSON.stringify(args.message || "");
     if (name === "list_dir") return args.path || "workspace";
     return args.path || args.filename || "";
@@ -875,10 +894,11 @@
         setStatus("✓", "#5cc271");
         var body = wrap.querySelector(".body");
         if (name === "run_python" || name === "run_shell") body.textContent = (result.output != null ? result.output : "") || "(no output)";
-        else if (name === "run_device_agent") body.textContent = (result.result != null ? ("result: " + result.result) : ("error: " + (result.error || "?"))) + (result.logs ? "\n\nlogs:\n" + result.logs : "") + (result.traceback ? "\n\n" + result.traceback : "");
+        else if (name === "burrow_run_agent") body.textContent = (result.result != null ? ("result: " + result.result) : ("error: " + (result.error || "?"))) + (result.logs ? "\n\nlogs:\n" + result.logs : "") + (result.traceback ? "\n\n" + result.traceback : "");
         else if (name === "test_brainstem") body.textContent = "reply: " + (result.response || result.error || "(none)") + (result.agent_logs ? "\n\nagent_logs:\n" + result.agent_logs : "");
         else if (name === "read_file") body.textContent = (result.content || "").slice(0, 6000);
         else if (name === "list_dir") body.textContent = (result.files || []).join("\n");
+        else if (name === "burrow_list_agents") body.textContent = (result.files || []).map(function (f) { return f.filename + (f.agents && f.agents.length ? "  (" + f.agents.join(", ") + ")" : ""); }).join("\n") || "(no agents on the device twin yet)";
         else if (name === "list_agents") body.textContent = (result.files || []).map(function (f) { return f.filename + (f.agents && f.agents.length ? "  (" + f.agents.join(", ") + ")" : ""); }).join("\n");
         else body.textContent = JSON.stringify(result, null, 2).slice(0, 3000);
       },

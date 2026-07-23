@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-burrow.py — the smallest on-device footprint that gives the in-browser
+burrow.py — rapp-burrow-twin/1.0 — the smallest on-device footprint that gives the in-browser
 vBrainstem real-machine access (shell, files, Python), with NO brainstem and
 NO VS Code. Standard library only.
 
@@ -116,11 +116,18 @@ def host_exec(req):
         if op == "list":
             p = os.path.expanduser(req.get("path", ".") or ".")
             return {"path": p, "files": sorted(os.listdir(p))}
+        if op == "list_agents":
+            # Same shape as the vBrainstem's GET /agents — so Copilot can check
+            # this device twin's agents exactly like it checks the local ones.
+            return _twin_list_agents()
+        if op == "install_agent":
+            return _twin_install_agent(req.get("filename", ""), req.get("source", ""))
         if op == "agent":
-            # Run a REAL RAPP agent .py on THIS machine — for agents that need
-            # the native OS (subprocess to pac/az/gh, local files, native libs)
-            # and therefore cannot run in the browser's Pyodide sandbox.
-            return _run_device_agent(req.get("source", ""), req.get("kwargs") or {})
+            # Run a REAL RAPP agent on THIS machine — for agents that need the
+            # native OS (subprocess to pac/az/gh, local files, native libs) and
+            # therefore cannot run in the browser's Pyodide sandbox. Either an
+            # installed agent (by `name`) or ad-hoc `source`.
+            return _run_device_agent(req.get("source", ""), req.get("kwargs") or {}, req.get("name", ""))
         return {"error": "unknown op: " + str(op)}
     except Exception as e:
         return {"error": str(e)}
@@ -151,31 +158,83 @@ _AGENT_SHIM_STORAGE = (
 )
 
 
-def _run_device_agent(source, kwargs):
+# The burrow is a device TWIN: a persistent agents/ folder (same shape as the
+# vBrainstem's), so Copilot can list/install/run agents on it exactly like the
+# local brainstem — running the ones that need the native OS.
+_TWIN_AGENTS = os.path.join(HOME, "agents")
+_TWIN_UTILS = os.path.join(HOME, "utils")
+
+
+def _ensure_twin_runtime():
+    os.makedirs(_TWIN_AGENTS, exist_ok=True)
+    os.makedirs(_TWIN_UTILS, exist_ok=True)
+    open(os.path.join(_TWIN_AGENTS, "__init__.py"), "a").close()
+    open(os.path.join(_TWIN_UTILS, "__init__.py"), "a").close()
+    bp = os.path.join(_TWIN_AGENTS, "basic_agent.py")
+    if not os.path.exists(bp):
+        open(bp, "w").write(_AGENT_SHIM_BASIC)
+    up = os.path.join(_TWIN_UTILS, "azure_file_storage.py")
+    if not os.path.exists(up):
+        open(up, "w").write(_AGENT_SHIM_STORAGE)
+
+
+def _agent_names(source):
+    import re
+    names = re.findall(r"self\.name\s*=\s*['\"]([^'\"]+)['\"]", source or "")
+    if names:
+        return names
+    return re.findall(r"class\s+(\w+)\s*\(\s*BasicAgent\s*\)", source or "")
+
+
+def _twin_list_agents():
+    import glob
+    _ensure_twin_runtime()
+    files = []
+    for f in sorted(glob.glob(os.path.join(_TWIN_AGENTS, "*_agent.py"))):
+        fn = os.path.basename(f)
+        if fn == "basic_agent.py":
+            continue
+        try:
+            src = open(f, encoding="utf-8").read()
+        except Exception:
+            src = ""
+        files.append({"filename": fn, "agents": _agent_names(src)})
+    return {"files": files, "host": HOST_NAME, "os": OS_LABEL}
+
+
+def _twin_install_agent(filename, source):
+    fn = os.path.basename(str(filename or "")).replace("\\", "").replace("/", "")
+    if not fn.endswith("_agent.py") or not source:
+        return {"error": "filename must be <snake>_agent.py and source is required"}
+    _ensure_twin_runtime()
+    open(os.path.join(_TWIN_AGENTS, fn), "w", encoding="utf-8").write(source)
+    return {"ok": True, "filename": fn, "agents": _agent_names(source)}
+
+
+def _run_device_agent(source, kwargs, name=""):
     import contextlib
+    import importlib
     import importlib.util
     import inspect
     import io as _io
     import traceback
-    workdir = os.path.join(HOME, "agent_run")
-    for sub in ("agents", "utils"):
-        os.makedirs(os.path.join(workdir, sub), exist_ok=True)
-        open(os.path.join(workdir, sub, "__init__.py"), "w").close()
-    open(os.path.join(workdir, "agents", "basic_agent.py"), "w").write(_AGENT_SHIM_BASIC)
-    open(os.path.join(workdir, "utils", "azure_file_storage.py"), "w").write(_AGENT_SHIM_STORAGE)
-    agent_path = os.path.join(workdir, "device_agent.py")
-    open(agent_path, "w", encoding="utf-8").write(source)
+    _ensure_twin_runtime()
     buf = _io.StringIO()
     old_path = sys.path[:]
-    sys.path.insert(0, workdir)
+    sys.path.insert(0, HOME)   # so `agents` + `utils` packages resolve
     inst = None
     try:
-        for m in ("device_agent", "agents", "agents.basic_agent", "utils", "utils.azure_file_storage"):
-            sys.modules.pop(m, None)
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-            spec = importlib.util.spec_from_file_location("device_agent", agent_path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
+            if name:
+                modname = "agents." + os.path.basename(name)[:-3] if name.endswith(".py") else "agents." + name
+                sys.modules.pop(modname, None)
+                mod = importlib.import_module(modname)
+            else:
+                path = os.path.join(_TWIN_AGENTS, "_adhoc_agent.py")
+                open(path, "w", encoding="utf-8").write(source)
+                sys.modules.pop("agents._adhoc_agent", None)
+                mod = importlib.import_module("agents._adhoc_agent")
+                importlib.reload(mod)
             from agents.basic_agent import BasicAgent as _BA
             cls = None
             for _n, obj in vars(mod).items():
@@ -183,7 +242,7 @@ def _run_device_agent(source, kwargs):
                     cls = obj
                     break
             if cls is None:
-                return {"error": "no BasicAgent subclass found in the agent source", "logs": buf.getvalue()}
+                return {"error": "no BasicAgent subclass found", "logs": buf.getvalue()}
             inst = cls()
             result = inst.perform(**(kwargs or {}))
         out = result if isinstance(result, str) else json.dumps(result)
