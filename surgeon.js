@@ -320,12 +320,15 @@
   }
 
   var CSS =
-    ":root{--surg-w:min(460px,100vw)}" +
-    // True side-by-side: shrink the brainstem's flex-column body so the panel
-    // takes the freed right strip — both stay fully usable. On narrow screens
-    // the panel overlays instead (no room to split).
+    ":root{--surg-w:min(460px,100vw);--herd-w:min(1060px,72vw)}" +
+    // True side-by-side: shrink the brainstem's flex-column body so the Copilot
+    // lane takes the freed right strip — both stay fully usable. Herd mode just
+    // makes that lane wider; it never covers the brainstem. Narrow screens
+    // overlay full-width (no room to split).
     "@media(min-width:820px){html.surg-open body{width:calc(100vw - var(--surg-w));" +
-    "transition:width .28s cubic-bezier(.22,.9,.3,1)}}" +
+    "transition:width .28s cubic-bezier(.22,.9,.3,1)}" +
+    "html.surg-herd-open body{width:calc(100vw - var(--herd-w))}}" +
+    "@media(max-width:819px){#surg-herd{width:100vw}}" +
     "#surg-btn{position:fixed;top:50%;right:0;transform:translateY(-50%);z-index:9987;" +
     "background:#1c1e22;color:#e7e8ea;border:1px solid #2f3238;border-right:none;border-radius:12px 0 0 12px;" +
     "padding:14px 9px;cursor:pointer;font:600 12px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;" +
@@ -352,7 +355,9 @@
     "#surg header .x{background:none;border:none;color:#8b8f98;font-size:20px;cursor:pointer;padding:0 2px;line-height:1}" +
     "#surg header .x:hover{color:#fff}" +
     // Herd view — a grid of independent Copilot chats, all on one brainstem.
-    "#surg-herd{position:fixed;inset:0;z-index:9990;background:#0f1013;display:none;flex-direction:column;font:13px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e7e8ea}" +
+    "#surg-herd{position:fixed;top:0;right:0;bottom:0;left:auto;width:var(--herd-w);z-index:9990;" +
+    "background:#0f1013;border-left:1px solid #2a2c31;box-shadow:-24px 0 60px rgba(0,0,0,.5);" +
+    "display:none;flex-direction:column;font:13px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e7e8ea}" +
     "#surg-herd.open{display:flex}#surg-herd *{box-sizing:border-box}" +
     "#surg-herd .hbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #26282d;background:linear-gradient(180deg,#1c1e22,#17181b)}" +
     "#surg-herd .hbar .badge{width:28px;height:28px;border-radius:8px;background:#22252b;display:flex;align-items:center;justify-content:center;border:1px solid #2f3238}" +
@@ -360,8 +365,8 @@
     "#surg-herd .hbar .hnew{margin-left:auto;background:#1a1c21;border:1px solid #2a2d33;color:#d7dae0;border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer}" +
     "#surg-herd .hbar .hnew:hover{border-color:#3d7cf0}" +
     "#surg-herd .hbar .hclose{background:linear-gradient(180deg,#3d7cf0,#2f66d8);border:none;color:#fff;border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer}" +
-    "#surg-herd .grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;padding:14px;align-content:start}" +
-    "#surg-herd .htile{display:flex;flex-direction:column;background:#141518;border:1px solid #2a2c31;border-radius:12px;overflow:hidden;height:min(74vh,620px)}" +
+    "#surg-herd .grid{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;padding:14px;align-content:start}" +
+    "#surg-herd .htile{display:flex;flex-direction:column;background:#141518;border:1px solid #2a2c31;border-radius:12px;overflow:hidden;height:min(78vh,640px)}" +
     "#surg-herd .htile .hh{display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid #26282d;background:#181a1e;font-size:12.5px}" +
     "#surg-herd .htile .hh .tt{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
     "#surg-herd .htile .hh .hsp{width:11px;height:11px;flex:none}" +
@@ -634,12 +639,14 @@
     els.grid.innerHTML = "";
     sessions.forEach(function (s) { s.tileEl = null; els.grid.appendChild(tileFor(s)); });
     els.herd.classList.add("open");
+    document.documentElement.classList.add("surg-herd-open");   // widen the lane, keep the brainstem
     herd = true;
     if (els.herdBtn) els.herdBtn.classList.add("on");
   }
   function exitHerd() {
     herd = false;
     if (els.herd) els.herd.classList.remove("open");
+    document.documentElement.classList.remove("surg-herd-open");
     if (els.herdBtn) els.herdBtn.classList.remove("on");
     sessions.forEach(function (s) { s.tileEl = null; els.log.appendChild(s.logEl); });
     setActive(activeId);
@@ -674,6 +681,7 @@
     build();
     var open = els.panel.classList.toggle("open");
     document.documentElement.classList.toggle("surg-open", open);   // side-by-side
+    if (!open && herd) exitHerd();
     if (open) {
       checkAuth();
       refreshBurrow();
