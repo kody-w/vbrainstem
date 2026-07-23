@@ -143,7 +143,7 @@
 
   var code = '', salt = '';
   function newCode() {
-    var digits = crypto.getRandomValues(new Uint8Array(6));
+    var digits = crypto.getRandomValues(new Uint8Array(8));
     code = Array.from(digits, function (b) { return String(b % 10); }).join('');
     salt = _b64(crypto.getRandomValues(new Uint8Array(12)));
   }

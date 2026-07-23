@@ -113,7 +113,7 @@ It installs a single stdlib-only Python daemon ([`burrow.py`](burrow.py), ~250
 lines) to `~/.rapp-burrow/` and runs it. The daemon is the Desk Pair host
 executor, extracted: a loopback server that hosts the sealed pairing page and a
 secret-gated `/exec` that runs shell / python / file ops on the machine. It
-opens the pairing page; **open it in the vBrainstem and type the 6-digit code**
+opens the pairing page; **open it in the vBrainstem and type the 8-digit code**
 (human sign-off), then the Brain Surgeon's 🕳️ Burrow tools run on your real
 computer. **Chat stays in the browser** (this host has no brainstem — `chat:false`);
 only sealed host ops cross to the machine. Close the pairing tab or Ctrl-C the
@@ -132,7 +132,7 @@ Enable it (off by default, every gate must hold):
 1. On the computer: run the Desk Pair agent with host control —
    *"desk pair my phone with allow_host_control set to true"*
    ([`desk_pair_agent.py`](desk_pair_agent.py)).
-2. Pair the vBrainstem (scan → type the 6-digit code on the computer — the human
+2. Pair the vBrainstem (scan → type the 8-digit code on the computer — the human
    sign-off). The grant carries `host_control`.
 3. In the Brain Surgeon, click **🕳️ Burrow** and confirm.
 
@@ -150,7 +150,7 @@ computer. Experimental; treat it like giving Copilot a terminal on your machine.
 Ask your on-device brainstem to *"desk pair my phone"*
 ([`desk_pair_agent.py`](desk_pair_agent.py), drop-in) — a pairing page opens
 with a QR. **Scanning it opens the vBrainstem itself** (`?deskpair=<peer>`):
-the full UI runs the ceremony — the phone shows a **6-digit code**, and typing
+the full UI runs the ceremony — the phone shows a **8-digit code**, and typing
 that code **into the computer** is the human sign-off. The QR carries only a
 peer-id; the code never crosses the network (salted hash, one attempt); the
 session token is released sealed (`rapp-sealed/1.0`) under a code-derived key.

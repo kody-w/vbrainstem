@@ -9,7 +9,7 @@ browser tab. The page hosts a sealed WebRTC bridge (rapp-neighborhood-protocol
 The ceremony (deliberately shaped like Apple device pairing):
   1. Scan the QR with the phone — the QR carries ONLY a peer-id. Scanning
      alone grants nothing.
-  2. The phone shows a 6-digit pairing code.
+  2. The phone shows a 8-digit pairing code.
   3. The human types that code INTO THE COMPUTER (the pairing page). The code
      never crosses the network — only a salted hash does, and the host gets
      exactly ONE attempt per code.
@@ -62,7 +62,7 @@ def _read_or_create_secret(brainstem_dir):
 # When explicitly enabled (allow_host_control=True), a paired vBrainstem can
 # reach OUT of its browser sandbox and run code on THIS real machine — the same
 # power the brainstem has running locally. Off by default. Every gate must hold:
-#   1. Desk Pair ceremony done (human typed the 6-digit code) → sealed channel.
+#   1. Desk Pair ceremony done (human typed the 8-digit code) → sealed channel.
 #   2. Host control armed here (the opt-in below), else /exec 403s.
 #   3. The /exec endpoint is loopback-only and requires the per-install secret.
 #   4. All tether traffic is rapp-sealed (AES-256-GCM).
@@ -227,7 +227,7 @@ class DeskPairAgent(BasicAgent):
             "description": (
                 "Desk Pair: pair a phone (or any other device) to this computer's brainstem as a "
                 "remote control. Opens a browser tab with a QR code; the user scans it, "
-                "the phone shows a 6-digit code, and typing that code into the computer "
+                "the phone shows a 8-digit code, and typing that code into the computer "
                 "completes the tether. Use when the user asks to desk pair, tether, pair, link, or "
                 "control this brainstem from their phone."
             ),
@@ -318,7 +318,7 @@ class DeskPairAgent(BasicAgent):
             f"Desk Pair page ready{' — opening it in your browser now' if opened else ''}.\n\n"
             f"1. On the page that {'just opened' if opened else f'is at {page_url}'}, "
             f"a QR code appears.\n"
-            f"2. Scan it with your phone's camera — the phone shows a 6-digit pairing code.\n"
+            f"2. Scan it with your phone's camera — the phone shows a 8-digit pairing code.\n"
             f"3. Type that code into the pairing page on this computer. That typed code is the "
             f"human sign-off: until you enter it, the phone can't control anything.\n\n"
             f"Once paired, your phone drives THIS brainstem ({bs_url}) over an end-to-end "
@@ -494,7 +494,7 @@ _HOST_PAGE = r"""<!doctype html>
     var boxes = $('#boxes');
     boxes.innerHTML = '';
     var inputs = [];
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 8; i++) {
       var inp = document.createElement('input');
       inp.maxLength = 1; inp.inputMode = 'numeric'; inp.autocomplete = 'off';
       boxes.appendChild(inp); inputs.push(inp);
@@ -510,10 +510,10 @@ _HOST_PAGE = r"""<!doctype html>
       });
       inp.addEventListener('paste', function (e) {
         var t = (e.clipboardData.getData('text') || '').replace(/\D/g, '');
-        if (t.length >= 6) {
+        if (t.length >= 8) {
           e.preventDefault();
           inputs.forEach(function (x, j) { x.value = t[j] || ''; });
-          submitCode(t.slice(0, 6));
+          submitCode(t.slice(0, 8));
         }
       });
     });

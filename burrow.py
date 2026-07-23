@@ -10,7 +10,7 @@ It is the Desk Pair host executor, extracted: a loopback HTTP server that
      armed, loopback-only, and gated by a per-install secret.
 
 The browser vBrainstem's GitHub Copilot ("Brain Surgeon") pairs to it (scan or
-same-device open + type the 6-digit code = human sign-off), then its
+same-device open + type the 8-digit code = human sign-off), then its
 run_shell / run_python / read_file / write_file tools execute here, on the real
 computer — the same on-device power the local brainstem + Copilot give you,
 delivered by one line instead of a full install.
@@ -195,7 +195,7 @@ PAGE = r"""<!doctype html>
     $('#pair-panel').style.display='none'; $('#done-panel').classList.remove('active');
     var pnl=$('#code-panel'); pnl.classList.add('active'); $('#code-err').textContent='';
     var boxes=$('#boxes'); boxes.innerHTML=''; var ins=[];
-    for(var i=0;i<6;i++){ var inp=document.createElement('input'); inp.maxLength=1; inp.inputMode='numeric'; boxes.appendChild(inp); ins.push(inp); }
+    for(var i=0;i<8;i++){ var inp=document.createElement('input'); inp.maxLength=1; inp.inputMode='numeric'; boxes.appendChild(inp); ins.push(inp); }
     ins.forEach(function(inp,i){
       inp.addEventListener('input',function(){ inp.value=inp.value.replace(/\D/g,'').slice(0,1); if(inp.value&&i<5)ins[i+1].focus(); if(ins.every(function(x){return x.value;})) submitCode(ins.map(function(x){return x.value;}).join('')); });
       inp.addEventListener('keydown',function(e){ if(e.key==='Backspace'&&!inp.value&&i>0)ins[i-1].focus(); });

@@ -1,5 +1,6 @@
 # RAPP Burrow (Windows) — smallest on-device footprint that lets the in-browser
 # vBrainstem (GitHub Copilot) run on THIS machine. No brainstem, no VS Code, no pip.
+# Auto-installs Python if missing (via winget, like the RAPP installer), then runs.
 #   irm https://kody-w.github.io/vbrainstem/burrow.ps1 | iex
 # Compatible with Windows PowerShell 5.1 (the default) and PowerShell 7+.
 $ErrorActionPreference = "Stop"
@@ -7,17 +8,42 @@ $ErrorActionPreference = "Stop"
 $dir = Join-Path $HOME ".rapp-burrow"
 $src = "https://kody-w.github.io/vbrainstem/burrow.py"
 
-# Prefer the 'py' launcher, then python3/python (avoids the Microsoft Store stub).
-$py = $null
-foreach ($c in @("py", "python3", "python")) {
-  $cmd = Get-Command $c -ErrorAction SilentlyContinue
-  if ($cmd -and $cmd.Source) { $py = $cmd.Source; break }
+function Find-Python {
+  foreach ($c in @("py", "python3", "python")) {
+    $cmd = Get-Command $c -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) {
+      try { $v = & $cmd.Source --version 2>&1 } catch { $v = "" }
+      if ($LASTEXITCODE -eq 0 -and "$v" -match "Python 3\.") { return $cmd.Source }
+    }
+  }
+  foreach ($ver in @("Python312", "Python311", "Python313", "Python310")) {
+    $direct = Join-Path $env:LOCALAPPDATA "Programs\Python\$ver\python.exe"
+    if (Test-Path $direct) { return $direct }
+  }
+  return $null
 }
 
+$py = Find-Python
 if (-not $py) {
-  Write-Host "RAPP Burrow needs Python 3." -ForegroundColor Yellow
-  Write-Host "  Install it:  winget install -e --id Python.Python.3.12   (or from https://python.org)"
-  Write-Host "  Then re-run: irm https://kody-w.github.io/vbrainstem/burrow.ps1 | iex"
+  if (Get-Command winget -ErrorAction SilentlyContinue) {
+    Write-Host "Python 3 not found - installing it via winget (no admin needed)..." -ForegroundColor Yellow
+    winget install --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements --silent --scope user 2>&1 | Out-Null
+    # Refresh PATH for this session, and add the known install location.
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+                [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + $env:Path
+    $pyBase = Join-Path $env:LOCALAPPDATA "Programs\Python\Python312"
+    if (Test-Path $pyBase) { $env:Path = "$pyBase;$pyBase\Scripts;$env:Path" }
+    $py = Find-Python
+  } else {
+    Write-Host "Python 3 is required and winget isn't available." -ForegroundColor Yellow
+    Write-Host "  Install Python from https://python.org (check 'Add to PATH'), then re-run:" -ForegroundColor Yellow
+    Write-Host "  irm https://kody-w.github.io/vbrainstem/burrow.ps1 | iex"
+    return
+  }
+}
+if (-not $py) {
+  Write-Host "Python was installed but isn't on PATH yet." -ForegroundColor Yellow
+  Write-Host "Open a NEW terminal and re-run:  irm https://kody-w.github.io/vbrainstem/burrow.ps1 | iex"
   return
 }
 

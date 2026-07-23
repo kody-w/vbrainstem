@@ -224,7 +224,7 @@
     var boxes = $('#boxes');
     boxes.innerHTML = '';
     var inputs = [];
-    for (var i = 0; i < 6; i++) {
+    for (var i = 0; i < 8; i++) {
       var inp = document.createElement('input');
       inp.maxLength = 1; inp.inputMode = 'numeric'; inp.autocomplete = 'off';
       boxes.appendChild(inp); inputs.push(inp);
@@ -240,10 +240,10 @@
       });
       inp.addEventListener('paste', function (e) {
         var t = (e.clipboardData.getData('text') || '').replace(/\D/g, '');
-        if (t.length >= 6) {
+        if (t.length >= 8) {
           e.preventDefault();
           inputs.forEach(function (x, j) { x.value = t[j] || ''; });
-          submitCode(t.slice(0, 6));
+          submitCode(t.slice(0, 8));
         }
       });
     });
