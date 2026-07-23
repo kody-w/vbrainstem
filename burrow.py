@@ -116,9 +116,82 @@ def host_exec(req):
         if op == "list":
             p = os.path.expanduser(req.get("path", ".") or ".")
             return {"path": p, "files": sorted(os.listdir(p))}
+        if op == "agent":
+            # Run a REAL RAPP agent .py on THIS machine — for agents that need
+            # the native OS (subprocess to pac/az/gh, local files, native libs)
+            # and therefore cannot run in the browser's Pyodide sandbox.
+            return _run_device_agent(req.get("source", ""), req.get("kwargs") or {})
         return {"error": "unknown op: " + str(op)}
     except Exception as e:
         return {"error": str(e)}
+
+
+# Minimal RAPP runtime so an unmodified agent .py runs standalone on-device:
+# a BasicAgent base + the utils.azure_file_storage shim (local files under HOME).
+_AGENT_SHIM_BASIC = (
+    "class BasicAgent:\n"
+    "    def __init__(self, name=None, metadata=None):\n"
+    "        if name is not None: self.name = name\n"
+    "        elif not hasattr(self, 'name'): self.name = 'BasicAgent'\n"
+    "        self.metadata = metadata or {}\n"
+    "    def perform(self, **kwargs):\n"
+    "        raise NotImplementedError\n"
+)
+_AGENT_SHIM_STORAGE = (
+    "import os, json\n"
+    "class AzureFileStorageManager:\n"
+    "    def __init__(self, *a, **k):\n"
+    "        self.d = os.path.expanduser('~/.rapp-burrow/agent_data'); os.makedirs(self.d, exist_ok=True)\n"
+    "    def ensure_directory_exists(self, *a, **k): pass\n"
+    "    def write_file(self, directory, name, content):\n"
+    "        open(os.path.join(self.d, name), 'w').write(content if isinstance(content, str) else json.dumps(content)); return {'status': 'success'}\n"
+    "    def read_file(self, directory, name):\n"
+    "        p = os.path.join(self.d, name);\n"
+    "        return open(p).read() if os.path.exists(p) else None\n"
+)
+
+
+def _run_device_agent(source, kwargs):
+    import contextlib
+    import importlib.util
+    import inspect
+    import io as _io
+    import traceback
+    workdir = os.path.join(HOME, "agent_run")
+    for sub in ("agents", "utils"):
+        os.makedirs(os.path.join(workdir, sub), exist_ok=True)
+        open(os.path.join(workdir, sub, "__init__.py"), "w").close()
+    open(os.path.join(workdir, "agents", "basic_agent.py"), "w").write(_AGENT_SHIM_BASIC)
+    open(os.path.join(workdir, "utils", "azure_file_storage.py"), "w").write(_AGENT_SHIM_STORAGE)
+    agent_path = os.path.join(workdir, "device_agent.py")
+    open(agent_path, "w", encoding="utf-8").write(source)
+    buf = _io.StringIO()
+    old_path = sys.path[:]
+    sys.path.insert(0, workdir)
+    inst = None
+    try:
+        for m in ("device_agent", "agents", "agents.basic_agent", "utils", "utils.azure_file_storage"):
+            sys.modules.pop(m, None)
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            spec = importlib.util.spec_from_file_location("device_agent", agent_path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            from agents.basic_agent import BasicAgent as _BA
+            cls = None
+            for _n, obj in vars(mod).items():
+                if inspect.isclass(obj) and issubclass(obj, _BA) and obj is not _BA:
+                    cls = obj
+                    break
+            if cls is None:
+                return {"error": "no BasicAgent subclass found in the agent source", "logs": buf.getvalue()}
+            inst = cls()
+            result = inst.perform(**(kwargs or {}))
+        out = result if isinstance(result, str) else json.dumps(result)
+        return {"result": out, "logs": buf.getvalue(), "name": getattr(inst, "name", "?")}
+    except Exception as e:
+        return {"error": str(e), "traceback": traceback.format_exc()[-1600:], "logs": buf.getvalue()}
+    finally:
+        sys.path[:] = old_path
 
 
 SECRET = _secret()

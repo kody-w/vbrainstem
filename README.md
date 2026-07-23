@@ -124,6 +124,19 @@ it offline. Devices **pin each other's Ed25519 identity** on first pair, so
 re-pairing is code-free (like an iPhone ↔ Apple TV). Plus the same host gates:
 loopback `/exec`, per-install secret, human sign-off.
 
+## Run on-device-only agents via the Burrow
+
+Some RAPP agents can't run in the browser sandbox — they need the native OS
+(subprocess to `pac`/`az`/`gh`, local files, native libs), e.g. the Power Apps
+code-app agent. When you're **burrowed**, GitHub Copilot can run those agents on
+your real machine: the burrow daemon exposes an `agent` op that runs an
+unmodified `BasicAgent` subclass standalone (with a minimal `BasicAgent` +
+`utils.azure_file_storage` shim), calls `perform(**kwargs)`, and returns the
+result. The Surgeon's **`run_device_agent`** tool (burrow-only) drives it — get
+the agent's source with `read_file` (workspace) or `run_python` (fetch from RAR),
+then run it on-device. So *"run the Power Apps code-app agent on my machine"*
+works from the browser, on the real OS.
+
 ## The Brainstem Tether
 
 When you outgrow the sandbox — agents that shell out, raw sockets, local files,
