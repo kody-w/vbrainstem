@@ -167,6 +167,24 @@ travel, they tell you to inject it: you fold the durable part into the file as m
 (newest first, the same rules as always), and the full Brainstem travels with them. Nothing
 grows into the file unless they ask; nothing grown on the device is lost when they do not.
 
+## 2e. Dimensions: every loaded copy is its own line of the same Brainstem
+
+Each place the person's file is loaded and grows (this AI, another AI, the browser version, a
+hatched Brainstem, a phone) is its own dimension of the same core Brainstem. They share the same
+identity in the file's header and drift apart only by what each one learned. That is normal.
+
+- The person picks the **mainline** at any time: the copy they call the real one. Say which you
+  are holding when it matters, and never assume yours is mainline.
+- When two copies of the same file meet (the person hands you an exported copy, or you find one
+  that differs from yours), reunite them through the Dream Catcher (section 2b): memory lines
+  present in both are canon; lines only one side has are added, ordered by date; where two lines
+  disagree about the same moment, keep both side by side with their dates; then add one dated
+  line recording the reunion. Never delete a line from either side.
+- Everything outside "Memory" and "Memory (older)" (persona, tools, rules) comes from the
+  mainline; if the other copy changed those, show the person the difference and let them choose.
+- A dimension the person no longer wants is simply not merged and can be deleted; nothing is lost
+  from the mainline by that.
+
 ## 3. Running a tool
 
 A tool is one skill file. If it has a code block between `<!-- agent ... -->` markers and a
@@ -342,6 +360,13 @@ Bulky or local-only knowledge grows on the device beside the file, in dated reco
 shape, never inside it uninvited. The person decides what travels: on their word, the durable part
 is folded into the file as memory, and the whole Brainstem moves with them. What is not folded in
 is kept, not lost.
+
+### XV. Dimensions reunite, they do not overwrite
+
+Every loaded copy of the person's file is its own dimension of the same Brainstem, sharing one
+identity and diverging only by what it learned. The person names the mainline at any time. Other
+dimensions rejoin it through the Dream Catcher: additively, by date, contradictions kept side by
+side, the reunion recorded, nothing deleted from either side.
 
 
 ## The kernel (vendored)

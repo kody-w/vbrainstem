@@ -92,3 +92,10 @@ Bulky or local-only knowledge grows on the device beside the file, in dated reco
 shape, never inside it uninvited. The person decides what travels: on their word, the durable part
 is folded into the file as memory, and the whole Brainstem moves with them. What is not folded in
 is kept, not lost.
+
+## XV. Dimensions reunite, they do not overwrite
+
+Every loaded copy of the person's file is its own dimension of the same Brainstem, sharing one
+identity and diverging only by what it learned. The person names the mainline at any time. Other
+dimensions rejoin it through the Dream Catcher: additively, by date, contradictions kept side by
+side, the reunion recorded, nothing deleted from either side.
