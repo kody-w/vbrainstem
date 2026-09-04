@@ -144,11 +144,12 @@ needs a GitHub account and the `gh` command signed in; if either is missing, say
    `SKILL.md` that is a public face of their file: the same shape, the same "To the AI reading
    this" section, only what they are happy for anyone to read, its own fresh `id`, and in
    `metadata`: `face: "public"`, `mainline-id` (their file's id), `private-repo:
-   "<account>/<ai>-private"`, `private-path: "<ai>/SKILL.md"`. Add an `index.html` that opens
+   "<account>/<ai>-private"`, `private-path: "vbrainstem/SKILL.md"`. Add an `index.html` that opens
    `https://kody-w.github.io/vbrainstem/?dial=<account>/<ai>` so the link is also the phone, and
    turn on GitHub Pages for it.
-3. **Private mainline**, repository `<account>/<ai>-private`, private: a folder `<ai>/` holding
-   their real file, unchanged. Only they, and collaborators they add, can read it.
+3. **Private mainline**, repository `<account>/<ai>-private`, private: a folder `vbrainstem/`
+   holding their real file, unchanged (its name is `vbrainstem`, so its folder must be too).
+   Only they, and collaborators they add, can read it.
 4. Tell them: anyone can hand `https://github.com/<account>/<ai>` to any AI and get the public
    version; with read access to the private repository (a fine-grained token for that one
    repository, or a signed-in tool that can read it), the same link opens their real file. Show

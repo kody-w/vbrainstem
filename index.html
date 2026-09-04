@@ -1218,7 +1218,7 @@ def load_agent(path):
           return [];
         }
         const parsed = validatePersonFile(fileText);
-        const tools = sectionText(parsed.body, "My tools");
+        const tools = sectionText(parsed.body, "My tools").split("\n").filter((line) => line.trim().startsWith("- ")).join("\n");
         const found = tools.match(/https:\/\/[^\s)>]+/g) || [];
         return [...new Set(found.map((url) => url.replace(/[.,;]+$/, "")))];
       }
@@ -1402,12 +1402,15 @@ def load_agent(path):
 
       async function loadGithubText(value) {
         const trimmedValue = String(value || "").trim();
-        const hasToken = Boolean(localStorage.getItem(STORAGE.repoToken) || getGithubToken());
-        if (!hasToken && /^https:\/\/raw\.githubusercontent\.com\//.test(trimmedValue)) {
-          // Public raw links need no sign-in and no API allowance.
-          const direct = await allowedFetch(trimmedValue, { headers: { Accept: "text/plain" } });
-          if (direct.ok) {
-            return await direct.text();
+        if (/^https:\/\/raw\.githubusercontent\.com\//.test(trimmedValue)) {
+          // Public raw links need no sign-in and no API allowance; try them first, always.
+          try {
+            const direct = await allowedFetch(trimmedValue, { headers: { Accept: "text/plain" } });
+            if (direct.ok) {
+              return await direct.text();
+            }
+          } catch (error) {
+            // fall through to the signed-in path (private files live behind it)
           }
         }
         const url = normalizeGithubUrl(value);
@@ -1417,6 +1420,17 @@ def load_agent(path):
           headers.Authorization = "Bearer " + token;
         }
         const response = await allowedFetch(url, { headers });
+        if ((response.status === 401 || response.status === 403) && headers.Authorization) {
+          // A stored token GitHub rejects must not lock the page: retry without it, and if the
+          // rejected token was the private-access one, forget it so the next try is clean.
+          const anon = await allowedFetch(url, { headers: { Accept: "application/vnd.github.raw+json" } });
+          if (anon.ok) {
+            return await anon.text();
+          }
+          if (localStorage.getItem(STORAGE.repoToken) && response.status === 401) {
+            localStorage.removeItem(STORAGE.repoToken);
+          }
+        }
         if (!response.ok) {
           throw new Error("GitHub could not load that file (" + response.status + ").");
         }
@@ -1485,6 +1499,8 @@ def load_agent(path):
         els.transcript.scrollTop = els.transcript.scrollHeight;
         return row;
       }
+
+      let bootSync = Promise.resolve([]);
 
       function addSystemNotice(content) {
         return addTurn("system", content);
@@ -1581,7 +1597,7 @@ def load_agent(path):
         } else if (source === "link") {
           setMessage(els.fileMessage, "Your file and its listed tools are ready.");
         }
-        return parsed;
+        return Object.assign(parsed, { issues });
       }
 
       function saveEditorFile() {
@@ -2705,7 +2721,10 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         }
         const target = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/i.test(dial) ? "https://github.com/" + dial : dial;
         if (getPersonFile()) {
-          setMessage(els.fileMessage, "You already have a file here. To replace it with the AI from this link, tap Forget everything first, then open the link again.");
+          const issues = await bootSync;
+          openSheet("file");
+          setMessage(els.fileMessage, "You already have a file here. To replace it with the AI from this link, tap Forget everything first, then open the link again."
+            + (issues && issues.length ? " " + issues.join(" ") : ""));
           return;
         }
         setMessage(els.fileMessage, "Dialing your AI...");
@@ -2714,13 +2733,16 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           if (dialed.status !== 200 || dialed.json.error) {
             throw new Error(dialed.json.error || "Your AI could not be reached.");
           }
-          await setPersonFile(dialed.json.content, "link");
-          setMessage(els.fileMessage, "Your AI is here. Sign in with GitHub to start talking.");
+          const outcome = await setPersonFile(dialed.json.content, "link");
+          const trouble = (outcome && outcome.issues && outcome.issues.length) ? " " + outcome.issues.join(" ") : "";
+          setMessage(els.fileMessage, "Your AI is here. Sign in with GitHub to start talking." + trouble, Boolean(trouble));
+          addSystemNotice("Your AI is here from " + dial + ". Sign in with GitHub to start talking." + trouble);
         } catch (error) {
+          openSheet("file");
           setMessage(els.fileMessage, error.message, true);
+          addSystemNotice("Your AI could not be reached: " + error.message);
         }
       }
-      autoDialFromLink();
 
       els.sharePhone.addEventListener("click", async () => {
         const url = location.origin + location.pathname;
@@ -2762,13 +2784,14 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           if (dialed.status !== 200 || dialed.json.error) {
             throw new Error(dialed.json.error || "Your public AI could not be reached.");
           }
-          await setPersonFile(dialed.json.content, "link");
+          const outcome = await setPersonFile(dialed.json.content, "link");
           els.dialUrl.value = "";
-          setMessage(els.fileMessage, dialed.json.face === "private"
+          const trouble = (outcome && outcome.issues && outcome.issues.length) ? " " + outcome.issues.join(" ") : "";
+          setMessage(els.fileMessage, (dialed.json.face === "private"
             ? "Your AI is here from your private file, with the public one alongside. This device's copy is now the one you use."
             : (chosen === "private" && dialed.json.private_reason
               ? "Your private file could not be reached (" + dialed.json.private_reason + "), so the public version is here as a new copy on this device."
-              : "Your AI is here. It is a new copy on this device; export it any time to bring it home."));
+              : "Your AI is here. It is a new copy on this device; export it any time to bring it home.")) + trouble, Boolean(trouble));
         } catch (error) {
           setMessage(els.fileMessage, error.message, true);
         } finally {
@@ -2857,19 +2880,22 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         clearTimeout(loginTimer);
         localStorage.clear();
         sessionStorage.clear();
-        location.reload();
+        // Leave the query behind so a front-door link cannot re-dial the AI that was just forgotten.
+        location.replace(location.origin + location.pathname);
       });
 
       try {
         updateReadyState();
         renderTools();
         if (getPersonFile()) {
-          syncListedTools().then((issues) => {
+          bootSync = syncListedTools().then((issues) => {
             if (issues.length) {
               setMessage(els.fileMessage, issues.join(" "), true);
             }
+            return issues;
           });
         }
+        autoDialFromLink();
       } catch (error) {
         addSystemNotice("Saved information on this device could not be read: " + error.message);
       }

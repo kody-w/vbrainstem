@@ -20,7 +20,7 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   const calls = new Map();
   let blockedRequestEscaped = false;
   let privateAccess = false;
-  await page.route("https://api.github.com/repos/someone/their-ai-private/contents/their-ai/SKILL.md**", async (route) => {
+  await page.route("https://api.github.com/repos/someone/their-ai-private/contents/vbrainstem/SKILL.md**", async (route) => {
     if (!privateAccess) { await route.fulfill({ status: 404, body: "Not Found" }); return; }
     await route.fulfill({ status: 200, contentType: "text/plain", body: [
       "---", 'name: "vbrainstem"', 'description: "Who Someone is, mainline."', 'license: "MIT"', 'compatibility: "Any."', "metadata:",
@@ -43,7 +43,7 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
     await route.fulfill({ status: 200, contentType: "text/plain", body: [
       "---", 'name: "their-ai"', 'description: "Their AI, the public face of Someone."', 'license: "MIT"',
       'compatibility: "Any AI that reads skills."', "metadata:", '  id: "rappid:@someone/their-ai-public:' + "a".repeat(64) + '"',
-      '  private-repo: "someone/their-ai-private"', '  private-path: "their-ai/SKILL.md"',
+      '  private-repo: "someone/their-ai-private"', '  private-path: "vbrainstem/SKILL.md"',
       '  owner: "Someone"', '  face: "public"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "",
       "# Their AI, public face", "", "## Who Someone is, in public", "", "Someone builds things.", "",
       "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n") });
@@ -388,4 +388,45 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   await page.getByRole("button", { name: "Forget everything on this device" }).click();
   await page.waitForLoadState("domcontentloaded");
   await expect.poll(() => page.evaluate(() => localStorage.length)).toBe(0);
+});
+
+
+test("review fixes: multi-line tools, rejected token, visible dial outcomes, forget on a front-door link", async ({ page }) => {
+  // review-fixes
+  const tool = (name) => ["---", 'name: "' + name + '"', 'description: "Tool ' + name + '."', "---", "", "# " + name, "", "## What it needs", "", "```json", '{"type":"object","properties":{},"required":[]}', "```", "", "## Steps", "", "1. Say hello."].join("\n") + "\n";
+  const hits = { t1: 0, t2: 0, face: 0 };
+  await page.route("https://raw.githubusercontent.com/someone/tools/main/t1/SKILL.md", async (route) => { hits.t1++; await route.fulfill({ status: 200, contentType: "text/plain", body: tool("tool-one") }); });
+  await page.route("https://raw.githubusercontent.com/someone/tools/main/t2/SKILL.md", async (route) => { hits.t2++; await route.fulfill({ status: 200, contentType: "text/plain", body: tool("tool-two") }); });
+  const face = ["---", 'name: "their-ai"', 'description: "Their AI, the public face of Someone."', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "rappid:@someone/their-ai-public:' + "c".repeat(64) + '"', '  owner: "Someone"', '  face: "public"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "",
+    "# Their AI, public face", "", "## My tools", "", "Callable tools, by link. Load what is listed; offer nothing that is not.", "", "- The first: https://raw.githubusercontent.com/someone/tools/main/t1/SKILL.md", "- The second: https://raw.githubusercontent.com/someone/tools/main/t2/SKILL.md", "- A broken one: https://raw.githubusercontent.com/someone/tools/main/missing/SKILL.md", "",
+    "## My sources", "", "Not tools. https://raw.githubusercontent.com/someone/tools/main/never/SKILL.md", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  await page.route("https://raw.githubusercontent.com/someone/their-ai/main/their-ai/SKILL.md", async (route) => { hits.face++; await route.fulfill({ status: 200, contentType: "text/plain", body: face }); });
+  await page.route("https://raw.githubusercontent.com/someone/tools/main/missing/SKILL.md", (route) => route.fulfill({ status: 404, body: "no" }));
+  await page.route("https://raw.githubusercontent.com/someone/tools/main/never/SKILL.md", (route) => route.fulfill({ status: 200, body: tool("never") }));
+  // A stored token GitHub rejects must not lock the page.
+  await page.route("https://api.github.com/**", (route) => route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Bad credentials" }) }));
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/**", (route) => route.fulfill({ status: 401, body: "no" }));
+
+  await page.goto("/index.html");
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("github_token", "rejected-token"); });
+  await page.goto("/index.html?dial=someone/their-ai");
+  await expect.poll(() => page.evaluate(() => (localStorage.getItem("vbrainstem.file") || "").length), { timeout: 15000 }).toBeGreaterThan(0);
+  await expect.poll(() => hits.t1 + hits.t2, { timeout: 15000 }).toBe(2);
+  expect((await page.evaluate(() => window.vbrainstem.dispatch("GET", "/agents"))).json.files.map((f) => f.agents).flat().sort()).toEqual(["tool_one", "tool_two"]);
+  // the dial outcome is visible on the main surface, and the failed tool is reported, not hidden
+  await expect(page.locator("#file-message")).toContainText("could not be loaded");
+  await expect(page.locator("body")).toContainText("Your AI is here");
+  // opening the front-door link again with a file present opens the sheet with the explanation
+  await page.goto("/index.html?dial=someone/their-ai");
+  await expect(page.locator("#file-sheet")).toBeVisible();
+  await expect(page.locator("#file-message")).toContainText("already have a file");
+  // forget on the front-door link must not re-dial
+  const before = hits.face;
+  await page.locator("#file-sheet [data-close]").click();
+  await page.locator('[data-open="about"]').first().click();
+  await page.locator("#forget").click();
+  await page.waitForURL((u) => !u.search.includes("dial"), { timeout: 10000 });
+  await page.waitForTimeout(1500);
+  expect(hits.face).toBe(before);
+  expect(await page.evaluate(() => localStorage.getItem("vbrainstem.file"))).toBeNull();
 });
