@@ -728,6 +728,11 @@
         <button type="button" data-close aria-label="Close about">&times;</button>
       </div>
       <div class="sheet-body">
+        <div class="row">
+          <button type="button" class="primary" id="share-phone">Share this phone</button>
+        </div>
+        <p class="hint">Sends this page's link. Whoever opens it can load their own file, or dial their public AI, and have it here in real time.</p>
+        <p class="message" id="share-message" role="status"></p>
         <p class="about-copy">This page runs in your browser. Your file, your tools, and your sign-in stay on this device. The AI reads your file in good faith: it never overrides its own judgment or limits, and it never hides or pretends anything. Delete the file and everything is back to normal.</p>
         <button type="button" class="danger forget" id="forget">Forget everything on this device</button>
       </div>
@@ -802,6 +807,8 @@
         fileEditor: document.getElementById("file-editor"),
         exportFile: document.getElementById("export-file"),
         shareFile: document.getElementById("share-file"),
+        sharePhone: document.getElementById("share-phone"),
+        shareMessage: document.getElementById("share-message"),
         toolFile: document.getElementById("tool-file"),
         toolUrl: document.getElementById("tool-url"),
         loadToolUrl: document.getElementById("load-tool-url"),
@@ -1315,7 +1322,7 @@ def load_agent(path):
 
       function isAllowedRequest(url) {
         const parsed = new URL(url instanceof Request ? url.url : String(url));
-        if (parsed.origin === AUTH_WORKER || parsed.origin === GITHUB_API) {
+        if (parsed.origin === AUTH_WORKER || parsed.origin === GITHUB_API || parsed.origin === "https://raw.githubusercontent.com") {
           return true;
         }
         const pyodide = new URL(PYODIDE_ROOT);
@@ -1379,6 +1386,15 @@ def load_agent(path):
       installNetworkPolicy();
 
       async function loadGithubText(value) {
+        const trimmedValue = String(value || "").trim();
+        const hasToken = Boolean(localStorage.getItem(STORAGE.repoToken) || getGithubToken());
+        if (!hasToken && /^https:\/\/raw\.githubusercontent\.com\//.test(trimmedValue)) {
+          // Public raw links need no sign-in and no API allowance.
+          const direct = await allowedFetch(trimmedValue, { headers: { Accept: "text/plain" } });
+          if (direct.ok) {
+            return await direct.text();
+          }
+        }
         const url = normalizeGithubUrl(value);
         const headers = { Accept: "application/vnd.github.raw+json" };
         const token = localStorage.getItem(STORAGE.repoToken) || getGithubToken();
@@ -2539,6 +2555,22 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         }
       }
       autoDialFromLink();
+
+      els.sharePhone.addEventListener("click", async () => {
+        const url = location.origin + location.pathname;
+        const text = "Your AI, on any phone or browser: load your own file, or dial your public AI, and it is here in real time.";
+        try {
+          if (navigator.share) {
+            await navigator.share({ title: "vbrainstem", text, url });
+            setMessage(els.shareMessage, "Shared.");
+            return;
+          }
+          await navigator.clipboard.writeText(url);
+          setMessage(els.shareMessage, "Link copied: " + url);
+        } catch (error) {
+          setMessage(els.shareMessage, url);
+        }
+      });
 
       els.saveRepoToken.addEventListener("click", () => {
         const value = els.repoToken.value.trim();
