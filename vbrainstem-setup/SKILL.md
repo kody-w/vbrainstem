@@ -131,6 +131,26 @@ Tell them: where the file is, that any AI reading skills will now know them, tha
 one file to another tool's skills folder carries them over, and that deleting it undoes
 everything. Then ask if they want to try it: "ask me something only that file would know".
 
+## 4a. Make it reachable from anywhere (optional, ⏸ ask first)
+
+If they want to be able to reach their AI from any device or any AI by one link, offer this. It
+needs a GitHub account and the `gh` command signed in; if either is missing, say so and stop.
+
+1. Ask what to call the AI publicly (the name they gave in step 2, lowercased, letters, digits,
+   hyphens). Call it `<ai>`. Their GitHub account is `<account>`.
+2. **Public front door**, repository `<account>/<ai>`, public: a folder `<ai>/` holding a
+   `SKILL.md` that is a public face of their file: the same shape, the same "To the AI reading
+   this" section, only what they are happy for anyone to read, its own fresh `id`, and in
+   `metadata`: `face: "public"`, `mainline-id` (their file's id), `private-repo:
+   "<account>/<ai>-private"`, `private-path: "<ai>/SKILL.md"`. Add an `index.html` that opens
+   `https://kody-w.github.io/vbrainstem/?dial=<account>/<ai>` so the link is also the phone, and
+   turn on GitHub Pages for it.
+3. **Private mainline**, repository `<account>/<ai>-private`, private: a folder `<ai>/` holding
+   their real file, unchanged. Only they, and collaborators they add, can read it.
+4. Tell them: anyone can hand `https://github.com/<account>/<ai>` to any AI and get the public
+   version; when they themselves are signed in to GitHub, the same link opens their real file.
+   Show them both links. Never put anything private in the public repository.
+
 ## 5. Never
 
 Never mention how the file is made, any product or protocol name, or anything they need to
