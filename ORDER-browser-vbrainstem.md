@@ -113,3 +113,22 @@ verbatim output; (3) how the per-turn loop maps to MAPPING.md, one line per row;
 SURPRISES: anything uncertain, anything you could not verify, anything about the legacy wire
 that looked wrong or fragile (for example CORS on the token exchange, header requirements),
 stated plainly, never papered over. Do not commit or push; leave the working tree for review.
+
+## 6. Addendum: same shape as a local Brainstem (added before start)
+
+- The page must feel and behave like chatting with a Brainstem running locally. Study
+  `/Users/kodywildfeuer/.brainstem/src/rapp_brainstem/index.html` (the local Brainstem's own chat
+  UI) and mirror its layout, chat bubbles, input box, and tone. Study the route list in
+  `/Users/kodywildfeuer/.brainstem/src/rapp_brainstem/brainstem.py` (grep `@app.route`) and the
+  `/chat` request and response shapes there.
+- Implement an in-page `dispatch(method, path, body)` that answers the same routes with the same
+  JSON envelopes as `brainstem.py`: at least `POST /chat` (request `user_input`,
+  `conversation_history`, optional `session_id`; response `response`, `agent_logs`, `session_id`,
+  `model`), `GET /health`, `GET /health/public`, `GET /agents`, `GET /models`, `POST /login`,
+  `GET /login/status`. The UI talks only to `dispatch`, never to the network directly, so the
+  UI is exactly what a local Brainstem's UI would be with `fetch` replaced by `dispatch`.
+- Expose `window.vbrainstem = { dispatch }` so the Playwright test can call
+  `dispatch('POST', '/chat', {...})` and `dispatch('GET', '/health')` directly and assert the
+  envelopes; add that to acceptance check 5 as steps h and i.
+- The person's file is the cartridge: everything the page knows comes from it and grows in it.
+  Tools listed in the file's "My tools" with a URL are fetched on load if not already present.
