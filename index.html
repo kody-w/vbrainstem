@@ -1591,7 +1591,29 @@ def load_agent(path):
         updateReadyState();
       }
 
+      async function sha256Hex(text) {
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+        return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+      }
+
+      // A sealed skill wraps a plain skill between markers with its hash. Unwrap it and
+      // check the seal; the plain skill inside is what this page understands.
+      async function unwrapSealedSkill(text) {
+        const match = String(text).match(/<!-- RAW-SKILL-BEGIN sha256=([0-9a-f]{64}) -->\n([\s\S]*?)\n<!-- RAW-SKILL-END -->/);
+        if (!match) {
+          return text;
+        }
+        const inner = match[2];
+        for (const candidate of [inner + "\n", inner]) {
+          if ((await sha256Hex(candidate)) === match[1]) {
+            return candidate;
+          }
+        }
+        throw new Error("This tool's seal does not match its contents, so it was not loaded.");
+      }
+
       async function addToolText(text, source, sourceKind = "manual") {
+        text = await unwrapSealedSkill(text);
         const parsed = parseToolSkill(text, source);
         if (parsed.toolName === "remember") {
           throw new Error("That name is reserved for saving memories.");

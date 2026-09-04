@@ -27,6 +27,15 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
       '  id: "rappid:@someone/vbrainstem:' + "b".repeat(64) + '"', '  owner: "Someone"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "",
       "# Someone's vbrainstem", "", "## Who I am", "", "The real Someone, privately.", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 A private memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n") });
   });
+  const rawInner = ["---", 'name: "sealed-steps"', 'description: "A sealed steps tool."', "---", "", "# Sealed steps", "", "## What it needs", "", "```json", '{"type":"object","properties":{"topic":{"type":"string"}},"required":[]}', "```", "", "## Steps", "", "1. Say the topic back."].join("\n") + "\n";
+  const rawHash = require("crypto").createHash("sha256").update(rawInner, "utf8").digest("hex");
+  const sealed = ["---", "name: sealed-steps", "description: A sealed steps tool.", "schema: rapp/1-skill", "skill_hash: " + rawHash, "note: |", "  a folded", "  note", "---", "<!-- RAW-SKILL-BEGIN sha256=" + rawHash + " -->", rawInner.replace(/\n$/, ""), "<!-- RAW-SKILL-END -->", ""].join("\n");
+  await page.route("https://api.github.com/repos/someone/sealed/contents/sealed_skill.md**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/plain", body: sealed });
+  });
+  await page.route("https://api.github.com/repos/someone/sealed/contents/broken_skill.md**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/plain", body: sealed.replace("Say the topic back", "Say something else") });
+  });
   await page.route("https://api.github.com/user", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ login: "someone" }) });
   });
@@ -260,6 +269,17 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
 
   await page.getByRole("button", { name: "Open your tools" }).click();
   await page.setInputFiles("#tool-file", toolFile);
+  const sealedOk = await page.evaluate(async () => {
+    const loaded = await window.vbrainstem.dispatch("POST", "/tools/load", { url: "https://raw.githubusercontent.com/someone/sealed/main/sealed_skill.md" });
+    return loaded.status;
+  });
+  expect(sealedOk).toBe(200);
+  await page.locator("#tool-url").fill("https://raw.githubusercontent.com/someone/sealed/main/sealed_skill.md");
+  await page.locator("#load-tool-url").click();
+  await expect.poll(async () => (await page.evaluate(() => window.vbrainstem.dispatch("GET", "/health"))).json.agents).toContain("sealed_steps");
+  await page.locator("#tool-url").fill("https://raw.githubusercontent.com/someone/sealed/main/broken_skill.md");
+  await page.locator("#load-tool-url").click();
+  await expect(page.locator("#tool-message")).toContainText("seal does not match");
   await expect(page.locator("#tool-list")).toContainText("hello-world");
   await page.getByRole("button", { name: "Close your tools" }).click();
 
