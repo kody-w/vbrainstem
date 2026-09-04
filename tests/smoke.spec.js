@@ -239,6 +239,21 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   expect(dialedPrivate.json.content).not.toContain("grown_from");
   privateAccess = false;
 
+  {
+    const mk = (id, updated, who, mem) => ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "' + id + '"', '  owner: "Ada"', '  created: "2026-09-01"', '  updated: "' + updated + '"', "---", "", "# Ada", "", "## Who I am", "", who, "", "## Memory", "", "Newest first.", "", ...mem, "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+    const A = mk("vb-aaaa", "2026-09-03", "Ada, baker.", ["- 2026-09-03 Likes rye.", "- 2026-09-02 Opened at 6."]);
+    const B = mk("vb-aaaa", "2026-09-04", "Ada, baker and bookkeeper.", ["- 2026-09-04 Spring menu drafted.", "- 2026-09-02 Opened at 6."]);
+    const m1 = await page.evaluate(([a, b]) => window.vbrainstem.dispatch("POST", "/file/merge", { a, b, today: "2026-09-05" }), [A, B]);
+    const m2 = await page.evaluate(([a, b]) => window.vbrainstem.dispatch("POST", "/file/merge", { a: b, b: a, today: "2026-09-05" }), [A, B]);
+    expect(m1.json.added).toBe(1);
+    expect(m1.json.text).toContain("Ada, baker and bookkeeper.");
+    expect(m1.json.text).toContain('updated: "2026-09-05"');
+    const mem = m1.json.text.split("## Memory\n")[1].split("## Memory (older)")[0].split("\n").filter((l) => l.startsWith("- "));
+    expect(mem).toEqual(["- 2026-09-05 Reunited with another copy of me; 1 memory line(s) brought in.", "- 2026-09-04 Spring menu drafted.", "- 2026-09-03 Likes rye.", "- 2026-09-02 Opened at 6."]);
+    const memLines = (t) => t.split("## Memory\n")[1].split("## Memory (older)")[0].split("\n").filter((l) => l.startsWith("- ") && !l.includes("Reunited"));
+    expect(memLines(m2.json.text)).toEqual(memLines(m1.json.text));
+  }
+
   await page.setInputFiles("#person-file", personFile);
   await expect(page.getByText("Your file is ready.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close your file" }).click();

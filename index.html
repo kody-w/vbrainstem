@@ -1205,8 +1205,11 @@ def load_agent(path):
       }
 
       function sectionText(body, heading) {
+        // Everything under "## <heading>" up to the next "## " heading or the end of the file.
+        // (With the m flag, a bare $ matches the end of the FIRST line, which once cut every
+        // section to one line; the lookahead below ends only at a heading or the true end.)
         const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const match = body.match(new RegExp("^## " + escaped + "\\s*\\n([\\s\\S]*?)(?=^## |$)", "m"));
+        const match = body.match(new RegExp("^## " + escaped + "[ \\t]*\\n([\\s\\S]*?)(?=\\n## |(?![\\s\\S]))", "m"));
         return match ? match[1].trim() : "";
       }
 
@@ -1487,7 +1490,85 @@ def load_agent(path):
         return addTurn("system", content);
       }
 
+      // Two copies of the same AI met. Only the private delta differs: the dated memory lines each
+      // device gathered. Reunite them deterministically: union by exact line, newest first,
+      // ties by text; persona and rules from the copy with the later "updated" date.
+      const MEMORY_KEEP = 40;
+
+      function memoryLinesOf(body) {
+        const take = (heading) => sectionText(body, heading).split("\n").map((l) => l.trim()).filter((l) => l.startsWith("- ") && !/^- \(nothing yet\)/.test(l));
+        return take("Memory").concat(take("Memory (older)"));
+      }
+
+      function memoryDate(line) {
+        const m = line.match(/^- (\d{4}-\d{2}(?:-\d{2})?)/);
+        return m ? m[1] : "";
+      }
+
+      function sameAI(a, b) {
+        const ids = (f) => [f.metadata?.id, f.metadata?.["grown_from"], f.metadata?.["mainline-id"]].filter(Boolean);
+        const A = ids(a), B = ids(b);
+        return A.some((x) => B.includes(x));
+      }
+
+      function replaceSection(body, heading, lines) {
+        const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp("(^## " + escaped + "\\s*\\n)([\\s\\S]*?)(?=\\n## |(?![\\s\\S]))", "m");
+        const intro = (body.match(re) || [])[2] || "";
+        const keptIntro = intro.split("\n").filter((l) => !l.trim().startsWith("- ")).join("\n").replace(/\n+$/, "");
+        const block = (keptIntro ? keptIntro + "\n\n" : "") + (lines.length ? lines.join("\n") : "- (nothing yet)") + "\n";
+        if (re.test(body)) {
+          return body.replace(re, (m, head) => head + block);
+        }
+        return body.replace(/\n*$/, "") + "\n\n## " + heading + "\n\n" + block;
+      }
+
+      function mergeDimensions(existingText, incomingText, today) {
+        const a = validatePersonFile(existingText);
+        const b = validatePersonFile(incomingText);
+        const newer = (String(b.fields.metadata.updated) > String(a.fields.metadata.updated)) ? b : a;
+        const seen = new Set();
+        const lines = [];
+        for (const line of memoryLinesOf(a.body).concat(memoryLinesOf(b.body))) {
+          if (!seen.has(line)) { seen.add(line); lines.push(line); }
+        }
+        const before = new Set(memoryLinesOf(a.body));
+        const added = lines.filter((l) => !before.has(l)).length;
+        lines.sort((x, y) => (memoryDate(y).localeCompare(memoryDate(x))) || x.localeCompare(y));
+        if (added > 0) {
+          lines.unshift("- " + today + " Reunited with another copy of me; " + added + " memory line(s) brought in.");
+        }
+        let body = replaceSection(newer.body, "Memory", lines.slice(0, MEMORY_KEEP));
+        body = replaceSection(body, "Memory (older)", lines.slice(MEMORY_KEEP));
+        const head = newer.normalized.split("\n---\n")[0].replace(/(updated: ")[^"]*(")/, "$1" + today + "$2");
+        return { text: head + "\n---\n" + body.replace(/^\n+/, "") + (body.endsWith("\n") ? "" : "\n"), added, keptFrom: newer === a ? "device" : "incoming" };
+      }
+
       async function setPersonFile(text, source = "device") {
+        const existing = getPersonFile();
+        if (existing) {
+          try {
+            const a = validatePersonFile(existing);
+            const b = validatePersonFile(text);
+            if (sameAI(a.fields, b.fields) && b.normalized !== a.normalized) {
+              const merged = mergeDimensions(existing, text, new Date().toISOString().slice(0, 10));
+              const parsed = validatePersonFile(merged.text);
+              localStorage.setItem(STORAGE.file, parsed.normalized);
+              els.fileEditor.value = parsed.normalized;
+              els.fileWork.hidden = false;
+              updateReadyState();
+              const issues = await syncListedTools();
+              setMessage(els.fileMessage, "Reunited with the copy on this device: " + merged.added + " new memory line(s) brought in." + (issues.length ? " " + issues.join(" ") : ""), issues.length > 0);
+              return parsed;
+            }
+          } catch (error) {
+            // fall through: not two copies of the same AI, or the existing copy is unreadable
+          }
+        }
+        return setPersonFileFresh(text, source);
+      }
+
+      async function setPersonFileFresh(text, source = "device") {
         const parsed = validatePersonFile(text);
         localStorage.setItem(STORAGE.file, parsed.normalized);
         els.fileEditor.value = parsed.normalized;
@@ -2258,6 +2339,13 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
               return { status: 400, json: { error: "A GitHub link is required." } };
             }
             return { status: 200, json: { content: await loadGithubText(body.url) } };
+          }
+          if (verb === "POST" && cleanPath === "/file/merge") {
+            if (!body || typeof body.a !== "string" || typeof body.b !== "string") {
+              return { status: 400, json: { error: "Two files are required." } };
+            }
+            const merged = mergeDimensions(body.a, body.b, body.today || new Date().toISOString().slice(0, 10));
+            return { status: 200, json: merged };
           }
           if (verb === "POST" && cleanPath === "/file/dial") {
             if (!body || typeof body.url !== "string" || !body.url.trim()) {
