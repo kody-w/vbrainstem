@@ -19,6 +19,14 @@ function answer(message, finishReason = "stop") {
 test("mobile file, tools, chat, memory, export, routes, and reset", async ({ page }) => {
   const calls = new Map();
   let blockedRequestEscaped = false;
+  let privateAccess = false;
+  await page.route("https://api.github.com/repos/someone/their-ai-private/contents/their-ai/SKILL.md**", async (route) => {
+    if (!privateAccess) { await route.fulfill({ status: 404, body: "Not Found" }); return; }
+    await route.fulfill({ status: 200, contentType: "text/plain", body: [
+      "---", 'name: "vbrainstem"', 'description: "Who Someone is, mainline."', 'license: "MIT"', 'compatibility: "Any."', "metadata:",
+      '  id: "rappid:@someone/vbrainstem:' + "b".repeat(64) + '"', '  owner: "Someone"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "",
+      "# Someone's vbrainstem", "", "## Who I am", "", "The real Someone, privately.", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 A private memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n") });
+  });
   await page.route("https://api.github.com/user", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ login: "someone" }) });
   });
@@ -26,6 +34,7 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
     await route.fulfill({ status: 200, contentType: "text/plain", body: [
       "---", 'name: "their-ai"', 'description: "Their AI, the public face of Someone."', 'license: "MIT"',
       'compatibility: "Any AI that reads skills."', "metadata:", '  id: "rappid:@someone/their-ai-public:' + "a".repeat(64) + '"',
+      '  private-repo: "someone/their-ai-private"', '  private-path: "their-ai/SKILL.md"',
       '  owner: "Someone"', '  face: "public"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "",
       "# Their AI, public face", "", "## Who Someone is, in public", "", "Someone builds things.", "",
       "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n") });
@@ -222,6 +231,13 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   expect(dialed.json.content).toContain('grown_from: "rappid:@someone/their-ai-public:');
   expect(dialed.json.content).toMatch(/- \d{4}-\d{2}-\d{2} Assembled from my public AI at https:\/\/raw\.githubusercontent\.com\/someone\/their-ai\/main\/their-ai\/SKILL\.md/);
   expect(dialed.json.content).toMatch(/^## Memory \(older\)/m);
+  expect(dialed.json.face).toBe("public");
+  privateAccess = true;
+  const dialedPrivate = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", { url: "their-ai" }));
+  expect(dialedPrivate.json.face, "reason: " + dialedPrivate.json.private_reason).toBe("private");
+  expect(dialedPrivate.json.content).toContain("The real Someone, privately.");
+  expect(dialedPrivate.json.content).not.toContain("grown_from");
+  privateAccess = false;
 
   await page.setInputFiles("#person-file", personFile);
   await expect(page.getByText("Your file is ready.", { exact: true })).toBeVisible();

@@ -2219,7 +2219,19 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             }
             const raw = frontDoorToRaw(await speedDial(body.url));
             const text = await loadGithubText(raw);
-            return { status: 200, json: { content: assembleFromPublicFace(text, raw), source: raw } };
+            const face = parseFrontmatter(text).fields.metadata || {};
+            let privateReason = face["private-repo"] ? (getGithubToken() ? "" : "not signed in") : "no private file named";
+            if (face["private-repo"] && face["private-path"] && getGithubToken()) {
+              try {
+                const privateUrl = "https://github.com/" + face["private-repo"] + "/blob/main/" + face["private-path"];
+                const mainline = await loadGithubText(privateUrl);
+                validatePersonFile(mainline);
+                return { status: 200, json: { content: mainline, source: privateUrl, face: "private" } };
+              } catch (error) {
+                privateReason = error.message;
+              }
+            }
+            return { status: 200, json: { content: assembleFromPublicFace(text, raw), source: raw, face: "public", private_reason: privateReason } };
           }
           if (verb === "POST" && cleanPath === "/tools/load") {
             if (!body || typeof body.url !== "string") {
@@ -2519,7 +2531,9 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           }
           await setPersonFile(dialed.json.content, "link");
           els.dialUrl.value = "";
-          setMessage(els.fileMessage, "Your AI is here. It is a new copy on this device; export it any time to bring it home.");
+          setMessage(els.fileMessage, dialed.json.face === "private"
+            ? "Your AI is here, from your private file."
+            : "Your AI is here. It is a new copy on this device; export it any time to bring it home.");
         } catch (error) {
           setMessage(els.fileMessage, error.message, true);
         } finally {
