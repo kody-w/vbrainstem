@@ -77,6 +77,13 @@ skill (for example the DOGG skill, the public face of an estate on the network) 
   example in browser storage) MUST provide export of the exact current carrier and a single
   action that erases everything it stored.
 
+## 5a. The second body (optional)
+
+A carrier MAY name, under `My tools`, a bootstrap skill for a local Brainstem. A host that follows
+it creates a Brainstem from nothing beside the native AI, loads the carrier's tools into its
+`agents/` folder, and the two bodies then work together on the device, each reading the same
+carrier. The Brainstem is never created unless the person asks.
+
 ## 6. Hosts
 
 Any AI that reads Agent Skills is a host. Verified hosts and evidence are recorded at

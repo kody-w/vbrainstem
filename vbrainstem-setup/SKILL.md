@@ -91,6 +91,7 @@ in this tool's skills folder; if it is missing and has a link, fetch it. Use not
 listed here.
 
 - (none yet)
+- Optional second body: a local Brainstem that runs my tools as its own and works alongside this AI. To add one, fetch https://kody-w.github.io/rapp-brainstem/skills/rapp-brainstem/SKILL.md and follow it. Not needed unless I ask.
 
 ## What I have taught my AI
 
