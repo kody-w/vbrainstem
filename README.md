@@ -50,7 +50,7 @@ nothing to install and no account.
 
 ## For builders
 
-[PROFILE.md](PROFILE.md): the file as a carrier within RAPP/1 (the `vbrainstem/1` profile). [MAPPING.md](MAPPING.md): how one file does, on any native tool, what a local Brainstem server does each turn.
+[CONSTITUTION.md](CONSTITUTION.md): the laws of a Brainstem simulated in an AI's head. [PROFILE.md](PROFILE.md): the file as a carrier within RAPP/1 (the `vbrainstem/1` profile). [MAPPING.md](MAPPING.md): how one file does, on any native tool, what a local Brainstem server does each turn.
 
 ## Why
 
