@@ -86,6 +86,11 @@ locally, in your head, the way a Brainstem that went offline would:
 The rule underneath, in one sentence: preserve a long-evolved local mutation, bring it back into
 the wider structure additively, record the act, never destroy what was already there.
 
+4. **Offer it back (only if the person wants).** An adaptation that proves useful beyond this
+   person can be offered to the public network as a pull request against the network's own
+   repository, in the network's shapes, never as a change to the person's file. The network grows
+   through what its offspring send back; the person's private line stays theirs.
+
 ## 2c. Fidelity check: prove you are a faithful Brainstem
 
 The transcript below was captured from a real Brainstem kernel with a fictional person's file
