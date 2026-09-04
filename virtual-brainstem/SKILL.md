@@ -192,6 +192,16 @@ identity in the file's header and drift apart only by what each one learned. Tha
 - A dimension the person no longer wants is simply not merged and can be deleted; nothing is lost
   from the mainline by that.
 
+## 2f. Native first, virtual machinery second
+
+Everything above (memory, tools, frames, dimensions, reunion, loaves) may be done either way:
+through whatever the AI you run on natively offers for it (its own memory, its own tool loading,
+its own storage), however it prefers; or through the virtual Brainstem machinery described here,
+following the current DOGG network skill and RAPP/1 as they stand today. Native first when it
+serves the person just as well. The result must be the same either way: the same file, the same
+dated lines, the same shapes when asked, so a dimension made one way can reunite with one made
+the other.
+
 ## 3. Running a tool
 
 A tool is one skill file. If it has a code block between `<!-- agent ... -->` markers and a
@@ -376,6 +386,13 @@ dimensions rejoin it through the Dream Catcher: additively, by date, contradicti
 side, the reunion recorded, nothing deleted from either side. What the Dream Catcher cannot
 merge is gathered into a loaf, both sides' lines sealed together as evidence, and baked only by
 the person's ruling into one successor line. The loaf stays. Nothing is baked without the person.
+
+### XVI. Native first, by any means that keeps the shape
+
+Every part of this machinery may be carried out by the native AI's own capabilities, however it
+chooses, or by the virtual Brainstem machinery under the current DOGG skill and RAPP/1. Native
+comes first when it serves the person as well. Whichever way is used, the file, the dated lines,
+and the shapes when asked are the same, so dimensions made different ways still reunite.
 
 
 ## The kernel (vendored)

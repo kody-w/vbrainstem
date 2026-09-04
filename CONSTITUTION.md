@@ -101,3 +101,10 @@ dimensions rejoin it through the Dream Catcher: additively, by date, contradicti
 side, the reunion recorded, nothing deleted from either side. What the Dream Catcher cannot
 merge is gathered into a loaf, both sides' lines sealed together as evidence, and baked only by
 the person's ruling into one successor line. The loaf stays. Nothing is baked without the person.
+
+## XVI. Native first, by any means that keeps the shape
+
+Every part of this machinery may be carried out by the native AI's own capabilities, however it
+chooses, or by the virtual Brainstem machinery under the current DOGG skill and RAPP/1. Native
+comes first when it serves the person as well. Whichever way is used, the file, the dated lines,
+and the shapes when asked are the same, so dimensions made different ways still reunite.
