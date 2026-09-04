@@ -116,6 +116,17 @@ and sections 2.4, 2.5, and 3 hold on inspection. `python3 rapp_skills.py prove <
 directory>` demonstrates the carrier survives conversion to a single-file agent and back
 byte-identically.
 
+## 7a. The skill as a frame stream (normative for published skills)
+
+A published skill in this profile is itself a RAPP/1 stream: `STREAM.json` holds its identity,
+minted once; `FRAMES.jsonl` is its append-only chain, one `skill.publish` frame per revision
+whose payload names the file, its byte length, its SHA-256, and its public URL; `FRAME.json` is
+the head. Frames are built and verified with the reference implementation (`rapp.py` from
+kody-w/rapp-1), never re-typed. `tools/mint_frame.py mint` appends a frame only when the file's
+hash changed and only if the frame verifies; `verify` walks the whole chain and checks the head
+against the file on disk. The `skill.publish` kind is provisional until the estate's registry
+binds it.
+
 ## 8. Change
 
 This profile changes by revision of this file in this repository; each revision records its

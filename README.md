@@ -35,6 +35,18 @@ file, loads your tools, keeps your memory, and answers the way a local one would
 https://raw.githubusercontent.com/kody-w/vbrainstem/main/virtual-brainstem/SKILL.md
 ```
 
+## Hatch your own, and make it summonable
+
+Give any AI this one link and say "set up my AI file": it asks a few plain questions, writes your
+file, and, if you want, makes your AI reachable from anywhere with a public front door and a
+private home, the same way Orion is.
+
+```
+https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md
+```
+
+That file is published as its own verifiable record: see `vbrainstem-setup/FRAME.json`.
+
 ## Take it with you
 
 Copy your `vbrainstem/SKILL.md` into another tool's skills folder. That is the whole move.

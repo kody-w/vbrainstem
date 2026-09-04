@@ -1,0 +1,20 @@
+{
+  "frame_hash": "25bb0df5565dcfa7c80aa1aa3574541a5c5848d503f4f6aa4eed8668d7a049ae",
+  "kind": "skill.publish",
+  "payload": {
+    "bytes": 7644,
+    "name": "vbrainstem-setup",
+    "path": "vbrainstem-setup/SKILL.md",
+    "schema": "vbrainstem/1-skill",
+    "sha256": "cda186738a291b42049fd90bd47e93317ea593bd1b9f8961e5439328772b0a99",
+    "url": "https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md"
+  },
+  "payload_hash": "f328aeddb710bf07c74010de401ea4a6a8cdaa272d8575c831eafe93a77b98aa",
+  "prev": null,
+  "prev_wave": null,
+  "seq": 0,
+  "sig": null,
+  "spec": "rapp/1",
+  "stream_id": "rappid:@kody-w/vbrainstem-setup:228be404333c42b53ecd48fae5e4d9f3a2e10fc459da19065b3f91adce70d228",
+  "utc": "2026-09-04T21:03:15.000Z"
+}

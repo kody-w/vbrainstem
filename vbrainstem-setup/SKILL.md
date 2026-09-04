@@ -5,6 +5,8 @@ license: "MIT"
 compatibility: "Any AI that reads skills and can write a file. Nothing to install."
 metadata:
   source: "setup"
+  stream: "rappid:@kody-w/vbrainstem-setup:228be404333c42b53ecd48fae5e4d9f3a2e10fc459da19065b3f91adce70d228"
+  frames: "FRAMES.jsonl"
 ---
 
 # Set up your vbrainstem
