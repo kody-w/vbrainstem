@@ -634,6 +634,14 @@
           <input id="file-url" type="url" inputmode="url" placeholder="Paste a GitHub file link">
         </label>
         <button type="button" id="load-file-url">Load from link</button>
+
+        <div class="divider">or dial your public AI</div>
+        <label class="field">
+          <span>Front-door link of your public AI</span>
+          <input id="dial-url" type="url" inputmode="url" placeholder="https://github.com/you/your-ai">
+        </label>
+        <button type="button" id="dial-public">Dial</button>
+        <p class="hint">Makes your file here from your public AI. It starts as a new copy on this device; export it any time to bring it home.</p>
         <p class="message" id="file-message" role="status"></p>
 
         <section id="file-work" hidden>
@@ -769,6 +777,8 @@
         usePaste: document.getElementById("use-paste"),
         fileUrl: document.getElementById("file-url"),
         loadFileUrl: document.getElementById("load-file-url"),
+        dialUrl: document.getElementById("dial-url"),
+        dialPublic: document.getElementById("dial-public"),
         fileMessage: document.getElementById("file-message"),
         fileWork: document.getElementById("file-work"),
         fileEditor: document.getElementById("file-editor"),
@@ -1045,6 +1055,60 @@ def load_agent(path):
           body: normalized.slice(end + 5),
           normalized
         };
+      }
+
+      function frontDoorToRaw(value) {
+        const trimmed = String(value || "").trim();
+        const repo = trimmed.match(/^https?:\/\/github\.com\/([^\/\s]+)\/([^\/\s#?]+)\/?$/);
+        if (repo) {
+          const name = repo[2].replace(/\.git$/, "");
+          return "https://raw.githubusercontent.com/" + repo[1] + "/" + name + "/main/" + name + "/SKILL.md";
+        }
+        return trimmed;
+      }
+
+      function assembleFromPublicFace(text, url) {
+        const parsed = parseFrontmatter(text);
+        const meta = parsed.fields.metadata || {};
+        if (!meta.id || !meta.owner) {
+          throw new Error("That link is not a public AI front door.");
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        const newId = "vb-" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+        const owner = meta.owner;
+        const desc = (parsed.fields.description || "").replace(/^Orion, /, "");
+        const head = [
+          "---",
+          'name: "vbrainstem"',
+          'description: ' + JSON.stringify("Who " + owner + " is and how to help them well, assembled on this device from their public AI. Use at the start of any task for " + owner + "."),
+          'license: ' + JSON.stringify(parsed.fields.license || "MIT"),
+          'compatibility: ' + JSON.stringify(parsed.fields.compatibility || "Any AI that reads skills."),
+          "metadata:",
+          '  id: ' + JSON.stringify(newId),
+          '  owner: ' + JSON.stringify(owner),
+          '  grown_from: ' + JSON.stringify(meta.id),
+          '  dialed_from: ' + JSON.stringify(url),
+          '  face: "dimension"',
+          '  created: ' + JSON.stringify(today),
+          '  updated: ' + JSON.stringify(today),
+          "---",
+          "",
+        ].join("\n");
+        let body = parsed.body.replace(/\r\n?/g, "\n").trim();
+        const note = "This copy was assembled on this device from my public AI on " + today +
+          ". It is a new dimension of me, not the mainline; export it to bring what it learns home.";
+        body = body.replace(/^(# [^\n]*\n)/, "$1\n" + note + "\n");
+        if (!/^## Memory\s*$/m.test(body)) {
+          body += "\n\n## Memory\n\nNewest first, dated.\n";
+        }
+        body = body.replace(/^(## Memory\s*\n(?:[^\n]*\n)*?)(?=- |\n## |$)/m, (m) =>
+          m + "- " + today + " Assembled from my public AI at " + url + "; this dimension began here.\n");
+        if (!/^## Memory \(older\)\s*$/m.test(body)) {
+          body += "\n\n## Memory (older)\n\n- (nothing yet)\n";
+        }
+        return head + body.trim() + "\n";
       }
 
       function validatePersonFile(text) {
@@ -2122,6 +2186,14 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             }
             return { status: 200, json: { content: await loadGithubText(body.url) } };
           }
+          if (verb === "POST" && cleanPath === "/file/dial") {
+            if (!body || typeof body.url !== "string" || !body.url.trim()) {
+              return { status: 400, json: { error: "A front-door link is required." } };
+            }
+            const raw = frontDoorToRaw(body.url);
+            const text = await loadGithubText(raw);
+            return { status: 200, json: { content: assembleFromPublicFace(text, raw), source: raw } };
+          }
           if (verb === "POST" && cleanPath === "/tools/load") {
             if (!body || typeof body.url !== "string") {
               return { status: 400, json: { error: "A GitHub link is required." } };
@@ -2383,6 +2455,24 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           setMessage(els.fileMessage, error.message, true);
         } finally {
           els.loadFileUrl.disabled = false;
+        }
+      });
+
+      els.dialPublic.addEventListener("click", async () => {
+        els.dialPublic.disabled = true;
+        setMessage(els.fileMessage, "Dialing your public AI...");
+        try {
+          const dialed = await dispatch("POST", "/file/dial", { url: els.dialUrl.value });
+          if (dialed.status !== 200 || dialed.json.error) {
+            throw new Error(dialed.json.error || "Your public AI could not be reached.");
+          }
+          await setPersonFile(dialed.json.content, "link");
+          els.dialUrl.value = "";
+          setMessage(els.fileMessage, "Your AI is here. It is a new copy on this device; export it any time to bring it home.");
+        } catch (error) {
+          setMessage(els.fileMessage, error.message, true);
+        } finally {
+          els.dialPublic.disabled = false;
         }
       });
 

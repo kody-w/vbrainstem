@@ -19,6 +19,14 @@ function answer(message, finishReason = "stop") {
 test("mobile file, tools, chat, memory, export, routes, and reset", async ({ page }) => {
   const calls = new Map();
   let blockedRequestEscaped = false;
+  await page.route("https://api.github.com/repos/someone/their-ai/contents/their-ai/SKILL.md**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/plain", body: [
+      "---", 'name: "their-ai"', 'description: "Their AI, the public face of Someone."', 'license: "MIT"',
+      'compatibility: "Any AI that reads skills."', "metadata:", '  id: "rappid:@someone/their-ai-public:' + "a".repeat(64) + '"',
+      '  owner: "Someone"', '  face: "public"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "",
+      "# Their AI, public face", "", "## Who Someone is, in public", "", "Someone builds things.", "",
+      "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n") });
+  });
   await page.route("https://example.invalid/**", async (route) => {
     blockedRequestEscaped = true;
     await route.abort();
@@ -205,6 +213,13 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   });
 
   await page.getByRole("button", { name: "Open your file" }).click();
+  const dialed = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", { url: "https://github.com/someone/their-ai" }));
+  expect(dialed.status).toBe(200);
+  expect(dialed.json.content).toContain('name: "vbrainstem"');
+  expect(dialed.json.content).toContain('grown_from: "rappid:@someone/their-ai-public:');
+  expect(dialed.json.content).toMatch(/- \d{4}-\d{2}-\d{2} Assembled from my public AI at https:\/\/raw\.githubusercontent\.com\/someone\/their-ai\/main\/their-ai\/SKILL\.md/);
+  expect(dialed.json.content).toMatch(/^## Memory \(older\)/m);
+
   await page.setInputFiles("#person-file", personFile);
   await expect(page.getByText("Your file is ready.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close your file" }).click();
