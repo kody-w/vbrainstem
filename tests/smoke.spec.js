@@ -372,9 +372,13 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
       response: "Direct dispatch works.",
       agent_logs: "",
       session_id: "direct-session",
-      model: "gpt-4o"
+      voice_mode: false,
+      model: "gpt-4o",
+      requested_model: "gpt-4o"
     }
   });
+  // exactly the kernel's six keys, no more and no fewer
+  expect(Object.keys(routeChecks.chat.json).sort()).toEqual(["agent_logs", "model", "requested_model", "response", "session_id", "voice_mode"]);
   expect(routeChecks.publicHealth).toMatchObject({
     status: 200,
     json: { status: "ok" }

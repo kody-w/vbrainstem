@@ -2355,7 +2355,8 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         ];
         const logs = listedIssues.slice();
         let reply = "";
-        let respondedModel = localStorage.getItem(STORAGE.model) || DEFAULT_MODEL;
+        const requestedModel = localStorage.getItem(STORAGE.model) || DEFAULT_MODEL;
+        let respondedModel = requestedModel;
         let lastMessage = null;
 
         for (let round = 0; round < 3; round += 1) {
@@ -2391,10 +2392,13 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         return {
           status: 200,
           json: {
+            // The same six keys, in the same sense, as the kernel's POST /chat reply.
             response: reply,
             agent_logs: logs.join("\n"),
             session_id: currentSession,
-            model: respondedModel
+            voice_mode: false,
+            model: respondedModel,
+            requested_model: requestedModel
           }
         };
       }
