@@ -41,7 +41,7 @@ nothing to install and no account.
 
 ## For builders
 
-[MAPPING.md](MAPPING.md): how one file does, on any native tool, what a local Brainstem server does each turn.
+[PROFILE.md](PROFILE.md): the file as a carrier within RAPP/1 (the `vbrainstem/1` profile). [MAPPING.md](MAPPING.md): how one file does, on any native tool, what a local Brainstem server does each turn.
 
 ## Why
 
