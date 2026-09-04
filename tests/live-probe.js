@@ -6,7 +6,7 @@ const fs = require("fs"); const path = require("path"); const os = require("os")
   const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const netlog = []; page.on("response", r => { const u = r.url(); if (/github|copilot|workers\.dev/.test(u)) netlog.push(`${r.status()} ${u.split("?")[0]}`); });
   page.on("console", m => { if (m.type() === "error") netlog.push("console.error: " + m.text().slice(0, 160)); });
-  await page.goto("http://127.0.0.1:4173/index.html");
+  await page.goto(process.env.VB_URL || "http://127.0.0.1:4173/index.html");
   await page.evaluate(t => localStorage.setItem("github_token", t), ghToken);
   await page.reload();
   await page.setInputFiles("#person-file", path.resolve(__dirname, "../samples/ada/SKILL.md"));
