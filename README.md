@@ -36,6 +36,10 @@ A page about you, in your words, plus a memory section your AI reads at the star
 and adds to the moment it learns something durable. Everything stays in the one file. There is
 nothing to install and no account.
 
+## For builders
+
+[MAPPING.md](MAPPING.md): how one file does, on any native tool, what a local Brainstem server does each turn.
+
 ## Why
 
 [The mission](https://github.com/kody-w/rapp-mission) and the day the first one went live:

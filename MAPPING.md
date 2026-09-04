@@ -1,0 +1,24 @@
+# How the file does what a Brainstem does
+
+A Brainstem is a small local server that, on every message, loads a persona, discovers whatever
+tools are in a folder, injects memory, answers, and saves what it learned. The vbrainstem file
+gives a person the same behavior with no server: each native tool decides for itself how to do
+each step, and the file tells it what the steps are.
+
+| What a Brainstem does each turn | Where it lives in the file | What the native tool does |
+|---|---|---|
+| Loads the persona (`soul.md`) | "Who I am", "How to help me", "What done means" | Reads the file at the start of every task |
+| Discovers tools from `agents/*_agent.py`, fresh every request | "My tools": a list, each with where it lives or a link | Makes sure each listed tool is in its skills folder (fetching by link if missing); anything not listed is not used |
+| Injects memory (`ContextMemory`) into every turn | "Memory" | Reads the section every task |
+| Saves what it learned (`ManageMemory`) | The rule in "How to keep this file current" | Appends one dated line the moment something durable is learned |
+| Unloads a tool when its file is removed | Removing a line from "My tools" | Stops using it on the next task |
+| Runs a tool's code | The code inside each skill file | Runs it locally; if it cannot run code, reads the code and carries out what it does |
+| Keeps a session | Nothing | The native tool's own session |
+| Answers on one wire | Nothing | The native tool's own chat |
+
+Every tool is one skill file. Every skill file converts to one Python file and back without loss
+([rapp-skills](https://github.com/kody-w/rapp-skills)), so the same tool is an agent in a
+Brainstem and a skill everywhere else. Dropping a person's tools into a Brainstem's `agents/`
+folder makes them native there too, with no restart.
+
+Nothing in the file itself names any of this. A person reads a page about themselves.

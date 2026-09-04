@@ -76,6 +76,14 @@ If it ever gets in the way, delete it and you are back to normal.
 
 <answer 6, or "Nothing named yet.">
 
+## My tools
+
+Tools I use. Each is one skill file. On every task, make sure each one listed here is available
+in this tool's skills folder; if it is missing and has a link, fetch it. Use nothing that is not
+listed here.
+
+- (none yet)
+
 ## What I have taught my AI
 
 - <today> Started this file.
@@ -95,7 +103,8 @@ Newest first. One line each, dated.
 
 On every task: read this file first, then act. The moment you learn something durable about me,
 add one dated line at the top of "Memory" right then. When I teach you a rule, add it under "What
-I have taught my AI". Update the "updated" date at the top. Keep "Memory" to the newest 40 lines; move
+I have taught my AI". When I start using a tool, add it under "My tools" with where it lives;
+when I stop, remove the line. Update the "updated" date at the top. Keep "Memory" to the newest 40 lines; move
 older lines to "Memory (older)" at the end of this same file, newest first, and never delete one.
 Everything stays in this one file. Never add
 secrets or anything from "What stays private". Never rewrite my words; append.
