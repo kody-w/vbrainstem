@@ -148,8 +148,9 @@ needs a GitHub account and the `gh` command signed in; if either is missing, say
 3. **Private mainline**, repository `<account>/<ai>-private`, private: a folder `<ai>/` holding
    their real file, unchanged. Only they, and collaborators they add, can read it.
 4. Tell them: anyone can hand `https://github.com/<account>/<ai>` to any AI and get the public
-   version; when they themselves are signed in to GitHub, the same link opens their real file.
-   Show them both links. Never put anything private in the public repository.
+   version; with read access to the private repository (a fine-grained token for that one
+   repository, or a signed-in tool that can read it), the same link opens their real file. Show
+   them both links. Never put anything private in the public repository.
 
 ## 5. Never
 
