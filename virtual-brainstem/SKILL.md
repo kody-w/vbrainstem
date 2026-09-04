@@ -24,7 +24,12 @@ them.
 
 Look for `vbrainstem/SKILL.md` in the place you read skills (for example `~/.claude/skills/`,
 `~/.copilot/skills/`, or the project's skills folder). If it exists, read all of it before doing
-anything else. If it does not exist, offer to make one: fetch
+anything else. If the file you are handed is a public front door (its header names a
+`private-repo`), and the person is signed in to GitHub with access to it, read the private file
+there instead; that is the mainline. If you cannot reach it, the public face is what you have;
+never try to get around the access check. If a file is locked (`metadata.locked`), ask the
+person for the passphrase and unlock it with the command inside the file; never guess.
+If no file exists, offer to make one: fetch
 https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md and follow
 it. Never proceed as their Brainstem without their file.
 

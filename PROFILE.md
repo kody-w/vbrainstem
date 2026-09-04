@@ -86,6 +86,22 @@ it creates a Brainstem from nothing beside the native AI, loads the carrier's to
 `agents/` folder, and the two bodies then work together on the device, each reading the same
 carrier. The Brainstem is never created unless the person asks.
 
+## 5b. The private mainline behind a public front door (normative)
+
+A person MAY publish a public face: a carrier with nothing private in it, its own identity, and
+in `metadata` the keys `private-repo` and `private-path` naming where the mainline lives, plus
+`mainline-id`, the mainline's identity. The mainline is a private repository the person controls;
+access is GitHub's own access control, granted by the person to collaborators, and exercised by a
+reader with its own sign-in. A host that can read the mainline uses it and ignores the public
+face; a host that cannot uses the public face as a degraded dimension (`grown_from` the public
+id). A host never attempts to bypass the access check, never caches a mainline it read for a
+person without access, and never writes private content into the public face.
+
+For travel with no GitHub in the loop, a carrier MAY be locked: the six header fields stay
+readable, the body is encrypted (AES-256-CBC, PBKDF2-SHA256, 200000 iterations, `openssl enc`
+compatible), `metadata.locked` names the method and `metadata.locked-sha256` the plaintext hash.
+A host without the passphrase treats the file as empty and never guesses.
+
 ## 6. Hosts
 
 Any AI that reads Agent Skills is a host. Verified hosts and evidence are recorded at
