@@ -64,6 +64,10 @@ skill file; a skill file with embedded code converts losslessly to a single-file
 back (see https://github.com/kody-w/rapp-skills), so the same tool is native in a Brainstem's
 `agents/` folder and native as a skill everywhere else.
 
+The carrier is the person's private face. It MAY name public faces the same way: a network
+skill (for example the DOGG skill, the public face of an estate on the network) is listed under
+`My tools` by URL and fetched like any other tool. One shape, private and public, on every host.
+
 ## 5. Portability and reversibility (normative)
 
 - Copying the carrier to another host's skills folder is the complete move; behavior is
