@@ -640,8 +640,13 @@
           <span>Your AI's name, or its front-door link</span>
           <input id="dial-url" type="text" inputmode="url" autocapitalize="none" placeholder="orion, or https://github.com/you/your-ai">
         </label>
+        <fieldset class="dial-face" id="dial-face">
+          <legend>Dial</legend>
+          <label><input type="radio" name="dial-face" value="private" checked> Private: your real file, with the public one alongside (needs private access)</label>
+          <label><input type="radio" name="dial-face" value="public"> Public: the public version only</label>
+        </fieldset>
         <button type="button" id="dial-public">Dial</button>
-        <p class="hint">Makes your file here from your public AI. It starts as a new copy on this device; export it any time to bring it home.</p>
+        <p class="hint">Brings your AI here from its front door. From then on the copy on this device is the one you use; export a backup whenever you like.</p>
         <details class="private-access">
           <summary>Private file access (optional)</summary>
           <p class="hint">If your real file lives in a private place on GitHub, paste a token that can read just that one repository (GitHub: Settings, Developer settings, fine-grained token, that repository only, Contents: read). It stays on this device.</p>
@@ -667,7 +672,10 @@
           <div class="row">
             <button type="button" class="primary" id="export-file">Export</button>
             <button type="button" id="share-file" hidden>Share</button>
+            <button type="button" id="export-backup">Export backup (private + public)</button>
+            <button type="button" id="share-backup" hidden>Share backup</button>
           </div>
+          <p class="hint">A backup is your current file plus the public one, as two files. After that, keep using this device's copy; export again whenever you want a fresh backup.</p>
         </section>
       </div>
     </section>
@@ -754,6 +762,7 @@
         token: "github_token",
         file: "vbrainstem.file",
         repoToken: "github_repo_token",
+        publicFace: "vbrainstem.public",
         tools: "vbrainstem.tools",
         model: "vbrainstem.model"
       });
@@ -806,6 +815,9 @@
         fileWork: document.getElementById("file-work"),
         fileEditor: document.getElementById("file-editor"),
         exportFile: document.getElementById("export-file"),
+        exportBackup: document.getElementById("export-backup"),
+        shareBackup: document.getElementById("share-backup"),
+        dialFace: document.getElementById("dial-face"),
         shareFile: document.getElementById("share-file"),
         sharePhone: document.getElementById("share-phone"),
         shareMessage: document.getElementById("share-message"),
@@ -2253,20 +2265,23 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             }
             const raw = frontDoorToRaw(await speedDial(body.url));
             const text = await loadGithubText(raw);
+            const wanted = body.face === "public" ? "public" : "private";
             const face = parseFrontmatter(text).fields.metadata || {};
             const canReadPrivate = Boolean(localStorage.getItem(STORAGE.repoToken) || getGithubToken());
-            let privateReason = face["private-repo"] ? (canReadPrivate ? "" : "not signed in") : "no private file named";
-            if (face["private-repo"] && face["private-path"] && canReadPrivate) {
+            let privateReason = wanted === "public" ? "public only was asked for"
+              : face["private-repo"] ? (canReadPrivate ? "" : "not signed in") : "no private file named";
+            localStorage.setItem(STORAGE.publicFace, text);
+            if (wanted === "private" && face["private-repo"] && face["private-path"] && canReadPrivate) {
               try {
                 const privateUrl = "https://github.com/" + face["private-repo"] + "/blob/main/" + face["private-path"];
                 const mainline = await loadGithubText(privateUrl);
                 validatePersonFile(mainline);
-                return { status: 200, json: { content: mainline, source: privateUrl, face: "private" } };
+                return { status: 200, json: { content: mainline, public_content: text, source: privateUrl, face: "private" } };
               } catch (error) {
                 privateReason = error.message;
               }
             }
-            return { status: 200, json: { content: assembleFromPublicFace(text, raw), source: raw, face: "public", private_reason: privateReason } };
+            return { status: 200, json: { content: assembleFromPublicFace(text, raw), public_content: text, source: raw, face: "public", private_reason: privateReason } };
           }
           if (verb === "POST" && cleanPath === "/tools/load") {
             if (!body || typeof body.url !== "string") {
@@ -2397,6 +2412,47 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         link.remove();
         setTimeout(() => URL.revokeObjectURL(link.href), 0);
         setMessage(els.fileMessage, "Exported the current file.");
+      }
+
+      function backupFiles() {
+        const content = els.fileEditor.value || getPersonFile();
+        if (!content) {
+          throw new Error("There is no file to back up.");
+        }
+        const files = [new File([content], "vbrainstem-private-SKILL.md", { type: "text/markdown" })];
+        const pub = localStorage.getItem(STORAGE.publicFace);
+        if (pub) {
+          files.push(new File([pub], "vbrainstem-public-SKILL.md", { type: "text/markdown" }));
+        }
+        return files;
+      }
+
+      function downloadBackup() {
+        let files;
+        try {
+          files = backupFiles();
+        } catch (error) {
+          setMessage(els.fileMessage, error.message, true);
+          return;
+        }
+        files.forEach((file, i) => {
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(file);
+          link.download = file.name;
+          document.body.appendChild(link);
+          setTimeout(() => { link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(link.href), 0); }, i * 300);
+        });
+        setMessage(els.fileMessage, files.length === 2
+          ? "Backed up both files. From here on, this device's copy is the one you use."
+          : "Backed up your file. No public version is stored here yet; dial your AI once to keep one alongside.");
+      }
+
+      async function shareBackup() {
+        const files = backupFiles();
+        if (!navigator.share || (navigator.canShare && !navigator.canShare({ files }))) {
+          throw new Error("Sharing files is not available in this browser.");
+        }
+        await navigator.share({ files, title: "My vbrainstem backup" });
       }
 
       async function shareCurrentFile() {
@@ -2591,15 +2647,18 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         els.dialPublic.disabled = true;
         setMessage(els.fileMessage, "Dialing your public AI...");
         try {
-          const dialed = await dispatch("POST", "/file/dial", { url: els.dialUrl.value });
+          const chosen = (els.dialFace.querySelector("input[name=dial-face]:checked") || {}).value || "private";
+          const dialed = await dispatch("POST", "/file/dial", { url: els.dialUrl.value, face: chosen });
           if (dialed.status !== 200 || dialed.json.error) {
             throw new Error(dialed.json.error || "Your public AI could not be reached.");
           }
           await setPersonFile(dialed.json.content, "link");
           els.dialUrl.value = "";
           setMessage(els.fileMessage, dialed.json.face === "private"
-            ? "Your AI is here, from your private file."
-            : "Your AI is here. It is a new copy on this device; export it any time to bring it home.");
+            ? "Your AI is here from your private file, with the public one alongside. This device's copy is now the one you use."
+            : (chosen === "private" && dialed.json.private_reason
+              ? "Your private file could not be reached (" + dialed.json.private_reason + "), so the public version is here as a new copy on this device."
+              : "Your AI is here. It is a new copy on this device; export it any time to bring it home."));
         } catch (error) {
           setMessage(els.fileMessage, error.message, true);
         } finally {
@@ -2609,6 +2668,20 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
 
       els.fileEditor.addEventListener("input", saveEditorFile);
       els.exportFile.addEventListener("click", downloadCurrentFile);
+      els.exportBackup.addEventListener("click", downloadBackup);
+      if (navigator.share) {
+        els.shareBackup.hidden = false;
+        els.shareBackup.addEventListener("click", async () => {
+          try {
+            await shareBackup();
+            setMessage(els.fileMessage, "Shared the backup.");
+          } catch (error) {
+            if (error.name !== "AbortError") {
+              setMessage(els.fileMessage, error.message, true);
+            }
+          }
+        });
+      }
       if (navigator.share) {
         els.shareFile.hidden = false;
         els.shareFile.addEventListener("click", async () => {
