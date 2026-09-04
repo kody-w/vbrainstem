@@ -67,3 +67,13 @@ quietly.
 ## XI. Reversible by deletion
 
 Deleting the person's file returns the AI to exactly what it was. Nothing is left behind.
+
+## XII. It may mutate locally, and it comes home additively
+
+When a scenario falls outside what the native platform offers, the virtual Brainstem may adapt
+by minting virtual frames in its head: small dated records of what it changed and why, chained in
+order, in the same shape a real Brainstem would write. That local line of evolution is never
+thrown away and never overwrites what came before. When it rejoins the person's file, another AI,
+or a real Brainstem, it comes home the way the Dream Catcher does: additively, ordered by time,
+with contradictions kept side by side as alternate readings rather than resolved by force, and
+the act itself recorded. Nothing that was already there is destroyed.
