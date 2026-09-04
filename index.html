@@ -637,8 +637,8 @@
 
         <div class="divider">or dial your public AI</div>
         <label class="field">
-          <span>Front-door link of your public AI</span>
-          <input id="dial-url" type="url" inputmode="url" placeholder="https://github.com/you/your-ai">
+          <span>Your AI's name, or its front-door link</span>
+          <input id="dial-url" type="text" inputmode="url" autocapitalize="none" placeholder="orion, or https://github.com/you/your-ai">
         </label>
         <button type="button" id="dial-public">Dial</button>
         <p class="hint">Makes your file here from your public AI. It starts as a new copy on this device; export it any time to bring it home.</p>
@@ -1055,6 +1055,33 @@ def load_agent(path):
           body: normalized.slice(end + 5),
           normalized
         };
+      }
+
+      async function githubLogin() {
+        const cached = localStorage.getItem("github_login");
+        if (cached) {
+          return cached;
+        }
+        const token = getGithubToken();
+        if (!token) {
+          throw new Error("Sign in with GitHub first, or paste the full link.");
+        }
+        const response = await allowedFetch("https://api.github.com/user", { headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" } });
+        if (!response.ok) {
+          throw new Error("Could not read your GitHub account; paste the full link instead.");
+        }
+        const login = (await response.json()).login;
+        localStorage.setItem("github_login", login);
+        return login;
+      }
+
+      async function speedDial(value) {
+        const trimmed = String(value || "").trim();
+        if (/^[a-z0-9][a-z0-9-]{0,63}$/i.test(trimmed)) {
+          const login = await githubLogin();
+          return "https://github.com/" + login + "/" + trimmed.toLowerCase();
+        }
+        return trimmed;
       }
 
       function frontDoorToRaw(value) {
@@ -2190,7 +2217,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             if (!body || typeof body.url !== "string" || !body.url.trim()) {
               return { status: 400, json: { error: "A front-door link is required." } };
             }
-            const raw = frontDoorToRaw(body.url);
+            const raw = frontDoorToRaw(await speedDial(body.url));
             const text = await loadGithubText(raw);
             return { status: 200, json: { content: assembleFromPublicFace(text, raw), source: raw } };
           }

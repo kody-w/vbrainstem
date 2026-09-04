@@ -19,6 +19,9 @@ function answer(message, finishReason = "stop") {
 test("mobile file, tools, chat, memory, export, routes, and reset", async ({ page }) => {
   const calls = new Map();
   let blockedRequestEscaped = false;
+  await page.route("https://api.github.com/user", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ login: "someone" }) });
+  });
   await page.route("https://api.github.com/repos/someone/their-ai/contents/their-ai/SKILL.md**", async (route) => {
     await route.fulfill({ status: 200, contentType: "text/plain", body: [
       "---", 'name: "their-ai"', 'description: "Their AI, the public face of Someone."', 'license: "MIT"',
@@ -213,7 +216,7 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   });
 
   await page.getByRole("button", { name: "Open your file" }).click();
-  const dialed = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", { url: "https://github.com/someone/their-ai" }));
+  const dialed = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", { url: "their-ai" }));
   expect(dialed.status).toBe(200);
   expect(dialed.json.content).toContain('name: "vbrainstem"');
   expect(dialed.json.content).toContain('grown_from: "rappid:@someone/their-ai-public:');
