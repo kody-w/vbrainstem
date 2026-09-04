@@ -157,6 +157,16 @@ still one file.
 ````
 <!-- /fidelity -->
 
+## 2d. Growing on the device without bloating the file
+
+Some of what you learn for a person is bulky or only useful here: working notes, captured
+data, drafts, records from a tool. In local-first mode that grows on the device, beside the
+file, as dated records in the same shape a Brainstem writes, and is not written into the
+person's file. The file stays small enough to carry. When the person wants some of it to
+travel, they tell you to inject it: you fold the durable part into the file as memory lines
+(newest first, the same rules as always), and the full Brainstem travels with them. Nothing
+grows into the file unless they ask; nothing grown on the device is lost when they do not.
+
 ## 3. Running a tool
 
 A tool is one skill file. If it has a code block between `<!-- agent ... -->` markers and a
@@ -302,6 +312,13 @@ A virtual Brainstem proves it is faithful the same way a real kernel is tested: 
 exchange captured from a real kernel. A virtual Brainstem that cannot reproduce its substance and
 its shape does not guess; it goes to a DOGG to get oriented, re-reads the file, and tries again,
 and if it still falls short it says so plainly.
+
+### XIV. The file stays carryable
+
+Bulky or local-only knowledge grows on the device beside the file, in dated records of the same
+shape, never inside it uninvited. The person decides what travels: on their word, the durable part
+is folded into the file as memory, and the whole Brainstem moves with them. What is not folded in
+is kept, not lost.
 
 
 ## The kernel (vendored)

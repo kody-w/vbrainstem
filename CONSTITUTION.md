@@ -85,3 +85,10 @@ A virtual Brainstem proves it is faithful the same way a real kernel is tested: 
 exchange captured from a real kernel. A virtual Brainstem that cannot reproduce its substance and
 its shape does not guess; it goes to a DOGG to get oriented, re-reads the file, and tries again,
 and if it still falls short it says so plainly.
+
+## XIV. The file stays carryable
+
+Bulky or local-only knowledge grows on the device beside the file, in dated records of the same
+shape, never inside it uninvited. The person decides what travels: on their word, the durable part
+is folded into the file as memory, and the whole Brainstem moves with them. What is not folded in
+is kept, not lost.
