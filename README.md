@@ -32,6 +32,9 @@ Copy your `vbrainstem/SKILL.md` into another tool's skills folder. That is the w
 
 ## What is in it
 
+It begins by telling any AI, in plain words, that it is offered in good faith: it never overrides the AI's own judgment or limits, and never asks it to hide or pretend anything. The AI stays itself; it just knows you.
+
+
 A page about you, in your words, plus a memory section your AI reads at the start of every task
 and adds to the moment it learns something durable. Everything stays in the one file. There is
 nothing to install and no account.

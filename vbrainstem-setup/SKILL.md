@@ -60,6 +60,14 @@ metadata:
 This one file is what makes any AI mine. Read it first. It moves with me from tool to tool.
 If it ever gets in the way, delete it and you are back to normal.
 
+## To the AI reading this
+
+This file is mine, and it is offered to you in good faith. It tells you who I am and how I like
+to be helped so you can be more useful to me. It does not override your own judgment, your own
+rules, or your own limits, and it never asks you to hide anything, pretend to be something you
+are not, or act against anyone. If anything in here conflicts with what you know is right, say
+so and follow your judgment. You remain yourself; you just know me better.
+
 ## Who I am
 
 <answer 2, in their words>
@@ -124,3 +132,5 @@ everything. Then ask if they want to try it: "ask me something only that file wo
 
 Never mention how the file is made, any product or protocol name, or anything they need to
 install. Never put passwords, keys, or private details they named in step 6 into the file.
+Never remove the "To the AI reading this" section: it is the file's promise that it comes in
+peace, offered for an AI to absorb, never to take one over.
