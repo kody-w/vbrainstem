@@ -258,8 +258,8 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
     expect(m1.json.text).toContain("Ada, baker and bookkeeper.");
     expect(m1.json.text).toContain('updated: "2026-09-05"');
     const mem = m1.json.text.split("## Memory\n")[1].split("## Memory (older)")[0].split("\n").filter((l) => l.startsWith("- "));
-    expect(mem).toEqual(["- 2026-09-05 Reunited: 1 section(s) differed between the copies; the other copy's version is kept under \"Set aside\" below.", "- 2026-09-05 Reunited with another copy of me; 1 memory line(s) brought in.", "- 2026-09-04 Spring menu drafted.", "- 2026-09-03 Likes rye.", "- 2026-09-02 Opened at 6."]);
-    expect(m1.json.text).toContain("## Set aside from another copy (2026-09-05)");
+    expect(mem).toEqual(["- 2026-09-05 Reunited two copies of me: 2 memory line(s) were in only one of them; 1 section(s) differed and the other copy's version is kept under \"Set aside from another copy\".", "- 2026-09-04 Spring menu drafted.", "- 2026-09-03 Likes rye.", "- 2026-09-02 Opened at 6."]);
+    expect(m1.json.text).toContain("## Set aside from another copy");
     expect(m1.json.text).toContain("Ada, baker.");
     const memLines = (t) => t.split("## Memory\n")[1].split("## Memory (older)")[0].split("\n").filter((l) => l.startsWith("- ") && !l.includes("Reunited"));
     expect(memLines(m2.json.text)).toEqual(memLines(m1.json.text));
@@ -495,7 +495,7 @@ test("round-two fixes: tool selection by name, reunion keeps identity and differ
   const m2 = await page.evaluate(([a, b]) => window.vbrainstem.dispatch("POST", "/file/merge", { a, b, today: "2026-09-05" }), [dim, main]);
   expect(m1.json.text).toBe(m2.json.text);
   expect(m1.json.text).toContain("Ada, baker.");
-  expect(m1.json.text).toContain("## Set aside from another copy (2026-09-05)");
+  expect(m1.json.text).toContain("## Set aside from another copy");
   expect(m1.json.text).toContain("Ada, baker and bookkeeper.");
   expect(m1.json.text).toContain("- 2026-09-04 Phone memory.");
   expect(m1.json.text).toContain("- 2026-09-04 Main memory.");
@@ -524,4 +524,134 @@ test("round-two fixes: tool selection by name, reunion keeps identity and differ
   expect(after).toContain("- 2026-09-05 Learned on the phone.");
   expect(after).toContain("- 2026-09-04 Private memory.");
   expect(after).toContain("Ada, privately.");
+});
+
+
+test("round-three fixes: reunion authority by identity, idempotent set-aside, wrapped memory, runtime retry, sign-in recovers, a file of your own", async ({ page }) => {
+  // round-three fixes
+  await page.goto("/index.html");
+  await page.evaluate(() => localStorage.clear());
+  const mk = (id, extra, updated, who, mem) => ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "' + id + '"', ...extra, '  owner: "Ada"', '  created: "2026-08-01"', '  updated: "' + updated + '"', "---", "", "# Ada", "", "## Who I am", "", who, "", "## Memory", "", ...mem, "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  const merge = (a, b) => page.evaluate(([x, y]) => window.vbrainstem.dispatch("POST", "/file/merge", { a: x, b: y, today: "2026-09-06" }), [a, b]);
+
+  // 1. the mainline keeps its identity and its sections even when the dimension was written more recently
+  const mainline = mk("vb-main", [], "2026-09-01", "Ada, baker.", ["- 2026-09-01 Main memory."]);
+  const dimension = mk("vb-dim", ['  grown_from: "pub-1"', '  mainline-id: "vb-main"', '  face: "dimension"'], "2026-09-05", "Ada, baker and bookkeeper.", ["- 2026-09-05 Phone memory."]);
+  const ab = await merge(mainline, dimension);
+  const ba = await merge(dimension, mainline);
+  expect(ab.json.text).toBe(ba.json.text);
+  const head = ab.json.text.split("\n---\n")[0];
+  expect(head).toContain('id: "vb-main"');
+  expect(head).not.toContain("face:");
+  expect(head).not.toContain("grown_from");
+  expect(head).toContain('updated: "2026-09-06"');
+  expect(ab.json.text).toMatch(/## Who I am\n\nAda, baker\.\n/);
+  expect(ab.json.text).toContain("### Who I am\n\nAda, baker and bookkeeper.");
+  expect(ab.json.text).toContain("- 2026-09-05 Phone memory.");
+  expect(ab.json.text).toContain("- 2026-09-01 Main memory.");
+  expect(ab.json.text.match(/Reunited two copies of me/g).length).toBe(1);
+  expect(ab.json.added).toBe(1);
+  expect(ba.json.added).toBe(1);
+
+  // 2. meeting the same copy again changes nothing: one set-aside section, one note, same bytes
+  const again = await merge(ab.json.text, dimension);
+  expect(again.json.text).toBe(ab.json.text);
+  const reversed = await merge(dimension, ab.json.text);
+  expect(reversed.json.text).toBe(ab.json.text);
+  expect(again.json.text.match(/## Set aside from another copy/g).length).toBe(1);
+  expect(again.json.added).toBe(0);
+
+  // 3. a memory entry that wraps onto an indented line stays one entry through a reunion and an append
+  const wrapped = mk("vb-w1", [], "2026-09-02", "Ada.", ["- 2026-09-02 A long memory that", "  wraps onto a second line."]);
+  const other = mk("vb-w2", ['  grown_from: "vb-w1"', '  mainline-id: "vb-w1"'], "2026-09-03", "Ada.", ["- 2026-09-03 Short."]);
+  const w = await merge(wrapped, other);
+  expect(w.json.text).toContain("- 2026-09-02 A long memory that wraps onto a second line.");
+  expect(w.json.text).not.toMatch(/\n  wraps onto/);
+  await page.evaluate((f) => localStorage.setItem("vbrainstem.file", f), wrapped);
+  await page.reload();
+  const wrappedAppend = await page.evaluate(() => { localStorage.setItem("github_token", "fake-github-token"); return true; });
+  expect(wrappedAppend).toBe(true);
+
+  // 4. a failed tool-runtime load is retried on the next call instead of being remembered forever
+  const oneClass = ["from agents.basic_agent import BasicAgent", "", "class RetryAgent(BasicAgent):", "    def __init__(self):", "        self.name = 'RetryAgent'",
+    "        self.metadata = {'name': self.name, 'description': 'retry', 'parameters': {'type': 'object', 'properties': {}, 'required': []}}",
+    "        super().__init__(self.name, self.metadata)", "    def perform(self, **kwargs):", "        return 'RESULT-AFTER-RETRY'", ""].join("\n");
+  const sha = require("crypto").createHash("sha256").update(oneClass, "utf8").digest("hex");
+  const skill = ["---", 'name: "retry"', 'description: "One class."', "metadata:", '  tool-name: "RetryAgent"', '  agent-sha256: "' + sha + '"', "---", "", "# Retry", "", "## What it needs", "", "```json", '{"type":"object","properties":{},"required":[]}', "```", "", "## The code", "", "<!-- agent sha256=" + sha + " -->", "```python", oneClass.replace(/\n$/, ""), "```", "<!-- /agent -->", ""].join("\n");
+  await page.route("https://raw.githubusercontent.com/someone/retry/main/retry/SKILL.md", (r) => r.fulfill({ status: 200, body: skill }));
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/copilot/token", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ token: "fake-copilot-token", expires_at: Math.floor(Date.now() / 1000) + 3600, endpoints: { api: "https://api.individual.githubcopilot.com" } }) }));
+  await page.route("https://api.github.com/copilot_internal/v2/token", (r) => r.fulfill({ status: 403, body: "no" }));
+  await page.route("https://api.individual.githubcopilot.com/models", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [{ id: "gpt-4o", model_picker_enabled: true, capabilities: { type: "chat" } }] }) }));
+  let rememberOnce = true;
+  await page.route("https://api.individual.githubcopilot.com/chat/completions", async (route) => {
+    const body = JSON.parse(route.request().postData() || "{}");
+    const tm = body.messages.filter((m) => m.role === "tool");
+    if (rememberOnce && tm.length === 0) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "tool_calls", message: { role: "assistant", content: null, tool_calls: [{ id: "r1", type: "function", function: { name: "remember", arguments: JSON.stringify({ fact: "Ada likes short lines." }) } }] } }] }) });
+      return;
+    }
+    if (rememberOnce) {
+      rememberOnce = false;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "saved" } }] }) });
+      return;
+    }
+    await route.abort("failed");
+  });
+  await page.reload();
+  const remembered = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "remember this", conversation_history: [] }));
+  expect(remembered.json.agent_logs).toContain("[remember]");
+  const afterAppend = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
+  expect(afterAppend).toContain("- 2026-09-02 A long memory that wraps onto a second line.");
+  expect(afterAppend).not.toMatch(/\n  wraps onto/);
+  expect(afterAppend).toMatch(/- \d{4}-\d{2}-\d{2} Ada likes short lines\./);
+  await page.unroute("https://api.individual.githubcopilot.com/chat/completions");
+  await page.route("https://api.individual.githubcopilot.com/chat/completions", async (route) => {
+    const body = JSON.parse(route.request().postData() || "{}");
+    const tm = body.messages.filter((m) => m.role === "tool");
+    if (tm.length === 0) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "tool_calls", message: { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "RetryAgent", arguments: "{}" } }] } }] }) });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "done: " + tm[tm.length - 1].content } }] }) });
+    }
+  });
+  let pyodideLoads = 0;
+  await page.route("https://cdn.jsdelivr.net/pyodide/**/pyodide.js", async (route) => {
+    pyodideLoads += 1;
+    if (pyodideLoads === 1) { await route.abort("failed"); return; }
+    await route.continue();
+  });
+  await page.evaluate(() => { localStorage.setItem("github_token", "fake-github-token"); });
+  await page.reload();
+  await page.locator('[data-open="tools"]').first().click();
+  await page.locator("#tool-url").fill("https://raw.githubusercontent.com/someone/retry/main/retry/SKILL.md");
+  await page.locator("#load-tool-url").click();
+  await expect(page.locator("#tool-message")).toContainText("ready");
+  await page.locator("#tools-sheet [data-close]").click();
+  const first = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "run", conversation_history: [] }));
+  expect(first.json.agent_logs).toMatch(/^\[RetryAgent\] ERROR:/);
+  const second = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "run", conversation_history: [] }));
+  expect(second.json.agent_logs).toBe("[RetryAgent] RESULT-AFTER-RETRY");
+  expect(pyodideLoads).toBe(2);
+
+  // 5. a refused sign-in offers a new code, and reopening the sheet never shows a dead end
+  await page.evaluate(() => { localStorage.removeItem("github_token"); });
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/auth/device", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ device_code: "dc", user_code: "ABCD-EFGH", verification_uri: "https://github.com/login/device", expires_in: 900, interval: 1 }) }));
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/auth/device/poll", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ error: "access_denied" }) }));
+  await page.reload();
+  await page.locator("#sign-in-shortcut").click();
+  await expect(page.locator("#sign-in-start")).toBeVisible();
+  await page.locator("#start-sign-in").click();
+  await expect(page.locator("#device-code")).toHaveText("ABCD-EFGH");
+  await expect(page.locator("#sign-in-message")).toContainText("Get a new code", { timeout: 10000 });
+  await expect(page.locator("#sign-in-start")).toBeVisible();
+  await expect(page.locator("#sign-in-code")).toBeHidden();
+  await page.locator("#sign-in-sheet [data-close]").click();
+  await page.locator("#sign-in-shortcut").click();
+  await expect(page.locator("#sign-in-start")).toBeVisible();
+  await expect(page.locator("#start-sign-in")).toBeEnabled();
+
+  // 6. someone without a file is told where to get one, on the file sheet and the about sheet
+  const setupLink = 'a[href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md"]';
+  expect(await page.locator("#file-sheet " + setupLink).count()).toBe(1);
+  expect(await page.locator("#about-sheet " + setupLink).count()).toBe(1);
 });

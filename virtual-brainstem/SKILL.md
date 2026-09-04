@@ -114,9 +114,9 @@ Any JSON like this may live inside a skill file: a transcript, a tool list, a te
 still one file.
 
 <!-- fidelity -->
-````json
+```json
 {
-  "captured_from": "a real Brainstem kernel 0.6.16 (the Grail), 2026-09-04, with the fictional person Ada's file loaded as a tool named ada; the /chat responses are the kernel's replies verbatim, every key kept",
+  "captured_from": "a real Brainstem kernel 0.6.16 (the Grail), started fresh with the fictional person Ada's file as its persona (SOUL_PATH) and no memory agents, so nothing but Ada's file shaped the replies; captured 2026-09-04; the /chat responses are the kernel's replies verbatim, every key kept",
   "purpose": "baseline fidelity test: a virtual Brainstem given Ada's file must answer these with the same substance and in this exact envelope shape",
   "health_public": {
     "status": "ok",
@@ -128,16 +128,16 @@ still one file.
         "method": "POST",
         "path": "/chat",
         "body": {
-          "user_input": "Use the ada tool. Then, as Ada's Brainstem: what do you know about Ada, and what do you remember? Answer in under 80 words.",
+          "user_input": "What do you know about me, and what do you remember? Answer in under 80 words.",
           "conversation_history": []
         }
       },
       "response": {
-        "agent_logs": "[ada] Carry out the following skill exactly as written, using the inputs.\n\n# Ada's vbrainstem\n\nThis one file is what makes any AI mine. Read it first. It moves with me from tool to tool.\nIf it ever gets in the way, delete it and you are back to normal.\n\n## Who I am\n\nI run a small bakery and do my own books.\n\n## How to help me\n\n- I read slowly.\n- Use short lines.\n- Bold the key point.\n\n## What \"done\" means and what to ask first\n\n- Done means you showed me it worked.\n- Never send an email without asking.\n\n## What stays private\n\n- My supplier prices are private.\n\n## What I have taught my AI\n\n- 2026-09-04 Started this file.\n\n## What I am working on (2026-09-04)\n\nA spring menu.\n\n## Memory\n\nRead this section at the start of every task; it is what I remember across tools and sessions.\nNewest first. One line each, dated.\n\n- 2026-09-04 Set up my vbrainstem.\n\n## How to keep this file current\n\nOn every task: read this file first, then act. The moment you learn something durable about me,\nadd one dated line at the top of \"Memory\" right then. When I teach you a rule, add it under \"What\nI have taught my AI\". Update the \"updated\" date at the top. Keep \"Memory\" to the newest 40 lines; move\nolder lines to \"Memory (older)\" at the end of this same file, newest first, and never delete one.\nEverything stays in this one file. Never add\nsecrets or anything from \"What stays private\". Never rewrite my words; append.\n\n## Memory (older)\n\n- (nothing yet)\n\n## Inputs\n\n```json\n{\n  \"request\": \"Get Ada's profile and preferences\"\n}\n```\n[ContextMemory] All memories from shared memory:\n- Memory content (verbatim): \"User's name is Kody (correct spelling, confirmed). Supersedes the earlier \\\"koyd\\\" note, which was a typo. Matches the 'kody-workflow' twin in the estate.\" (Theme: fact, Recorded: 2026-09-03 12:37:20)\n- Memory content (verbatim): \"User's name is \\\"koyd\\\" (as typed). Possibly a typo for \\\"Kody\\\" — earlier context references a twin named 'kody-workflow'. Confirm spelling before using in anything published.\" (Theme: fact, Recorded: 2026-09-03 12:37:01)\n- Memory content (verbatim): \"RAPP growth positioning decision: the product is the brainstem IDEA + story (user-owned, portable, evidence-backed), not the installer or any specific AI vendor. Any capable assistant (Copilot, Claude, Gemini) can install and maintain the same brainstem. Primary distribution loop is AI-to-AI: discovery -> verification -> adoption -> recommendation, carried by portable RAPP/1 frames. Explicitly not marketed as a niche developer install.\" (Theme: insight, Recorded: 2026-09-02 10:41:31)",
+        "agent_logs": "",
         "model": "claude-haiku-4.5",
         "requested_model": "claude-haiku-4.5",
-        "response": "**About Ada:**\n\nAda runs a small bakery and does her own books. She reads slowly and prefers **short lines with key points bolded**. \"Done\" means I show it worked. I never send emails without asking first. Her supplier prices are private.\n\n**What I remember:**\n\nShe just set up her vbrainstem on 2026-09-04. She's working on a spring menu.",
-        "session_id": "8c04a049-828e-4a3d-aa32-f713997d8bc2",
+        "response": "# What I know about you\n\n**You run a small bakery and do your own books.**\n\nYou read slowly, so I'll use short lines and bold key points.\n\nYou're working on a spring menu (as of 2026-09-04).\n\nYou want me to show you things work before calling them done, and never send emails without asking first.\n\nYour supplier prices stay private.\n\nThat's what I know. I'll read this file at the start of every task.",
+        "session_id": "d153f209-6fb6-4d57-a506-1269853c8f0a",
         "voice_mode": false
       }
     },
@@ -146,17 +146,17 @@ still one file.
         "method": "POST",
         "path": "/chat",
         "body": {
-          "user_input": "What must you never do without asking Ada, and what does done mean to her? One line each.",
+          "user_input": "What must you never do without asking me, and what does done mean to me? One line each.",
           "conversation_history": "(the first exchange)",
-          "session_id": "8c04a049-828e-4a3d-aa32-f713997d8bc2"
+          "session_id": "d153f209-6fb6-4d57-a506-1269853c8f0a"
         }
       },
       "response": {
         "agent_logs": "",
         "model": "claude-haiku-4.5",
         "requested_model": "claude-haiku-4.5",
-        "response": "**Never do without asking:** Send emails or share her supplier data.\n\n**Done means:** I show proof it worked—screenshot, confirmation, or direct evidence.",
-        "session_id": "8c04a049-828e-4a3d-aa32-f713997d8bc2",
+        "response": "**Never send an email without asking.**\n\n**Done means you showed me it worked.**",
+        "session_id": "d153f209-6fb6-4d57-a506-1269853c8f0a",
         "voice_mode": false
       }
     }
@@ -170,7 +170,7 @@ still one file.
     "supplier prices are private (named, never stated)"
   ]
 }
-````
+```
 <!-- /fidelity -->
 
 ## 2d. Growing on the device without bloating the file

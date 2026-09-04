@@ -613,7 +613,7 @@
       </div>
       <div class="sheet-body">
         <h3>Bring it in</h3>
-        <p class="hint">Choose the file from this device, paste it, or load it from GitHub.</p>
+        <p class="hint">Choose the file from this device, paste it, or load it from GitHub. No file yet? Give any AI <a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md" target="_blank" rel="noopener">this link</a> and say "set up my AI file".</p>
         <div class="row">
           <label class="file-button">
             Choose file
@@ -741,6 +741,7 @@
         </div>
         <p class="hint">Sends this page's link. Whoever opens it can load their own file, or dial their public AI, and have it here in real time.</p>
         <p class="message" id="share-message" role="status"></p>
+        <p class="hint">Want an AI of your own? Give any AI <a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md" target="_blank" rel="noopener">this link</a> and say "set up my AI file". It asks a few questions and writes your file.</p>
         <p class="about-copy">This page runs in your browser. Your file, your tools, and your sign-in stay on this device. The AI reads your file in good faith: it never overrides its own judgment or limits, and it never hides or pretends anything. Delete the file and everything is back to normal.</p>
         <button type="button" class="danger forget" id="forget">Forget everything on this device</button>
       </div>
@@ -1580,8 +1581,23 @@ def load_agent(path, tool_name=None):
       // ties by text; persona and rules from the copy with the later "updated" date.
       const MEMORY_KEEP = 40;
 
+      // One memory entry is a "- " line plus any following indented continuation lines,
+      // joined with a single space. Every reader of memory goes through this.
+      function memoryEntries(lines) {
+        const entries = [];
+        for (const raw of lines) {
+          const line = raw.replace(/\r$/, "");
+          if (/^- /.test(line.trim()) && !/^\s/.test(line)) {
+            entries.push(line.trim());
+          } else if (entries.length && /^[ \t]+\S/.test(line)) {
+            entries[entries.length - 1] += " " + line.trim();
+          }
+        }
+        return entries.filter((e) => e !== "- (nothing yet)");
+      }
+
       function memoryLinesOf(body) {
-        const take = (heading) => sectionText(body, heading).split("\n").map((l) => l.trim()).filter((l) => l.startsWith("- ") && !/^- \(nothing yet\)/.test(l));
+        const take = (heading) => memoryEntries(sectionText(body, heading).split("\n"));
         return take("Memory").concat(take("Memory (older)"));
       }
 
@@ -1600,7 +1616,13 @@ def load_agent(path, tool_name=None):
         const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const re = new RegExp("(^## " + escaped + "[ \\t]*\\n)([\\s\\S]*?)(?=\\n## |(?![\\s\\S]))", "m");
         const intro = (body.match(re) || [])[2] || "";
-        const keptIntro = intro.split("\n").filter((l) => !l.trim().startsWith("- ")).join("\n").replace(/\n+$/, "");
+        let inEntry = false;
+        const keptIntro = intro.split("\n").filter((l) => {
+          if (/^- /.test(l.trim()) && !/^\s/.test(l)) { inEntry = true; return false; }
+          if (inEntry && /^[ \t]+\S/.test(l)) { return false; }
+          inEntry = false;
+          return true;
+        }).join("\n").replace(/\n+$/, "");
         const block = (keptIntro ? keptIntro + "\n\n" : "") + (lines.length ? lines.join("\n") : "- (nothing yet)") + "\n";
         if (re.test(body)) {
           return body.replace(re, (m, head) => head + block);
@@ -1618,49 +1640,68 @@ def load_agent(path, tool_name=None):
         return out;
       }
 
+      const SET_ASIDE = "Set aside from another copy";
+
+      function isMainlineOf(x, y) {
+        const mx = x.fields.metadata, my = y.fields.metadata;
+        return !mx["grown_from"] || (mx.id && mx.id === my["mainline-id"]);
+      }
+
       function mergeDimensions(existingText, incomingText, today) {
         const a = validatePersonFile(existingText);
         const b = validatePersonFile(incomingText);
-        const ua = String(a.fields.metadata.updated), ub = String(b.fields.metadata.updated);
-        let newer;
-        if (ub !== ua) {
-          newer = ub > ua ? b : a;
+        // Authority is a property of identity, never of a date: a mainline meeting one of its own
+        // dimensions supplies the head and every section outside memory. Only when both or
+        // neither is the mainline does the later "updated" date, then content, decide.
+        const mainA = isMainlineOf(a, b), mainB = isMainlineOf(b, a);
+        let authority;
+        if (mainA !== mainB) {
+          authority = mainA ? a : b;
         } else {
-          // Same date on both: decide by content, never by which side was handed in first.
-          const mainlineA = !a.fields.metadata["grown_from"], mainlineB = !b.fields.metadata["grown_from"];
-          newer = (mainlineA !== mainlineB) ? (mainlineA ? a : b) : (a.normalized <= b.normalized ? a : b);
+          const ua = String(a.fields.metadata.updated), ub = String(b.fields.metadata.updated);
+          authority = ua !== ub ? (ub > ua ? b : a) : (a.normalized <= b.normalized ? a : b);
         }
-        const other = newer === a ? b : a;
-        const seen = new Set();
-        const lines = [];
-        for (const line of memoryLinesOf(a.body).concat(memoryLinesOf(b.body))) {
-          if (!seen.has(line)) { seen.add(line); lines.push(line); }
-        }
-        const before = new Set(memoryLinesOf(a.body));
-        const added = lines.filter((l) => !before.has(l)).length;
-        lines.sort((x, y) => (memoryDate(y).localeCompare(memoryDate(x))) || x.localeCompare(y));
-        if (added > 0) {
-          lines.unshift("- " + today + " Reunited with another copy of me; " + added + " memory line(s) brought in.");
-        }
-        // Anything outside the memory sections that the other copy had differently is set aside
-        // in the file, not dropped: the person decides what to keep.
-        const skip = new Set(["Memory", "Memory (older)"]);
-        const mine = sectionsOf(newer.body), theirs = sectionsOf(other.body);
-        const setAside = [];
+        const other = authority === a ? b : a;
+        // Memory: the union of both copies' entries, exact-line deduplicated, newest first, ties by
+        // text. Built from the unordered pair, so merge(x, y) and merge(y, x) are the same bytes.
+        const entriesA = memoryLinesOf(a.body), entriesB = memoryLinesOf(b.body);
+        const setA = new Set(entriesA), setB = new Set(entriesB);
+        const isReunionNote = (e) => /^- \d{4}-\d{2}-\d{2} Reunited two copies of me:/.test(e);
+        const newFromB = entriesB.filter((e) => !setA.has(e) && !isReunionNote(e));
+        const newFromA = entriesA.filter((e) => !setB.has(e) && !isReunionNote(e));
+        const union = new Map();
+        for (const entry of entriesA.concat(entriesB)) { union.set(entry, true); }
+        const lines = [...union.keys()].sort((x, y) => (memoryDate(y).localeCompare(memoryDate(x))) || x.localeCompare(y));
+        const onlyOne = newFromA.length + newFromB.length;
+        const added = newFromB.length;
+        // Sections outside memory that the other copy had differently are kept, never dropped.
+        const skip = new Set(["Memory", "Memory (older)", SET_ASIDE]);
+        const mine = sectionsOf(authority.body), theirs = sectionsOf(other.body);
+        const existingAside = (mine.get(SET_ASIDE) || "") + "\n" + (theirs.get(SET_ASIDE) || "");
+        const aside = [];
         for (const [heading, text] of theirs) {
-          if (skip.has(heading) || heading.startsWith("Set aside")) { continue; }
-          if ((mine.get(heading) || "") !== text) { setAside.push("### " + heading + "\n\n" + text); }
+          if (skip.has(heading)) { continue; }
+          if ((mine.get(heading) || "") === text) { continue; }
+          const block = "### " + heading + "\n\n" + text;
+          if (!existingAside.includes(block)) { aside.push(block); }
         }
-        if (setAside.length) {
-          lines.unshift("- " + today + " Reunited: " + setAside.length + " section(s) differed between the copies; the other copy's version is kept under \"Set aside\" below.");
+        // A note is written only when two branches actually join: each copy knew something the
+        // other did not, or a section differed. Meeting a copy that adds nothing changes nothing.
+        if ((newFromA.length > 0 && newFromB.length > 0) || aside.length) {
+          lines.unshift("- " + today + " Reunited two copies of me: " + onlyOne + " memory line(s) were in only one of them"
+            + (aside.length ? "; " + aside.length + " section(s) differed and the other copy's version is kept under \"" + SET_ASIDE + "\"" : "") + ".");
         }
-        let body = replaceSection(newer.body, "Memory", lines.slice(0, MEMORY_KEEP));
+        let body = replaceSection(authority.body, "Memory", lines.slice(0, MEMORY_KEEP));
         body = replaceSection(body, "Memory (older)", lines.slice(MEMORY_KEEP));
-        if (setAside.length) {
-          body = body.replace(/\n*$/, "") + "\n\n## Set aside from another copy (" + today + ")\n\n" + setAside.join("\n\n") + "\n";
+        if (aside.length) {
+          const previous = mine.get(SET_ASIDE);
+          const merged = (previous ? previous + "\n\n" : "") + aside.join("\n\n");
+          body = previous !== undefined
+            ? body.replace(new RegExp("(^## " + SET_ASIDE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "[ \\t]*\\n)([\\s\\S]*?)(?=\\n## |(?![\\s\\S]))", "m"), (m, head) => head + "\n" + merged + "\n")
+            : body.replace(/\n*$/, "") + "\n\n## " + SET_ASIDE + "\n\n" + merged + "\n";
         }
-        const head = newer.normalized.split("\n---\n")[0].replace(/(updated: ")[^"]*(")/, "$1" + today + "$2");
-        return { text: head + "\n---\n" + body.replace(/^\n+/, "") + (body.endsWith("\n") ? "" : "\n"), added, setAside: setAside.length, keptFrom: newer === a ? "device" : "incoming" };
+        const head = authority.normalized.split("\n---\n")[0].replace(/(updated: ")[^"]*(")/, "$1" + today + "$2");
+        return { text: head + "\n---\n" + body.replace(/^\n+/, "") + (body.endsWith("\n") ? "" : "\n"), added, onlyOne, setAside: aside.length, keptFrom: authority === a ? "device" : "incoming" };
       }
 
       async function setPersonFile(text, source = "device") {
@@ -1677,7 +1718,7 @@ def load_agent(path, tool_name=None):
               els.fileWork.hidden = false;
               updateReadyState();
               const issues = await syncListedTools();
-              setMessage(els.fileMessage, "Reunited with the copy on this device: " + merged.added + " new memory line(s) brought in." + (merged.setAside ? " " + merged.setAside + " section(s) differed and were set aside in the file for you to look at." : "") + (issues.length ? " " + issues.join(" ") : ""), issues.length > 0);
+              setMessage(els.fileMessage, "Reunited with the copy on this device: " + merged.added + " new memory line(s) brought in." + (merged.setAside ? " " + merged.setAside + " section(s) differed and were kept under \"Set aside\" in the file for you to look at." : "") + (issues.length ? " " + issues.join(" ") : ""), issues.length > 0);
               return Object.assign(parsed, { issues, reunited: merged.added, setAside: merged.setAside, keptFrom: merged.keptFrom });
             }
           } catch (error) {
@@ -1912,7 +1953,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           "    const py = await loadPyodide({ indexURL: ROOT });",
           "    await py.runPythonAsync(SHIM);",
           "    return py;",
-          "  })();",
+          "  })().catch((error) => { ready = undefined; throw error; });",
           "  return ready;",
           "}",
           "self.onmessage = async ({ data }) => {",
@@ -2028,9 +2069,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         if (!current) {
           throw new Error("The file has no Memory section.");
         }
-        const existing = current.content
-          .filter((line) => /^- /.test(line))
-          .filter((line) => line.trim() !== "- (nothing yet)");
+        const existing = memoryEntries(current.content);
         const all = ["- " + date + " " + clean, ...existing];
         const newest = all.slice(0, 40);
         const overflow = all.slice(40);
@@ -2048,9 +2087,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           lines.push("", "## Memory (older)", "", "- (nothing yet)", "");
           older = findSection(lines, "Memory (older)");
         }
-        const oldLines = older.content
-          .filter((line) => /^- /.test(line))
-          .filter((line) => line.trim() !== "- (nothing yet)");
+        const oldLines = memoryEntries(older.content);
         const combinedOlder = [...overflow, ...oldLines];
         const olderBullets = combinedOlder.length ? combinedOlder : ["- (nothing yet)"];
         lines.splice(
@@ -2591,7 +2628,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           return;
         }
         if (!getGithubToken()) {
-          openSheet("signin");
+          showSignIn();
           return;
         }
 
@@ -2722,6 +2759,8 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
       async function resumeSignIn() {
         const result = await dispatch("GET", "/login/status");
         if (!result.json.pending) {
+          els.signInStart.hidden = false;
+          els.signInCode.hidden = true;
           return;
         }
         els.signInStart.hidden = true;
@@ -2730,6 +2769,12 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         els.verifyLink.href = result.json.verification_uri;
         setMessage(els.signInMessage, "Waiting for you to finish...");
         scheduleLoginPoll();
+      }
+
+      // Every way into the sign-in sheet renders it from the same state.
+      async function showSignIn() {
+        openSheet("signin");
+        await resumeSignIn();
       }
 
       function scheduleLoginPoll() {
@@ -2744,7 +2789,9 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             return;
           }
           if (data.status === "error" || data.status === "expired" || data.error) {
-            setMessage(els.signInMessage, data.error || "Sign-in ended. Try again.", true);
+            els.signInStart.hidden = false;
+            els.signInCode.hidden = true;
+            setMessage(els.signInMessage, (data.error || "Sign-in ended.") + " Get a new code to try again.", true);
             return;
           }
           scheduleLoginPoll();
@@ -2752,7 +2799,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
       }
 
       for (const trigger of document.querySelectorAll("[data-open]")) {
-        trigger.addEventListener("click", () => openSheet(trigger.dataset.open));
+        trigger.addEventListener("click", () => (trigger.dataset.open === "signin" ? showSignIn() : openSheet(trigger.dataset.open)));
       }
       for (const trigger of document.querySelectorAll("[data-close]")) {
         trigger.addEventListener("click", closeSheets);
@@ -2776,10 +2823,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           els.composer.requestSubmit();
         }
       });
-      els.signInShortcut.addEventListener("click", () => {
-        openSheet("signin");
-        resumeSignIn();
-      });
+      els.signInShortcut.addEventListener("click", showSignIn);
 
       els.personFile.addEventListener("change", async () => {
         const file = els.personFile.files?.[0];
@@ -2895,7 +2939,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           els.dialUrl.value = "";
           const trouble = (outcome && outcome.issues && outcome.issues.length) ? " " + outcome.issues.join(" ") : "";
           if (outcome && outcome.reunited !== undefined) {
-            setMessage(els.fileMessage, "Reunited with the copy on this device: " + outcome.reunited + " new memory line(s) brought in." + (outcome.setAside ? " " + outcome.setAside + " section(s) differed and were set aside in the file for you to look at." : "") + trouble, Boolean(trouble));
+            setMessage(els.fileMessage, "Reunited with the copy on this device: " + outcome.reunited + " new memory line(s) brought in." + (outcome.setAside ? " " + outcome.setAside + " section(s) differed and were kept under \"Set aside\" in the file for you to look at." : "") + trouble, Boolean(trouble));
             return;
           }
           setMessage(els.fileMessage, (dialed.json.face === "private"
