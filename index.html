@@ -2485,6 +2485,30 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         }
       });
 
+      async function autoDialFromLink() {
+        const dial = new URLSearchParams(location.search).get("dial");
+        if (!dial) {
+          return;
+        }
+        const target = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/i.test(dial) ? "https://github.com/" + dial : dial;
+        if (getPersonFile()) {
+          setMessage(els.fileMessage, "You already have a file here. To replace it with the AI from this link, tap Forget everything first, then open the link again.");
+          return;
+        }
+        setMessage(els.fileMessage, "Dialing your AI...");
+        try {
+          const dialed = await dispatch("POST", "/file/dial", { url: target });
+          if (dialed.status !== 200 || dialed.json.error) {
+            throw new Error(dialed.json.error || "Your AI could not be reached.");
+          }
+          await setPersonFile(dialed.json.content, "link");
+          setMessage(els.fileMessage, "Your AI is here. Sign in with GitHub to start talking.");
+        } catch (error) {
+          setMessage(els.fileMessage, error.message, true);
+        }
+      }
+      autoDialFromLink();
+
       els.dialPublic.addEventListener("click", async () => {
         els.dialPublic.disabled = true;
         setMessage(els.fileMessage, "Dialing your public AI...");
