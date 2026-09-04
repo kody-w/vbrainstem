@@ -1,0 +1,2475 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1117">
+  <title>vbrainstem</title>
+  <style>
+    :root {
+      color-scheme: dark light;
+      --bg: #0d1117;
+      --panel: #161b22;
+      --panel-strong: #1f2630;
+      --line: #30363d;
+      --text: #f0f6fc;
+      --muted: #8b949e;
+      --accent: #2f81f7;
+      --accent-strong: #1f6feb;
+      --good: #3fb950;
+      --bad: #f85149;
+      --mine: #1f6feb;
+      --theirs: #21262d;
+      --shade: rgba(1, 4, 9, 0.76);
+      --shadow: 0 18px 56px rgba(1, 4, 9, 0.44);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      color: inherit;
+      font: inherit;
+    }
+
+    button,
+    .file-button {
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-strong);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 650;
+      touch-action: manipulation;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    .file-button:focus-within {
+      outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+      outline-offset: 2px;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.58;
+    }
+
+    .primary {
+      border-color: var(--accent);
+      background: var(--accent-strong);
+    }
+
+    .danger {
+      border-color: color-mix(in srgb, var(--bad) 70%, var(--line));
+      color: #ffb3ae;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      width: min(100%, 880px);
+      height: 100dvh;
+      margin: 0 auto;
+      border-inline: 1px solid var(--line);
+      background: var(--bg);
+    }
+
+    .top {
+      z-index: 2;
+      padding: max(8px, env(safe-area-inset-top)) 10px 8px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 94%, transparent);
+      backdrop-filter: blur(16px);
+    }
+
+    .top-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .brand {
+      min-width: 0;
+      margin-right: auto;
+      overflow: hidden;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .top button {
+      min-height: 40px;
+      padding: 0 11px;
+      background: transparent;
+      font-size: 14px;
+    }
+
+    .state-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 28px;
+      padding: 5px 2px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .state-row button {
+      min-height: 28px;
+      margin-left: auto;
+      padding: 2px 8px;
+      color: #79c0ff;
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+
+    .dot.good {
+      background: var(--good);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 18%, transparent);
+    }
+
+    .transcript {
+      overflow-x: hidden;
+      overflow-y: auto;
+      padding: 20px 14px 28px;
+      scroll-behavior: smooth;
+      overscroll-behavior: contain;
+    }
+
+    .welcome {
+      max-width: 560px;
+      margin: min(16vh, 120px) auto 28px;
+      padding: 0 16px;
+      text-align: center;
+    }
+
+    .welcome h1 {
+      margin: 0 0 10px;
+      font-size: clamp(27px, 8vw, 38px);
+      letter-spacing: -0.035em;
+    }
+
+    .welcome p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .welcome button {
+      padding: 0 18px;
+    }
+
+    .turn {
+      display: flex;
+      width: 100%;
+      margin: 0 auto 14px;
+    }
+
+    .turn.user {
+      justify-content: flex-end;
+    }
+
+    .turn.assistant,
+    .turn.system {
+      justify-content: flex-start;
+    }
+
+    .bubble {
+      max-width: min(82%, 650px);
+      padding: 11px 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--theirs);
+      line-height: 1.48;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .user .bubble {
+      border-color: color-mix(in srgb, var(--mine) 72%, var(--line));
+      border-bottom-right-radius: 5px;
+      background: var(--mine);
+      color: #fff;
+    }
+
+    .assistant .bubble {
+      border-bottom-left-radius: 5px;
+    }
+
+    .system .bubble {
+      max-width: 100%;
+      border-style: dashed;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .busy .bubble::after {
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-left: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      50% {
+        opacity: 0.25;
+        transform: scale(0.72);
+      }
+    }
+
+    .composer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 9px;
+      padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      background: var(--bg);
+    }
+
+    .composer textarea {
+      width: 100%;
+      min-height: 48px;
+      max-height: 150px;
+      resize: none;
+      padding: 12px 13px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--panel);
+      line-height: 1.35;
+    }
+
+    .composer button {
+      align-self: end;
+      min-width: 70px;
+      height: 48px;
+      padding: 0 15px;
+    }
+
+    .shade {
+      position: fixed;
+      z-index: 10;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-top: max(18px, env(safe-area-inset-top));
+      background: var(--shade);
+    }
+
+    .sheet {
+      display: flex;
+      flex-direction: column;
+      width: min(100%, 760px);
+      max-height: min(92dvh, 900px);
+      padding: 0 16px max(16px, env(safe-area-inset-bottom));
+      border: 1px solid var(--line);
+      border-bottom: 0;
+      border-radius: 20px 20px 0 0;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .sheet-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 62px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .sheet-head h2 {
+      margin: 0;
+      font-size: 21px;
+    }
+
+    .sheet-head button {
+      min-width: 44px;
+      margin-left: auto;
+      background: transparent;
+      font-size: 22px;
+    }
+
+    .sheet-body {
+      overflow-y: auto;
+      padding: 16px 1px 8px;
+      overscroll-behavior: contain;
+    }
+
+    .sheet h3 {
+      margin: 22px 0 7px;
+      font-size: 16px;
+    }
+
+    .sheet h3:first-child {
+      margin-top: 0;
+    }
+
+    .hint,
+    .message {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .message {
+      min-height: 21px;
+      margin: 8px 0;
+    }
+
+    .message.bad {
+      color: #ffb3ae;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+      margin: 10px 0;
+    }
+
+    .field > span {
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    input[type="url"],
+    .sheet textarea,
+    .sheet select {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--bg);
+      line-height: 1.45;
+    }
+
+    .paste {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    .file-editor {
+      min-height: 38dvh;
+      resize: vertical;
+      font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+      tab-size: 2;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin: 10px 0;
+    }
+
+    .row > button,
+    .row > .file-button {
+      flex: 1 1 140px;
+      padding: 10px 14px;
+      text-align: center;
+    }
+
+    .file-button {
+      position: relative;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .file-button input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 14px 0;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: "";
+      height: 1px;
+      flex: 1;
+      background: var(--line);
+    }
+
+    .tool-list {
+      display: grid;
+      gap: 9px;
+      margin: 12px 0;
+    }
+
+    .tool-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 10px;
+      align-items: center;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg);
+    }
+
+    .tool-card strong,
+    .tool-card small {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tool-card small {
+      color: var(--muted);
+    }
+
+    .tool-card button {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      min-height: 38px;
+      padding: 0 11px;
+      background: transparent;
+      color: #ffb3ae;
+      font-size: 13px;
+    }
+
+    .code-box {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--bg);
+      text-align: center;
+    }
+
+    .device-code {
+      display: block;
+      margin: 10px 0;
+      color: #79c0ff;
+      font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+      font-size: clamp(25px, 9vw, 36px);
+      font-weight: 800;
+      letter-spacing: 0.12em;
+    }
+
+    .code-box a {
+      display: inline-grid;
+      min-height: 44px;
+      margin-top: 8px;
+      padding: 0 16px;
+      place-items: center;
+      border-radius: 9px;
+      background: var(--accent-strong);
+      color: #fff;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .about-copy {
+      line-height: 1.65;
+    }
+
+    .forget {
+      width: 100%;
+      margin-top: 24px;
+      padding: 10px 14px;
+    }
+
+    @media (min-width: 700px) {
+      .shade {
+        align-items: center;
+        padding: 24px;
+      }
+
+      .sheet {
+        max-height: min(88dvh, 900px);
+        border-bottom: 1px solid var(--line);
+        border-radius: 20px;
+      }
+
+      .transcript {
+        padding-inline: 30px;
+      }
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f8fa;
+        --panel: #fff;
+        --panel-strong: #eff2f5;
+        --line: #d0d7de;
+        --text: #1f2328;
+        --muted: #636c76;
+        --accent: #0969da;
+        --accent-strong: #0969da;
+        --good: #1a7f37;
+        --bad: #cf222e;
+        --mine: #0969da;
+        --theirs: #fff;
+        --shade: rgba(31, 35, 40, 0.48);
+        --shadow: 0 18px 56px rgba(31, 35, 40, 0.22);
+      }
+
+      .danger,
+      .tool-card button,
+      .message.bad {
+        color: #a40e26;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        scroll-behavior: auto !important;
+      }
+
+      .busy .bubble::after {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="top-row">
+        <div class="brand">vbrainstem</div>
+        <button type="button" data-open="file" aria-label="Open your file">File</button>
+        <button type="button" data-open="tools" aria-label="Open your tools">Tools</button>
+        <button type="button" data-open="about" aria-label="Open about">About</button>
+      </div>
+      <div class="state-row">
+        <span class="dot" id="ready-dot"></span>
+        <span id="file-state">No file yet</span>
+        <button type="button" id="sign-in-shortcut">Sign in with GitHub</button>
+      </div>
+    </header>
+
+    <main class="transcript" id="transcript" aria-live="polite">
+      <section class="welcome" id="welcome">
+        <h1>Your AI, wherever you are.</h1>
+        <p>Bring in your file and your tools, then pick up the conversation.</p>
+        <button type="button" class="primary" data-open="file">Add your file</button>
+      </section>
+    </main>
+
+    <form class="composer" id="composer">
+      <textarea id="message" rows="1" enterkeyhint="send" aria-label="Your message"
+        placeholder="Message..." autocomplete="off"></textarea>
+      <button type="submit" class="primary" id="send">Send</button>
+    </form>
+  </div>
+
+  <div class="shade" id="shade" hidden>
+    <section class="sheet" id="file-sheet" role="dialog" aria-modal="true"
+      aria-labelledby="file-title" hidden>
+      <div class="sheet-head">
+        <h2 id="file-title">Your file</h2>
+        <button type="button" data-close aria-label="Close your file">&times;</button>
+      </div>
+      <div class="sheet-body">
+        <h3>Bring it in</h3>
+        <p class="hint">Choose the file from this device, paste it, or load it from GitHub.</p>
+        <div class="row">
+          <label class="file-button">
+            Choose file
+            <input id="person-file" type="file" accept=".md,text/markdown,text/plain">
+          </label>
+        </div>
+
+        <div class="divider">or paste</div>
+        <label class="field">
+          <span>Paste your file</span>
+          <textarea class="paste" id="file-paste" placeholder="Paste here"></textarea>
+        </label>
+        <button type="button" id="use-paste">Use pasted file</button>
+
+        <div class="divider">or use a link</div>
+        <label class="field">
+          <span>GitHub link</span>
+          <input id="file-url" type="url" inputmode="url" placeholder="Paste a GitHub file link">
+        </label>
+        <button type="button" id="load-file-url">Load from link</button>
+        <p class="message" id="file-message" role="status"></p>
+
+        <section id="file-work" hidden>
+          <h3>Edit</h3>
+          <p class="hint">Changes save on this device as you type.</p>
+          <label class="field">
+            <span>Current file</span>
+            <textarea class="file-editor" id="file-editor" spellcheck="false"></textarea>
+          </label>
+          <div class="row">
+            <button type="button" class="primary" id="export-file">Export</button>
+            <button type="button" id="share-file" hidden>Share</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="sheet" id="tools-sheet" role="dialog" aria-modal="true"
+      aria-labelledby="tools-title" hidden>
+      <div class="sheet-head">
+        <h2 id="tools-title">Your tools</h2>
+        <button type="button" data-close aria-label="Close your tools">&times;</button>
+      </div>
+      <div class="sheet-body">
+        <h3>Add a tool</h3>
+        <p class="hint">Choose one tool file, or load one from GitHub.</p>
+        <div class="row">
+          <label class="file-button">
+            Choose tool file
+            <input id="tool-file" type="file" accept=".md,text/markdown,text/plain" multiple>
+          </label>
+        </div>
+        <label class="field">
+          <span>GitHub link</span>
+          <input id="tool-url" type="url" inputmode="url" placeholder="Paste a GitHub file link">
+        </label>
+        <button type="button" id="load-tool-url">Load from link</button>
+        <p class="message" id="tool-message" role="status"></p>
+        <h3>Ready on this device</h3>
+        <div class="tool-list" id="tool-list"></div>
+        <p class="hint" id="no-tools">No tools added yet.</p>
+      </div>
+    </section>
+
+    <section class="sheet" id="sign-in-sheet" role="dialog" aria-modal="true"
+      aria-labelledby="sign-in-title" hidden>
+      <div class="sheet-head">
+        <h2 id="sign-in-title">Sign in with GitHub</h2>
+        <button type="button" data-close aria-label="Close sign in">&times;</button>
+      </div>
+      <div class="sheet-body">
+        <div id="sign-in-start">
+          <p class="hint">Use the GitHub account that has Copilot access.</p>
+          <button type="button" class="primary" id="start-sign-in">Get a sign-in code</button>
+        </div>
+        <div class="code-box" id="sign-in-code" hidden>
+          <p>Copy this code:</p>
+          <strong class="device-code" id="device-code"></strong>
+          <button type="button" id="copy-code">Copy code</button>
+          <br>
+          <a id="verify-link" target="_blank" rel="noopener">Open GitHub</a>
+        </div>
+        <p class="message" id="sign-in-message" role="status"></p>
+      </div>
+    </section>
+
+    <section class="sheet" id="about-sheet" role="dialog" aria-modal="true"
+      aria-labelledby="about-title" hidden>
+      <div class="sheet-head">
+        <h2 id="about-title">About</h2>
+        <button type="button" data-close aria-label="Close about">&times;</button>
+      </div>
+      <div class="sheet-body">
+        <p class="about-copy">This page runs in your browser. Your file, your tools, and your sign-in stay on this device. The AI reads your file in good faith: it never overrides its own judgment or limits, and it never hides or pretends anything. Delete the file and everything is back to normal.</p>
+        <button type="button" class="danger forget" id="forget">Forget everything on this device</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const VERSION = "1.0.0";
+      const AUTH_WORKER = "https://rapp-auth.kwildfeuer.workers.dev";
+      const GITHUB_API = "https://api.github.com";
+      const COPILOT_TOKEN_URL = GITHUB_API + "/copilot_internal/v2/token";
+      const DEFAULT_COPILOT_ENDPOINT = "https://api.individual.githubcopilot.com";
+      const PYODIDE_ROOT = "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/";
+      const DEFAULT_MODEL = "gpt-4o";
+      const STORAGE = Object.freeze({
+        token: "github_token",
+        file: "vbrainstem.file",
+        tools: "vbrainstem.tools",
+        model: "vbrainstem.model"
+      });
+      const TOKEN_ALIASES = ["vbrainstem.githubToken", "brainstem_token"];
+      const MEMORY_TOOL = {
+        type: "function",
+        function: {
+          name: "remember",
+          description: "Save one durable fact in the person's file immediately.",
+          parameters: {
+            type: "object",
+            properties: {
+              fact: {
+                type: "string",
+                description: "One concise durable fact to save."
+              }
+            },
+            required: ["fact"]
+          }
+        }
+      };
+      const DEFAULT_MODELS = [
+        { id: "gpt-4o", name: "GPT-4o", available: true },
+        { id: "gpt-4.1", name: "GPT-4.1", available: true },
+        { id: "gpt-4o-mini", name: "GPT-4o Mini", available: true }
+      ];
+
+      const els = {
+        shade: document.getElementById("shade"),
+        transcript: document.getElementById("transcript"),
+        welcome: document.getElementById("welcome"),
+        composer: document.getElementById("composer"),
+        message: document.getElementById("message"),
+        send: document.getElementById("send"),
+        readyDot: document.getElementById("ready-dot"),
+        fileState: document.getElementById("file-state"),
+        signInShortcut: document.getElementById("sign-in-shortcut"),
+        personFile: document.getElementById("person-file"),
+        filePaste: document.getElementById("file-paste"),
+        usePaste: document.getElementById("use-paste"),
+        fileUrl: document.getElementById("file-url"),
+        loadFileUrl: document.getElementById("load-file-url"),
+        fileMessage: document.getElementById("file-message"),
+        fileWork: document.getElementById("file-work"),
+        fileEditor: document.getElementById("file-editor"),
+        exportFile: document.getElementById("export-file"),
+        shareFile: document.getElementById("share-file"),
+        toolFile: document.getElementById("tool-file"),
+        toolUrl: document.getElementById("tool-url"),
+        loadToolUrl: document.getElementById("load-tool-url"),
+        toolMessage: document.getElementById("tool-message"),
+        toolList: document.getElementById("tool-list"),
+        noTools: document.getElementById("no-tools"),
+        signInStart: document.getElementById("sign-in-start"),
+        startSignIn: document.getElementById("start-sign-in"),
+        signInCode: document.getElementById("sign-in-code"),
+        deviceCode: document.getElementById("device-code"),
+        copyCode: document.getElementById("copy-code"),
+        verifyLink: document.getElementById("verify-link"),
+        signInMessage: document.getElementById("sign-in-message"),
+        forget: document.getElementById("forget")
+      };
+
+      const sheets = {
+        file: document.getElementById("file-sheet"),
+        tools: document.getElementById("tools-sheet"),
+        signin: document.getElementById("sign-in-sheet"),
+        about: document.getElementById("about-sheet")
+      };
+
+      let conversation = [];
+      let sessionId = "";
+      let pendingLogin = null;
+      let loginTimer = null;
+      let copilotSession = null;
+      let availableModels = DEFAULT_MODELS.slice();
+      let toolWorker = null;
+      const toolRequests = new Map();
+      const nativeFetch = globalThis.fetch.bind(globalThis);
+
+      const SHIM_SOURCE = String.raw`
+import json as _json, os as _os, sys as _sys, types as _types
+from pathlib import Path as _Path
+
+
+class BasicAgent:
+    """BasicAgent contract: name, metadata, perform(**kwargs), to_tool()."""
+
+    def __init__(self, name=None, metadata=None):
+        if name is not None:
+            self.name = name
+        elif not hasattr(self, "name"):
+            self.name = "BasicAgent"
+        if metadata is not None:
+            self.metadata = metadata
+        elif not hasattr(self, "metadata"):
+            self.metadata = {
+                "name": self.name,
+                "description": "Base agent -- override this.",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            }
+
+    def perform(self, **kwargs):
+        return "Not implemented."
+
+    def system_context(self):
+        return None
+
+    def to_tool(self):
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.metadata.get("description", ""),
+                "parameters": self.metadata.get("parameters", {"type": "object", "properties": {}}),
+            },
+        }
+
+
+class AzureFileStorageManager:
+    """In-memory stand-in for the shared storage helper."""
+
+    def __init__(self, share_name=None, **kwargs):
+        root = _os.environ.get("AGENT_STORAGE") or str(_Path.home() / ".agent-storage")
+        self.root = _Path(root) / (share_name or "default")
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._context = ""
+
+    def set_memory_context(self, user_guid=None):
+        self._context = user_guid or ""
+
+    def _path(self, file_path):
+        p = self.root / self._context / (file_path or "memory.json")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    def read_json(self, file_path=None):
+        p = self._path(file_path)
+        return _json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+
+    def write_json(self, data, file_path=None):
+        self._path(file_path).write_text(_json.dumps(data, indent=2), encoding="utf-8")
+        return True
+
+    def update_json(self, update_fn, file_path=None):
+        data = update_fn(self.read_json(file_path))
+        self.write_json(data, file_path)
+        return data
+
+    def read_file(self, file_path):
+        p = self._path(file_path)
+        return p.read_text(encoding="utf-8") if p.exists() else None
+
+    def write_file(self, file_path, content):
+        self._path(file_path).write_text(content, encoding="utf-8")
+        return True
+
+    def list_files(self, directory=""):
+        d = self.root / self._context / directory
+        return [x.name for x in d.iterdir()] if d.exists() else []
+
+    def delete_file(self, file_path):
+        p = self._path(file_path)
+        if p.exists():
+            p.unlink()
+            return True
+        return False
+
+    def file_exists(self, file_path):
+        return self._path(file_path).exists()
+
+
+def install_shims():
+    """Make the shared base and storage imports available."""
+    if "agents.basic_agent" not in _sys.modules:
+        agents_mod = _types.ModuleType("agents")
+        agents_mod.__path__ = []
+        ba_mod = _types.ModuleType("agents.basic_agent")
+        ba_mod.BasicAgent = BasicAgent
+        agents_mod.basic_agent = ba_mod
+        _sys.modules.setdefault("agents", agents_mod)
+        _sys.modules["agents.basic_agent"] = ba_mod
+    if "utils.azure_file_storage" not in _sys.modules:
+        utils_mod = _sys.modules.get("utils") or _types.ModuleType("utils")
+        if not hasattr(utils_mod, "__path__"):
+            utils_mod.__path__ = []
+        st_mod = _types.ModuleType("utils.azure_file_storage")
+        st_mod.AzureFileStorageManager = AzureFileStorageManager
+        utils_mod.azure_file_storage = st_mod
+        _sys.modules.setdefault("utils", utils_mod)
+        _sys.modules["utils.azure_file_storage"] = st_mod
+
+
+def load_agent(path):
+    """Load one Python file and return its module and BasicAgent instance."""
+    install_shims()
+    path = _Path(path).resolve()
+    spec = __import__("importlib.util").util.spec_from_file_location("skill_agent_" + path.stem, path)
+    module = __import__("importlib.util").util.module_from_spec(spec)
+    _sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    base = _sys.modules["agents.basic_agent"].BasicAgent
+    candidates = [
+        obj for obj in vars(module).values()
+        if isinstance(obj, type) and issubclass(obj, base) and obj is not base
+        and obj.__module__ == module.__name__
+    ]
+    if not candidates:
+        raise RuntimeError(f"{path.name}: no BasicAgent subclass found")
+    return module, candidates[-1]()
+`;
+
+      function makeId() {
+        if (crypto.randomUUID) {
+          return crypto.randomUUID();
+        }
+        return "vb-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+      }
+
+      function getGithubToken() {
+        const direct = localStorage.getItem(STORAGE.token);
+        if (direct) {
+          return direct;
+        }
+        for (const alias of TOKEN_ALIASES) {
+          const token = localStorage.getItem(alias);
+          if (token) {
+            return token;
+          }
+        }
+        return "";
+      }
+
+      function getPersonFile() {
+        return localStorage.getItem(STORAGE.file) || "";
+      }
+
+      function readStoredTools() {
+        const raw = localStorage.getItem(STORAGE.tools);
+        if (!raw) {
+          return [];
+        }
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Saved tools are not in the expected form.");
+        }
+        return parsed.filter((item) => item && typeof item.text === "string");
+      }
+
+      function writeStoredTools(tools) {
+        localStorage.setItem(STORAGE.tools, JSON.stringify(tools));
+      }
+
+      function setMessage(element, text, bad = false) {
+        element.textContent = text || "";
+        element.classList.toggle("bad", Boolean(text && bad));
+      }
+
+      function parseScalar(value) {
+        const trimmed = value.trim();
+        if (trimmed.length >= 2 && trimmed[0] === trimmed[trimmed.length - 1] &&
+            (trimmed[0] === '"' || trimmed[0] === "'")) {
+          if (trimmed[0] === '"') {
+            try {
+              return JSON.parse(trimmed);
+            } catch (error) {
+              throw new Error("A quoted value in the file could not be read.");
+            }
+          }
+          return trimmed.slice(1, -1);
+        }
+        return trimmed;
+      }
+
+      function parseFrontmatter(text) {
+        const normalized = String(text || "").replace(/\r\n?/g, "\n");
+        if (!normalized.startsWith("---\n")) {
+          throw new Error("This does not look like a complete file.");
+        }
+        const end = normalized.indexOf("\n---\n", 4);
+        if (end < 0) {
+          throw new Error("The opening details in this file are incomplete.");
+        }
+        const block = normalized.slice(4, end);
+        const fields = {};
+        let current = null;
+        for (const raw of block.split("\n")) {
+          if (!raw.trim() || raw.trimStart().startsWith("#")) {
+            continue;
+          }
+          if (/^\s{2}/.test(raw) && current && typeof fields[current] === "object") {
+            const split = raw.trim().indexOf(":");
+            if (split < 1) {
+              throw new Error("One of the file details could not be read.");
+            }
+            const key = raw.trim().slice(0, split).trim();
+            fields[current][key] = parseScalar(raw.trim().slice(split + 1));
+            continue;
+          }
+          const split = raw.indexOf(":");
+          if (split < 1 || /^\s/.test(raw)) {
+            throw new Error("One of the file details could not be read.");
+          }
+          const key = raw.slice(0, split).trim();
+          const value = raw.slice(split + 1).trim();
+          if (!value) {
+            fields[key] = {};
+            current = key;
+          } else {
+            fields[key] = parseScalar(value);
+            current = null;
+          }
+        }
+        return {
+          fields,
+          body: normalized.slice(end + 5),
+          normalized
+        };
+      }
+
+      function validatePersonFile(text) {
+        const parsed = parseFrontmatter(text);
+        for (const key of ["name", "description", "license", "compatibility", "metadata"]) {
+          if (!parsed.fields[key]) {
+            throw new Error("This file is missing one of its standard details.");
+          }
+        }
+        for (const key of ["id", "owner", "created", "updated"]) {
+          if (!parsed.fields.metadata[key]) {
+            throw new Error("This file is missing one of its standard details.");
+          }
+        }
+        if (!/^## Memory\s*$/m.test(parsed.body)) {
+          throw new Error("This file needs a Memory section.");
+        }
+        return parsed;
+      }
+
+      function stripOlderMemory(body) {
+        return body.replace(/\n## Memory \(older\)\s*\n[\s\S]*$/m, "").trim();
+      }
+
+      function buildSystemPrompt(fileText) {
+        const parsed = validatePersonFile(fileText);
+        return stripOlderMemory(parsed.body) +
+          "\n\nYou may call remember to save one durable fact immediately. " +
+          "Never save secrets or anything the person's private section says must stay private.";
+      }
+
+      function sectionText(body, heading) {
+        const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const match = body.match(new RegExp("^## " + escaped + "\\s*\\n([\\s\\S]*?)(?=^## |$)", "m"));
+        return match ? match[1].trim() : "";
+      }
+
+      function extractListedToolUrls(fileText) {
+        if (!fileText) {
+          return [];
+        }
+        const parsed = validatePersonFile(fileText);
+        const tools = sectionText(parsed.body, "My tools");
+        const found = tools.match(/https:\/\/[^\s)>]+/g) || [];
+        return [...new Set(found.map((url) => url.replace(/[.,;]+$/, "")))];
+      }
+
+      function snakeName(value) {
+        return String(value || "skill")
+          .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+          .replace(/[^A-Za-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "")
+          .toLowerCase()
+          .slice(0, 64) || "skill";
+      }
+
+      function extractJsonParameters(body) {
+        const start = body.search(/^## (?:What it needs|Parameters)\s*$/m);
+        if (start < 0) {
+          return {
+            type: "object",
+            properties: {
+              request: {
+                type: "string",
+                description: "What the person wants done."
+              }
+            },
+            required: ["request"]
+          };
+        }
+        const rest = body.slice(start);
+        const match = rest.match(/(`{3,})json[^\n]*\n([\s\S]*?)\n\1/);
+        if (!match) {
+          return { type: "object", properties: {}, required: [] };
+        }
+        const parsed = JSON.parse(match[2]);
+        if (!parsed || parsed.type !== "object") {
+          throw new Error("The tool's needs must be described as an object.");
+        }
+        return parsed;
+      }
+
+      function parseToolSkill(text, source = "") {
+        const parsed = parseFrontmatter(text);
+        if (!parsed.fields.name || !parsed.fields.description) {
+          throw new Error("This tool file is missing a name or description.");
+        }
+        const metadata = parsed.fields.metadata && typeof parsed.fields.metadata === "object"
+          ? parsed.fields.metadata
+          : {};
+        const toolName = metadata["tool-name"] || snakeName(parsed.fields.name);
+        if (!/^[A-Za-z0-9_-]{1,64}$/.test(toolName)) {
+          throw new Error("This tool's name cannot be used here.");
+        }
+        return {
+          name: String(parsed.fields.name),
+          description: String(parsed.fields.description),
+          toolName,
+          parameters: extractJsonParameters(parsed.body),
+          body: parsed.body,
+          text: parsed.normalized,
+          source
+        };
+      }
+
+      function normalizeGithubUrl(value) {
+        let input;
+        try {
+          input = new URL(String(value || "").trim());
+        } catch (error) {
+          throw new Error("Enter a complete GitHub file link.");
+        }
+        if (input.protocol !== "https:") {
+          throw new Error("The link must start with HTTPS.");
+        }
+        if (input.hostname === "api.github.com") {
+          if (!/^\/repos\/[^/]+\/[^/]+\/contents\/.+/.test(input.pathname)) {
+            throw new Error("That GitHub link does not point to a file.");
+          }
+          return input.href;
+        }
+        let parts = input.pathname.split("/").filter(Boolean);
+        let owner;
+        let repo;
+        let ref;
+        let path;
+        if (input.hostname === "raw.githubusercontent.com") {
+          [owner, repo, ref, ...path] = parts;
+        } else if (input.hostname === "github.com" && parts[2] === "blob") {
+          owner = parts[0];
+          repo = parts[1];
+          ref = parts[3];
+          path = parts.slice(4);
+        } else if (input.hostname.endsWith(".github.io")) {
+          owner = input.hostname.slice(0, -".github.io".length);
+          repo = parts[0];
+          path = parts.slice(1);
+        } else {
+          throw new Error("For privacy, links must point to a file on GitHub.");
+        }
+        if (!owner || !repo || !path.length || (input.hostname !== owner + ".github.io" && !ref)) {
+          throw new Error("That GitHub link does not point to a file.");
+        }
+        const apiUrl = GITHUB_API + "/repos/" + encodeURIComponent(owner) + "/" +
+          encodeURIComponent(repo) + "/contents/" +
+          path.map(encodeURIComponent).join("/");
+        return ref ? apiUrl + "?ref=" + encodeURIComponent(ref) : apiUrl;
+      }
+
+      function validateCopilotEndpoint(value) {
+        const url = new URL(value || DEFAULT_COPILOT_ENDPOINT);
+        const allowedHost = url.hostname === "api.individual.githubcopilot.com" ||
+          url.hostname.endsWith(".githubcopilot.com");
+        if (url.protocol !== "https:" || !allowedHost || url.username || url.password) {
+          throw new Error("The answer service returned an unsafe address.");
+        }
+        return url.href.replace(/\/+$/, "");
+      }
+
+      function isAllowedRequest(url) {
+        const parsed = new URL(url instanceof Request ? url.url : String(url));
+        if (parsed.origin === AUTH_WORKER || parsed.origin === GITHUB_API) {
+          return true;
+        }
+        const pyodide = new URL(PYODIDE_ROOT);
+        if (parsed.origin === pyodide.origin && parsed.pathname.startsWith(pyodide.pathname)) {
+          return true;
+        }
+        if (copilotSession) {
+          const endpoint = new URL(copilotSession.endpoint);
+          return parsed.origin === endpoint.origin &&
+            parsed.pathname.startsWith(endpoint.pathname.replace(/\/+$/, "") + "/");
+        }
+        return parsed.origin === new URL(DEFAULT_COPILOT_ENDPOINT).origin;
+      }
+
+      async function allowedFetch(url, options = {}) {
+        if (!isAllowedRequest(url)) {
+          throw new Error("This page blocked a request outside its allowed services.");
+        }
+        return nativeFetch(url, options);
+      }
+
+      globalThis.fetch = (input, options) => {
+        if (!isAllowedRequest(input)) {
+          return Promise.reject(new Error("This page blocked a request outside its allowed services."));
+        }
+        return nativeFetch(input, options);
+      };
+
+      const nativeXhrOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+        if (!isAllowedRequest(url)) {
+          throw new Error("This page blocked a request outside its allowed services.");
+        }
+        return nativeXhrOpen.call(this, method, url, ...rest);
+      };
+
+      function installNetworkPolicy() {
+        const policy = document.createElement("meta");
+        policy.httpEquiv = "Content-Security-Policy";
+        const copilotWildcard = "https:" + "//*.githubcopilot.com";
+        const pyodideOrigin = new URL(PYODIDE_ROOT).origin;
+        policy.content = [
+          "default-src 'none'",
+          "script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' " + pyodideOrigin,
+          "style-src 'unsafe-inline'",
+          "connect-src " + [AUTH_WORKER, GITHUB_API, DEFAULT_COPILOT_ENDPOINT,
+            copilotWildcard, pyodideOrigin].join(" "),
+          "img-src data: blob:",
+          "media-src 'none'",
+          "font-src 'none'",
+          "object-src 'none'",
+          "worker-src blob:",
+          "child-src blob:",
+          "form-action 'none'",
+          "base-uri 'none'",
+          "fra" + "me-src 'none'"
+        ].join("; ");
+        document.head.prepend(policy);
+      }
+
+      installNetworkPolicy();
+
+      async function loadGithubText(value) {
+        const url = normalizeGithubUrl(value);
+        const headers = { Accept: "application/vnd.github.raw+json" };
+        const token = getGithubToken();
+        if (token) {
+          headers.Authorization = "Bearer " + token;
+        }
+        const response = await allowedFetch(url, { headers });
+        if (!response.ok) {
+          throw new Error("GitHub could not load that file (" + response.status + ").");
+        }
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await response.json();
+          if (data && typeof data.content === "string") {
+            const binary = atob(data.content.replace(/\s/g, ""));
+            return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
+          }
+          throw new Error("GitHub returned an unexpected file response.");
+        }
+        return response.text();
+      }
+
+      function updateReadyState() {
+        const hasFile = Boolean(getPersonFile());
+        const signedIn = Boolean(getGithubToken());
+        els.fileState.textContent = hasFile ? "Your file is ready" : "No file yet";
+        els.readyDot.classList.toggle("good", hasFile && signedIn);
+        els.signInShortcut.textContent = signedIn ? "Signed in" : "Sign in with GitHub";
+        els.signInShortcut.disabled = signedIn;
+        els.fileWork.hidden = !hasFile;
+        if (hasFile && document.activeElement !== els.fileEditor) {
+          els.fileEditor.value = getPersonFile();
+        }
+        els.welcome.hidden = hasFile || conversation.length > 0;
+      }
+
+      function openSheet(name) {
+        const sheet = sheets[name];
+        if (!sheet) {
+          return;
+        }
+        for (const item of Object.values(sheets)) {
+          item.hidden = item !== sheet;
+        }
+        els.shade.hidden = false;
+        if (name === "tools") {
+          renderTools();
+        }
+        requestAnimationFrame(() => {
+          sheet.querySelector("button, input, textarea, a")?.focus();
+        });
+      }
+
+      function closeSheets() {
+        clearTimeout(loginTimer);
+        loginTimer = null;
+        els.shade.hidden = true;
+        for (const sheet of Object.values(sheets)) {
+          sheet.hidden = true;
+        }
+        els.message.focus();
+      }
+
+      function addTurn(role, content, extraClass = "") {
+        els.welcome.hidden = true;
+        const row = document.createElement("div");
+        row.className = "turn " + role + (extraClass ? " " + extraClass : "");
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.textContent = content;
+        row.appendChild(bubble);
+        els.transcript.appendChild(row);
+        els.transcript.scrollTop = els.transcript.scrollHeight;
+        return row;
+      }
+
+      function addSystemNotice(content) {
+        return addTurn("system", content);
+      }
+
+      async function setPersonFile(text, source = "device") {
+        const parsed = validatePersonFile(text);
+        localStorage.setItem(STORAGE.file, parsed.normalized);
+        els.fileEditor.value = parsed.normalized;
+        els.fileWork.hidden = false;
+        setMessage(els.fileMessage, "Your file is ready.");
+        updateReadyState();
+        const issues = await syncListedTools();
+        if (issues.length) {
+          setMessage(els.fileMessage, issues.join(" "), true);
+        } else if (source === "link") {
+          setMessage(els.fileMessage, "Your file and its listed tools are ready.");
+        }
+        return parsed;
+      }
+
+      function saveEditorFile() {
+        const current = els.fileEditor.value.replace(/\r\n?/g, "\n");
+        localStorage.setItem(STORAGE.file, current);
+        setMessage(els.fileMessage, "Saved on this device.");
+        updateReadyState();
+      }
+
+      async function addToolText(text, source, sourceKind = "manual") {
+        const parsed = parseToolSkill(text, source);
+        if (parsed.toolName === "remember") {
+          throw new Error("That name is reserved for saving memories.");
+        }
+        const tools = readStoredTools();
+        const record = {
+          name: parsed.name,
+          toolName: parsed.toolName,
+          description: parsed.description,
+          text: parsed.text,
+          source: source || parsed.name + "/SKILL.md",
+          sourceKind,
+          addedAt: new Date().toISOString()
+        };
+        const sameSource = tools.findIndex((item) =>
+          item.sourceKind === sourceKind && item.source === record.source);
+        const sameName = tools.findIndex((item) => item.toolName === record.toolName);
+        const index = sameSource >= 0 ? sameSource : sameName;
+        if (index >= 0) {
+          tools[index] = record;
+        } else {
+          tools.push(record);
+        }
+        writeStoredTools(tools);
+        renderTools();
+        return parsed;
+      }
+
+      async function syncListedTools() {
+        const fileText = getPersonFile();
+        if (!fileText) {
+          return [];
+        }
+        let urls;
+        try {
+          urls = extractListedToolUrls(fileText);
+        } catch (error) {
+          return [error.message];
+        }
+        let tools;
+        try {
+          tools = readStoredTools();
+        } catch (error) {
+          return [error.message];
+        }
+        tools = tools.filter((item) => item.sourceKind !== "listed" || urls.includes(item.source));
+        writeStoredTools(tools);
+        const issues = [];
+        for (const url of urls) {
+          const current = readStoredTools();
+          if (current.some((item) => item.sourceKind === "listed" && item.source === url)) {
+            continue;
+          }
+          try {
+            const text = await loadGithubText(url);
+            await addToolText(text, url, "listed");
+          } catch (error) {
+            issues.push("A listed tool could not be loaded: " + error.message);
+          }
+        }
+        renderTools();
+        return issues;
+      }
+
+      function renderTools() {
+        els.toolList.replaceChildren();
+        let tools = [];
+        try {
+          tools = readStoredTools();
+          setMessage(els.toolMessage, "");
+        } catch (error) {
+          setMessage(els.toolMessage, error.message, true);
+        }
+        els.noTools.hidden = tools.length > 0;
+        tools.forEach((tool, index) => {
+          let parsed;
+          try {
+            parsed = parseToolSkill(tool.text, tool.source);
+          } catch (error) {
+            parsed = {
+              name: tool.name || "Unreadable tool",
+              description: error.message
+            };
+          }
+          const card = document.createElement("div");
+          card.className = "tool-card";
+          const name = document.createElement("strong");
+          name.textContent = parsed.name;
+          const detail = document.createElement("small");
+          detail.textContent = parsed.description;
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.textContent = "Remove";
+          remove.setAttribute("aria-label", "Remove " + parsed.name);
+          remove.addEventListener("click", () => {
+            const latest = readStoredTools();
+            latest.splice(index, 1);
+            writeStoredTools(latest);
+            renderTools();
+          });
+          card.append(name, detail, remove);
+          els.toolList.appendChild(card);
+        });
+      }
+
+      function buildToolCatalog() {
+        const definitions = [MEMORY_TOOL];
+        const byName = new Map();
+        for (const stored of readStoredTools()) {
+          const parsed = parseToolSkill(stored.text, stored.source);
+          if (parsed.toolName === "remember") {
+            continue;
+          }
+          definitions.push({
+            type: "function",
+            function: {
+              name: parsed.toolName,
+              description: parsed.description,
+              parameters: parsed.parameters
+            }
+          });
+          byName.set(parsed.toolName, parsed);
+        }
+        return { definitions, byName };
+      }
+
+      async function sha256(text) {
+        const bytes = new TextEncoder().encode(text);
+        const digest = await crypto.subtle.digest("SHA-256", bytes);
+        return [...new Uint8Array(digest)]
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      }
+
+      async function extractAgentCode(skillText) {
+        const match = skillText.match(
+          /<!-- agent sha256=([0-9a-f]{64}) -->\s*\n(`{3,})python[^\n]*\n([\s\S]*?)\n\2\s*\n<!-- \/agent -->/
+        );
+        if (!match) {
+          return null;
+        }
+        const expected = match[1];
+        const withoutTrailing = match[3];
+        for (const candidate of [withoutTrailing + "\n", withoutTrailing]) {
+          if (await sha256(candidate) === expected) {
+            return candidate;
+          }
+        }
+        throw new Error("This tool's code does not match its saved fingerprint.");
+      }
+
+      function rejectToolRequests(message) {
+        for (const request of toolRequests.values()) {
+          request.reject(new Error(message));
+        }
+        toolRequests.clear();
+      }
+
+      function ensureToolWorker() {
+        if (toolWorker) {
+          return toolWorker;
+        }
+        const runSource = `
+_module, _instance = load_agent("/agent.py")
+_arguments = _json.loads(_browser_args_json)
+_result = _instance.perform(**_arguments)
+_json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) else str(_result if _result is not None else "")
+`;
+        const workerSource = [
+          "const ROOT = " + JSON.stringify(PYODIDE_ROOT) + ";",
+          "const SHIM = " + JSON.stringify(SHIM_SOURCE) + ";",
+          "const RUN = " + JSON.stringify(runSource) + ";",
+          "let ready;",
+          "async function runtime() {",
+          "  if (!ready) ready = (async () => {",
+          "    importScripts(ROOT + 'pyodide.js');",
+          "    const py = await loadPyodide({ indexURL: ROOT });",
+          "    await py.runPythonAsync(SHIM);",
+          "    return py;",
+          "  })();",
+          "  return ready;",
+          "}",
+          "self.onmessage = async ({ data }) => {",
+          "  try {",
+          "    const py = await runtime();",
+          "    py.FS.writeFile('/agent.py', data.code, { encoding: 'utf8' });",
+          "    py.globals.set('_browser_args_json', JSON.stringify(data.args));",
+          "    const result = await py.runPythonAsync(RUN);",
+          "    py.globals.delete('_browser_args_json');",
+          "    self.postMessage({ id: data.id, result });",
+          "  } catch (error) {",
+          "    self.postMessage({ id: data.id, error: error.message || String(error) });",
+          "  }",
+          "};"
+        ].join("\n");
+        const url = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
+        toolWorker = new Worker(url);
+        URL.revokeObjectURL(url);
+        toolWorker.onmessage = ({ data }) => {
+          const request = toolRequests.get(data.id);
+          if (!request) {
+            return;
+          }
+          toolRequests.delete(data.id);
+          if (data.error) {
+            request.reject(new Error(data.error));
+          } else {
+            request.resolve(data.result);
+          }
+        };
+        toolWorker.onerror = (event) => {
+          rejectToolRequests("This tool could not start: " + event.message);
+          toolWorker?.terminate();
+          toolWorker = null;
+        };
+        return toolWorker;
+      }
+
+      async function runPythonTool(skill, args) {
+        const code = await extractAgentCode(skill.text);
+        if (!code) {
+          return skill.body.trim();
+        }
+        const id = makeId();
+        return new Promise((resolve, reject) => {
+          toolRequests.set(id, { resolve, reject });
+          ensureToolWorker().postMessage({ id, code, args });
+        });
+      }
+
+      function localDate() {
+        const now = new Date();
+        return [
+          now.getFullYear(),
+          String(now.getMonth() + 1).padStart(2, "0"),
+          String(now.getDate()).padStart(2, "0")
+        ].join("-");
+      }
+
+      function updateUpdatedDate(text, date) {
+        const end = text.indexOf("\n---\n", 4);
+        if (end < 0) {
+          throw new Error("The file details are incomplete.");
+        }
+        const head = text.slice(0, end);
+        if (!/^  updated:/m.test(head)) {
+          throw new Error("The file has no updated date.");
+        }
+        const changed = head.replace(/^  updated:\s*.*$/m, '  updated: "' + date + '"');
+        return changed + text.slice(end);
+      }
+
+      function findSection(lines, heading) {
+        const start = lines.findIndex((line) => line.trim() === "## " + heading);
+        if (start < 0) {
+          return null;
+        }
+        let end = lines.length;
+        for (let index = start + 1; index < lines.length; index += 1) {
+          if (/^## /.test(lines[index])) {
+            end = index;
+            break;
+          }
+        }
+        return { start, end, content: lines.slice(start + 1, end) };
+      }
+
+      function memoryContent(original, bullets) {
+        const firstBullet = original.findIndex((line) => /^- /.test(line));
+        const intro = (firstBullet >= 0 ? original.slice(0, firstBullet) : original.slice());
+        while (intro.length && !intro[intro.length - 1].trim()) {
+          intro.pop();
+        }
+        const result = intro.slice();
+        result.push("");
+        result.push(...bullets);
+        result.push("");
+        return result;
+      }
+
+      function appendMemory(fact) {
+        const clean = String(fact || "").replace(/\s+/g, " ").replace(/^-+\s*/, "").trim();
+        if (!clean) {
+          throw new Error("There is no memory to save.");
+        }
+        const date = localDate();
+        let text = validatePersonFile(getPersonFile()).normalized;
+        text = updateUpdatedDate(text, date);
+        const lines = text.split("\n");
+        let current = findSection(lines, "Memory");
+        if (!current) {
+          throw new Error("The file has no Memory section.");
+        }
+        const existing = current.content
+          .filter((line) => /^- /.test(line))
+          .filter((line) => line.trim() !== "- (nothing yet)");
+        const all = ["- " + date + " " + clean, ...existing];
+        const newest = all.slice(0, 40);
+        const overflow = all.slice(40);
+        lines.splice(
+          current.start + 1,
+          current.end - current.start - 1,
+          ...memoryContent(current.content, newest)
+        );
+
+        let older = findSection(lines, "Memory (older)");
+        if (!older) {
+          while (lines.length && !lines[lines.length - 1].trim()) {
+            lines.pop();
+          }
+          lines.push("", "## Memory (older)", "", "- (nothing yet)", "");
+          older = findSection(lines, "Memory (older)");
+        }
+        const oldLines = older.content
+          .filter((line) => /^- /.test(line))
+          .filter((line) => line.trim() !== "- (nothing yet)");
+        const combinedOlder = [...overflow, ...oldLines];
+        const olderBullets = combinedOlder.length ? combinedOlder : ["- (nothing yet)"];
+        lines.splice(
+          older.start + 1,
+          older.end - older.start - 1,
+          ...memoryContent(older.content, olderBullets)
+        );
+
+        const updated = lines.join("\n");
+        localStorage.setItem(STORAGE.file, updated);
+        els.fileEditor.value = updated;
+        setMessage(els.fileMessage, "Saved a new memory.");
+        updateReadyState();
+        return "Saved in the person's file: " + clean;
+      }
+
+      function parseToolArguments(value) {
+        if (value === undefined || value === null || value === "") {
+          return {};
+        }
+        const parsed = typeof value === "string" ? JSON.parse(value) : value;
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+          throw new Error("The tool received input in an unreadable form.");
+        }
+        return parsed;
+      }
+
+      function findLoadedTool(byName, calledName) {
+        if (byName.has(calledName)) {
+          return byName.get(calledName);
+        }
+        const wanted = snakeName(calledName);
+        for (const [name, skill] of byName.entries()) {
+          if (snakeName(name) === wanted || snakeName(skill.name) === wanted) {
+            return skill;
+          }
+        }
+        return null;
+      }
+
+      async function executeToolCalls(toolCalls, catalog) {
+        const messages = [];
+        const logs = [];
+        for (const call of toolCalls) {
+          const name = call?.function?.name || "";
+          const id = call?.id || makeId();
+          let result;
+          try {
+            const args = parseToolArguments(call?.function?.arguments);
+            if (name === "remember") {
+              result = appendMemory(args.fact ?? args.memory ?? args.text);
+            } else {
+              const skill = findLoadedTool(catalog.byName, name);
+              if (!skill) {
+                throw new Error("The requested tool is not loaded.");
+              }
+              result = await runPythonTool(skill, args);
+            }
+            logs.push("[" + name + "] " + String(result));
+          } catch (error) {
+            result = "Error: " + error.message;
+            logs.push("[" + (name || "?") + "] " + result);
+          }
+          messages.push({
+            tool_call_id: id,
+            role: "tool",
+            name,
+            content: String(result)
+          });
+        }
+        return { messages, logs };
+      }
+
+      function githubAuthorization(token) {
+        return (token.startsWith("ghu_") ? "token " : "Bearer ") + token;
+      }
+
+      async function exchangeCopilotToken(force = false) {
+        if (!force && copilotSession && Date.now() < copilotSession.expiresAt - 60000) {
+          return copilotSession;
+        }
+        const githubToken = getGithubToken();
+        if (!githubToken) {
+          throw new Error("Sign in with GitHub to chat.");
+        }
+        const headers = {
+          Authorization: githubAuthorization(githubToken),
+          Accept: "application/json",
+          "Copilot-Integration-Id": "vscode-chat"
+        };
+        let response;
+        try {
+          response = await allowedFetch(COPILOT_TOKEN_URL, { headers });
+        } catch (error) {
+          response = null;
+        }
+        if (!response || !response.ok) {
+          response = await allowedFetch(AUTH_WORKER + "/api/copilot/token", {
+            headers: {
+              Authorization: headers.Authorization,
+              Accept: headers.Accept
+            }
+          });
+        }
+        if (!response.ok) {
+          if (response.status === 403) {
+            throw new Error("This GitHub account does not have Copilot access.");
+          }
+          throw new Error("GitHub sign-in could not be completed (" + response.status + ").");
+        }
+        const data = await response.json();
+        if (!data.token) {
+          throw new Error("GitHub did not return access to the answer service.");
+        }
+        let expiresAt = Number(data.expires_at || 0);
+        if (!expiresAt) {
+          expiresAt = Date.now() + 10 * 60 * 1000;
+        } else if (expiresAt < 1000000000000) {
+          expiresAt *= 1000;
+        }
+        copilotSession = {
+          token: data.token,
+          endpoint: validateCopilotEndpoint(data.endpoints?.api || DEFAULT_COPILOT_ENDPOINT),
+          expiresAt
+        };
+        return copilotSession;
+      }
+
+      function completionHeaders(token) {
+        return {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/json",
+          "Editor-Version": "vscode/1.95.0",
+          "Copilot-Integration-Id": "vscode-chat"
+        };
+      }
+
+      async function callCompletion(messages, tools, retry = true) {
+        let session = await exchangeCopilotToken();
+        const model = localStorage.getItem(STORAGE.model) || DEFAULT_MODEL;
+        const body = { model, messages };
+        if (tools && tools.length) {
+          body.tools = tools;
+          if (!/\bo1\b/i.test(model)) {
+            body.tool_choice = "auto";
+          }
+        }
+        let response = await allowedFetch(session.endpoint + "/chat/completions", {
+          method: "POST",
+          headers: completionHeaders(session.token),
+          body: JSON.stringify(body)
+        });
+        if (response.status === 401 && retry) {
+          copilotSession = null;
+          session = await exchangeCopilotToken(true);
+          response = await allowedFetch(session.endpoint + "/chat/completions", {
+            method: "POST",
+            headers: completionHeaders(session.token),
+            body: JSON.stringify(body)
+          });
+        }
+        if (!response.ok) {
+          const detail = (await response.text()).slice(0, 240);
+          throw new Error("The answer service returned " + response.status +
+            (detail ? ": " + detail : "."));
+        }
+        const data = await response.json();
+        if (!Array.isArray(data.choices) || !data.choices.length) {
+          throw new Error("The answer service returned no answer.");
+        }
+        return { data, model: body.model };
+      }
+
+      async function fetchModels() {
+        const session = await exchangeCopilotToken();
+        const response = await allowedFetch(session.endpoint + "/models", {
+          headers: completionHeaders(session.token)
+        });
+        if (!response.ok) {
+          throw new Error("The available choices could not be loaded (" + response.status + ").");
+        }
+        const data = await response.json();
+        const source = Array.isArray(data) ? data : data.data || data.models || [];
+        const models = source
+          .map((item) => ({
+            id: item.id || item.model || "",
+            name: item.name || item.id || item.model || "",
+            available: item.model_picker_enabled !== false &&
+              !["disabled", "blocked", "denied", "unconfigured", "not_configured"]
+                .includes(String(item.policy?.state || "").toLowerCase())
+          }))
+          .filter((item) => item.id && item.id.toLowerCase() !== "trajectory-compaction");
+        if (models.length) {
+          availableModels = models;
+        }
+        return availableModels;
+      }
+
+      function validateHistory(value) {
+        if (value === undefined || value === null) {
+          return [];
+        }
+        if (!Array.isArray(value)) {
+          throw new Error("conversation_history must be an array");
+        }
+        return value.map((message, index) => {
+          if (!message || typeof message !== "object") {
+            throw new Error("conversation_history[" + index + "] must be an object");
+          }
+          if (!["user", "assistant", "tool"].includes(message.role)) {
+            throw new Error("conversation_history[" + index + "].role is invalid");
+          }
+          const hasToolCalls = message.role === "assistant" && Array.isArray(message.tool_calls);
+          if (typeof message.content !== "string" && !(hasToolCalls && message.content === null)) {
+            throw new Error("conversation_history[" + index + "].content must be a string");
+          }
+          const clean = { role: message.role, content: message.content };
+          if (message.name) {
+            clean.name = message.name;
+          }
+          if (hasToolCalls) {
+            clean.tool_calls = message.tool_calls;
+          }
+          if (message.role === "tool") {
+            if (typeof message.tool_call_id !== "string" || !message.tool_call_id) {
+              throw new Error("conversation_history[" + index + "].tool_call_id is required");
+            }
+            clean.tool_call_id = message.tool_call_id;
+          }
+          return clean;
+        });
+      }
+
+      async function chat(body) {
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+          return { status: 400, json: { error: "Request body must be a JSON object" } };
+        }
+        if (typeof body.user_input !== "string") {
+          return { status: 400, json: { error: "user_input must be a string" } };
+        }
+        const userInput = body.user_input.trim();
+        if (!userInput) {
+          return { status: 400, json: { error: "user_input is required" } };
+        }
+        if (!getPersonFile()) {
+          return { status: 400, json: { error: "Add your file before chatting." } };
+        }
+
+        let history;
+        try {
+          history = validateHistory(body.conversation_history);
+        } catch (error) {
+          return { status: 400, json: { error: error.message } };
+        }
+
+        const currentSession = body.session_id || makeId();
+        const listedIssues = await syncListedTools();
+        const catalog = buildToolCatalog();
+        const messages = [
+          { role: "system", content: buildSystemPrompt(getPersonFile()) },
+          ...history,
+          { role: "user", content: userInput }
+        ];
+        const logs = listedIssues.slice();
+        let reply = "";
+        let respondedModel = localStorage.getItem(STORAGE.model) || DEFAULT_MODEL;
+        let lastMessage = null;
+
+        for (let round = 0; round < 3; round += 1) {
+          const completion = await callCompletion(messages, catalog.definitions);
+          respondedModel = completion.model;
+          const choice = completion.data.choices[0] || {};
+          const message = choice.message || { role: "assistant", content: "" };
+          lastMessage = message;
+          messages.push(message);
+          if (!Array.isArray(message.tool_calls) || !message.tool_calls.length) {
+            reply = message.content || "";
+            break;
+          }
+          const results = await executeToolCalls(message.tool_calls, catalog);
+          logs.push(...results.logs);
+          messages.push(...results.messages);
+        }
+
+        if (!reply && lastMessage?.tool_calls?.length) {
+          try {
+            const final = await callCompletion(messages, null);
+            respondedModel = final.model;
+            reply = final.data.choices[0]?.message?.content || "";
+          } catch (error) {
+            logs.push("[final] " + error.message);
+          }
+        }
+        if (!reply) {
+          reply = "I could not finish that in the available steps. " +
+            "Try breaking it into a smaller request.";
+        }
+
+        return {
+          status: 200,
+          json: {
+            response: reply,
+            agent_logs: logs.join("\n"),
+            session_id: currentSession,
+            model: respondedModel
+          }
+        };
+      }
+
+      async function startLogin() {
+        if (pendingLogin && Date.now() < pendingLogin.expiresAt) {
+          return {
+            user_code: pendingLogin.userCode,
+            verification_uri: pendingLogin.verificationUri
+          };
+        }
+        let response;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          response = await allowedFetch(AUTH_WORKER + "/api/auth/device", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+          });
+          if (![429, 502, 503].includes(response.status) || attempt === 1) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        if (!response.ok) {
+          throw new Error("The sign-in service is busy (" + response.status + "). Try again shortly.");
+        }
+        const data = await response.json();
+        if (!data.device_code || !data.user_code || !data.verification_uri) {
+          throw new Error("The sign-in service returned an incomplete response.");
+        }
+        pendingLogin = {
+          deviceCode: data.device_code,
+          userCode: data.user_code,
+          verificationUri: data.verification_uri || "",
+          interval: Number(data.interval || 5),
+          expiresAt: Date.now() + Number(data.expires_in || 900) * 1000,
+          lastPoll: 0
+        };
+        return {
+          user_code: pendingLogin.userCode,
+          verification_uri: pendingLogin.verificationUri
+        };
+      }
+
+      async function pollLogin() {
+        if (!pendingLogin) {
+          return { status: "expired", error: "No sign-in is in progress." };
+        }
+        if (Date.now() >= pendingLogin.expiresAt) {
+          pendingLogin = null;
+          return { status: "expired", error: "The sign-in code expired." };
+        }
+        const wait = pendingLogin.interval * 1000 - (Date.now() - pendingLogin.lastPoll);
+        if (wait > 0) {
+          return { status: "pending" };
+        }
+        pendingLogin.lastPoll = Date.now();
+        const response = await allowedFetch(AUTH_WORKER + "/api/auth/device/poll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_code: pendingLogin.deviceCode })
+        });
+        if ([429, 502, 503].includes(response.status)) {
+          pendingLogin.interval = Math.min(pendingLogin.interval + 5, 30);
+          return { status: "pending" };
+        }
+        const data = await response.json();
+        if (data.access_token) {
+          localStorage.setItem(STORAGE.token, data.access_token);
+          pendingLogin = null;
+          copilotSession = null;
+          updateReadyState();
+          return { status: "ok", message: "Signed in with GitHub." };
+        }
+        if (data.error === "slow_down") {
+          pendingLogin.interval += 5;
+          return { status: "pending" };
+        }
+        if (!data.error || data.error === "authorization_pending") {
+          return { status: "pending" };
+        }
+        if (data.error === "expired_token") {
+          pendingLogin = null;
+          return { status: "expired", error: "The sign-in code expired." };
+        }
+        pendingLogin = null;
+        return { status: "error", error: "Sign-in failed: " + data.error };
+      }
+
+      function healthEnvelope(publicOnly = false) {
+        const tools = (() => {
+          try {
+            return buildToolCatalog().definitions
+              .map((item) => item.function.name)
+              .filter((name) => name !== "remember");
+          } catch (error) {
+            return [];
+          }
+        })();
+        if (publicOnly) {
+          return { status: "ok", version: VERSION };
+        }
+        const signedIn = Boolean(getGithubToken());
+        return {
+          status: signedIn ? "ok" : "unauthenticated",
+          version: VERSION,
+          model: localStorage.getItem(STORAGE.model) || DEFAULT_MODEL,
+          soul: getPersonFile() ? "loaded" : "missing",
+          agents: tools,
+          quarantined: [],
+          copilot: signedIn ? (copilotSession ? "\u2713" : "pending") : undefined
+        };
+      }
+
+      async function dispatch(method, path, body) {
+        const verb = String(method || "GET").toUpperCase();
+        const cleanPath = "/" + String(path || "/").split("?")[0].replace(/^\/+/, "");
+        try {
+          if (verb === "POST" && cleanPath === "/chat") {
+            return await chat(body);
+          }
+          if (verb === "POST" && cleanPath === "/file/load") {
+            if (!body || typeof body.url !== "string") {
+              return { status: 400, json: { error: "A GitHub link is required." } };
+            }
+            return { status: 200, json: { content: await loadGithubText(body.url) } };
+          }
+          if (verb === "POST" && cleanPath === "/tools/load") {
+            if (!body || typeof body.url !== "string") {
+              return { status: 400, json: { error: "A GitHub link is required." } };
+            }
+            return { status: 200, json: { content: await loadGithubText(body.url) } };
+          }
+          if (verb === "GET" && cleanPath === "/health") {
+            return { status: 200, json: healthEnvelope(false) };
+          }
+          if (verb === "GET" && cleanPath === "/health/public") {
+            return { status: 200, json: healthEnvelope(true) };
+          }
+          if (verb === "GET" && cleanPath === "/agents") {
+            const files = readStoredTools().map((item) => {
+              const skill = parseToolSkill(item.text, item.source);
+              return {
+                filename: skill.name + "/SKILL.md",
+                agents: [skill.toolName]
+              };
+            });
+            return { status: 200, json: { files } };
+          }
+          if (verb === "GET" && cleanPath === "/models") {
+            const models = getGithubToken() ? await fetchModels() : availableModels;
+            return {
+              status: 200,
+              json: {
+                models,
+                current: localStorage.getItem(STORAGE.model) || DEFAULT_MODEL
+              }
+            };
+          }
+          if (verb === "POST" && cleanPath === "/login") {
+            return { status: 200, json: await startLogin() };
+          }
+          if (verb === "POST" && cleanPath === "/login/poll") {
+            return { status: 200, json: await pollLogin() };
+          }
+          if (verb === "GET" && cleanPath === "/login/status") {
+            if (pendingLogin && Date.now() < pendingLogin.expiresAt) {
+              return {
+                status: 200,
+                json: {
+                  pending: true,
+                  user_code: pendingLogin.userCode,
+                  verification_uri: pendingLogin.verificationUri,
+                  expires_in: Math.max(0, Math.floor((pendingLogin.expiresAt - Date.now()) / 1000))
+                }
+              };
+            }
+            return {
+              status: 200,
+              json: { pending: false, authenticated: Boolean(getGithubToken()) }
+            };
+          }
+          return { status: 404, json: { error: "not found", path: cleanPath } };
+        } catch (error) {
+          return { status: 500, json: { error: error.message } };
+        }
+      }
+
+      window.vbrainstem = Object.freeze({ dispatch });
+
+      async function sendMessage(event) {
+        event.preventDefault();
+        const text = els.message.value.trim();
+        if (!text || els.send.disabled) {
+          return;
+        }
+        if (!getPersonFile()) {
+          openSheet("file");
+          setMessage(els.fileMessage, "Add your file before chatting.", true);
+          return;
+        }
+        if (!getGithubToken()) {
+          openSheet("signin");
+          return;
+        }
+
+        const prior = conversation.slice();
+        conversation.push({ role: "user", content: text });
+        addTurn("user", text);
+        els.message.value = "";
+        resizeComposer();
+        els.send.disabled = true;
+        const busy = addTurn("assistant", "Thinking...", "busy");
+        try {
+          const result = await dispatch("POST", "/chat", {
+            user_input: text,
+            conversation_history: prior,
+            session_id: sessionId || undefined
+          });
+          busy.remove();
+          if (result.status !== 200 || result.json.error) {
+            addSystemNotice(result.json.error || "Something went wrong.");
+            return;
+          }
+          sessionId = result.json.session_id;
+          conversation.push({ role: "assistant", content: result.json.response });
+          addTurn("assistant", result.json.response);
+        } catch (error) {
+          busy.remove();
+          addSystemNotice(error.message);
+        } finally {
+          els.send.disabled = false;
+          els.message.focus();
+        }
+      }
+
+      function resizeComposer() {
+        els.message.style.height = "auto";
+        els.message.style.height = Math.min(els.message.scrollHeight, 150) + "px";
+      }
+
+      function downloadCurrentFile() {
+        const content = els.fileEditor.value || getPersonFile();
+        if (!content) {
+          setMessage(els.fileMessage, "There is no file to export.", true);
+          return;
+        }
+        const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "vbrainstem-SKILL.md";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 0);
+        setMessage(els.fileMessage, "Exported the current file.");
+      }
+
+      async function shareCurrentFile() {
+        const content = els.fileEditor.value || getPersonFile();
+        const file = new File([content], "vbrainstem-SKILL.md", { type: "text/markdown" });
+        if (!navigator.share || (navigator.canShare && !navigator.canShare({ files: [file] }))) {
+          throw new Error("Sharing files is not available in this browser.");
+        }
+        await navigator.share({ files: [file], title: "My vbrainstem" });
+      }
+
+      async function beginSignIn() {
+        els.startSignIn.disabled = true;
+        setMessage(els.signInMessage, "Starting...");
+        const result = await dispatch("POST", "/login", {});
+        els.startSignIn.disabled = false;
+        if (result.status !== 200 || result.json.error) {
+          setMessage(els.signInMessage, result.json.error || "Sign-in could not start.", true);
+          return;
+        }
+        els.signInStart.hidden = true;
+        els.signInCode.hidden = false;
+        els.deviceCode.textContent = result.json.user_code;
+        els.verifyLink.href = result.json.verification_uri;
+        setMessage(els.signInMessage, "Waiting for you to finish...");
+        try {
+          await navigator.clipboard.writeText(result.json.user_code);
+        } catch (error) {
+          setMessage(els.signInMessage, "Copy the code, then open GitHub.");
+        }
+        scheduleLoginPoll();
+      }
+
+      async function resumeSignIn() {
+        const result = await dispatch("GET", "/login/status");
+        if (!result.json.pending) {
+          return;
+        }
+        els.signInStart.hidden = true;
+        els.signInCode.hidden = false;
+        els.deviceCode.textContent = result.json.user_code;
+        els.verifyLink.href = result.json.verification_uri;
+        setMessage(els.signInMessage, "Waiting for you to finish...");
+        scheduleLoginPoll();
+      }
+
+      function scheduleLoginPoll() {
+        clearTimeout(loginTimer);
+        loginTimer = setTimeout(async () => {
+          const result = await dispatch("POST", "/login/poll", {});
+          const data = result.json;
+          if (data.status === "ok") {
+            setMessage(els.signInMessage, "Signed in. You can return to the conversation.");
+            updateReadyState();
+            loginTimer = setTimeout(closeSheets, 900);
+            return;
+          }
+          if (data.status === "error" || data.status === "expired" || data.error) {
+            setMessage(els.signInMessage, data.error || "Sign-in ended. Try again.", true);
+            return;
+          }
+          scheduleLoginPoll();
+        }, Math.max(1000, Number(pendingLogin?.interval || 5) * 1000));
+      }
+
+      for (const trigger of document.querySelectorAll("[data-open]")) {
+        trigger.addEventListener("click", () => openSheet(trigger.dataset.open));
+      }
+      for (const trigger of document.querySelectorAll("[data-close]")) {
+        trigger.addEventListener("click", closeSheets);
+      }
+      els.shade.addEventListener("click", (event) => {
+        if (event.target === els.shade) {
+          closeSheets();
+        }
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && !els.shade.hidden) {
+          closeSheets();
+        }
+      });
+
+      els.composer.addEventListener("submit", sendMessage);
+      els.message.addEventListener("input", resizeComposer);
+      els.message.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          els.composer.requestSubmit();
+        }
+      });
+      els.signInShortcut.addEventListener("click", () => {
+        openSheet("signin");
+        resumeSignIn();
+      });
+
+      els.personFile.addEventListener("change", async () => {
+        const file = els.personFile.files?.[0];
+        if (!file) {
+          return;
+        }
+        try {
+          await setPersonFile(await file.text(), "device");
+        } catch (error) {
+          setMessage(els.fileMessage, error.message, true);
+        } finally {
+          els.personFile.value = "";
+        }
+      });
+
+      els.usePaste.addEventListener("click", async () => {
+        try {
+          await setPersonFile(els.filePaste.value, "paste");
+          els.filePaste.value = "";
+        } catch (error) {
+          setMessage(els.fileMessage, error.message, true);
+        }
+      });
+
+      els.loadFileUrl.addEventListener("click", async () => {
+        els.loadFileUrl.disabled = true;
+        setMessage(els.fileMessage, "Loading...");
+        try {
+          const loaded = await dispatch("POST", "/file/load", { url: els.fileUrl.value });
+          if (loaded.status !== 200 || loaded.json.error) {
+            throw new Error(loaded.json.error || "The file could not be loaded.");
+          }
+          await setPersonFile(loaded.json.content, "link");
+          els.fileUrl.value = "";
+        } catch (error) {
+          setMessage(els.fileMessage, error.message, true);
+        } finally {
+          els.loadFileUrl.disabled = false;
+        }
+      });
+
+      els.fileEditor.addEventListener("input", saveEditorFile);
+      els.exportFile.addEventListener("click", downloadCurrentFile);
+      if (navigator.share) {
+        els.shareFile.hidden = false;
+        els.shareFile.addEventListener("click", async () => {
+          try {
+            await shareCurrentFile();
+            setMessage(els.fileMessage, "Shared the current file.");
+          } catch (error) {
+            if (error.name !== "AbortError") {
+              setMessage(els.fileMessage, error.message, true);
+            }
+          }
+        });
+      }
+
+      els.toolFile.addEventListener("change", async () => {
+        const files = [...(els.toolFile.files || [])];
+        const errors = [];
+        for (const file of files) {
+          try {
+            await addToolText(await file.text(), file.name, "manual");
+          } catch (error) {
+            errors.push(file.name + ": " + error.message);
+          }
+        }
+        setMessage(
+          els.toolMessage,
+          errors.length ? errors.join(" ") : (files.length ? "Your tools are ready." : ""),
+          errors.length > 0
+        );
+        els.toolFile.value = "";
+      });
+
+      els.loadToolUrl.addEventListener("click", async () => {
+        els.loadToolUrl.disabled = true;
+        setMessage(els.toolMessage, "Loading...");
+        try {
+          const source = els.toolUrl.value.trim();
+          const loaded = await dispatch("POST", "/tools/load", { url: source });
+          if (loaded.status !== 200 || loaded.json.error) {
+            throw new Error(loaded.json.error || "The tool could not be loaded.");
+          }
+          await addToolText(loaded.json.content, source, "manual");
+          els.toolUrl.value = "";
+          setMessage(els.toolMessage, "Your tool is ready.");
+        } catch (error) {
+          setMessage(els.toolMessage, error.message, true);
+        } finally {
+          els.loadToolUrl.disabled = false;
+        }
+      });
+
+      els.startSignIn.addEventListener("click", beginSignIn);
+      els.copyCode.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(els.deviceCode.textContent);
+          setMessage(els.signInMessage, "Code copied. Open GitHub to finish.");
+        } catch (error) {
+          setMessage(els.signInMessage, "Select and copy the code above.", true);
+        }
+      });
+
+      els.forget.addEventListener("click", () => {
+        clearTimeout(loginTimer);
+        localStorage.clear();
+        sessionStorage.clear();
+        location.reload();
+      });
+
+      try {
+        updateReadyState();
+        renderTools();
+        if (getPersonFile()) {
+          syncListedTools().then((issues) => {
+            if (issues.length) {
+              setMessage(els.fileMessage, issues.join(" "), true);
+            }
+          });
+        }
+      } catch (error) {
+        addSystemNotice("Saved information on this device could not be read: " + error.message);
+      }
+    })();
+  </script>
+</body>
+</html>
