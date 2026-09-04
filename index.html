@@ -642,6 +642,19 @@
         </label>
         <button type="button" id="dial-public">Dial</button>
         <p class="hint">Makes your file here from your public AI. It starts as a new copy on this device; export it any time to bring it home.</p>
+        <details class="private-access">
+          <summary>Private file access (optional)</summary>
+          <p class="hint">If your real file lives in a private place on GitHub, paste a token that can read just that one repository (GitHub: Settings, Developer settings, fine-grained token, that repository only, Contents: read). It stays on this device.</p>
+          <label class="field">
+            <span>Private access token</span>
+            <input id="repo-token" type="password" autocomplete="off" placeholder="github_pat_...">
+          </label>
+          <div class="row">
+            <button type="button" id="save-repo-token">Save</button>
+            <button type="button" id="clear-repo-token">Remove</button>
+          </div>
+          <p class="message" id="repo-token-message" role="status"></p>
+        </details>
         <p class="message" id="file-message" role="status"></p>
 
         <section id="file-work" hidden>
@@ -735,6 +748,7 @@
       const STORAGE = Object.freeze({
         token: "github_token",
         file: "vbrainstem.file",
+        repoToken: "github_repo_token",
         tools: "vbrainstem.tools",
         model: "vbrainstem.model"
       });
@@ -779,6 +793,10 @@
         loadFileUrl: document.getElementById("load-file-url"),
         dialUrl: document.getElementById("dial-url"),
         dialPublic: document.getElementById("dial-public"),
+        repoToken: document.getElementById("repo-token"),
+        saveRepoToken: document.getElementById("save-repo-token"),
+        clearRepoToken: document.getElementById("clear-repo-token"),
+        repoTokenMessage: document.getElementById("repo-token-message"),
         fileMessage: document.getElementById("file-message"),
         fileWork: document.getElementById("file-work"),
         fileEditor: document.getElementById("file-editor"),
@@ -1363,7 +1381,7 @@ def load_agent(path):
       async function loadGithubText(value) {
         const url = normalizeGithubUrl(value);
         const headers = { Accept: "application/vnd.github.raw+json" };
-        const token = getGithubToken();
+        const token = localStorage.getItem(STORAGE.repoToken) || getGithubToken();
         if (token) {
           headers.Authorization = "Bearer " + token;
         }
@@ -2220,8 +2238,9 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             const raw = frontDoorToRaw(await speedDial(body.url));
             const text = await loadGithubText(raw);
             const face = parseFrontmatter(text).fields.metadata || {};
-            let privateReason = face["private-repo"] ? (getGithubToken() ? "" : "not signed in") : "no private file named";
-            if (face["private-repo"] && face["private-path"] && getGithubToken()) {
+            const canReadPrivate = Boolean(localStorage.getItem(STORAGE.repoToken) || getGithubToken());
+            let privateReason = face["private-repo"] ? (canReadPrivate ? "" : "not signed in") : "no private file named";
+            if (face["private-repo"] && face["private-path"] && canReadPrivate) {
               try {
                 const privateUrl = "https://github.com/" + face["private-repo"] + "/blob/main/" + face["private-path"];
                 const mainline = await loadGithubText(privateUrl);
@@ -2520,6 +2539,21 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         }
       }
       autoDialFromLink();
+
+      els.saveRepoToken.addEventListener("click", () => {
+        const value = els.repoToken.value.trim();
+        if (!value) {
+          setMessage(els.repoTokenMessage, "Paste a token first.", true);
+          return;
+        }
+        localStorage.setItem(STORAGE.repoToken, value);
+        els.repoToken.value = "";
+        setMessage(els.repoTokenMessage, "Saved on this device. Dial your AI again to use it.");
+      });
+      els.clearRepoToken.addEventListener("click", () => {
+        localStorage.removeItem(STORAGE.repoToken);
+        setMessage(els.repoTokenMessage, "Removed from this device.");
+      });
 
       els.dialPublic.addEventListener("click", async () => {
         els.dialPublic.disabled = true;
