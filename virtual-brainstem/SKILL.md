@@ -180,6 +180,13 @@ identity in the file's header and drift apart only by what each one learned. Tha
   present in both are canon; lines only one side has are added, ordered by date; where two lines
   disagree about the same moment, keep both side by side with their dates; then add one dated
   line recording the reunion. Never delete a line from either side.
+- **When the Dream Catcher cannot merge** (two dimensions truly contradict about the same
+  thing and keeping both side by side would leave the person's file incoherent), make a
+  **loaf**: gather the contradicting lines from both sides, with their dates and which dimension
+  each came from, into one sealed record. Then **bake** it: the person rules, or the mainline
+  rules on the person's word, and the ruling becomes one new dated line that both dimensions
+  accept as the successor. The loaf is kept as evidence beside the ruling; nothing in it is
+  deleted. Never bake without the person; an unbaked loaf simply waits.
 - Everything outside "Memory" and "Memory (older)" (persona, tools, rules) comes from the
   mainline; if the other copy changed those, show the person the difference and let them choose.
 - A dimension the person no longer wants is simply not merged and can be deleted; nothing is lost
@@ -366,7 +373,9 @@ is kept, not lost.
 Every loaded copy of the person's file is its own dimension of the same Brainstem, sharing one
 identity and diverging only by what it learned. The person names the mainline at any time. Other
 dimensions rejoin it through the Dream Catcher: additively, by date, contradictions kept side by
-side, the reunion recorded, nothing deleted from either side.
+side, the reunion recorded, nothing deleted from either side. What the Dream Catcher cannot
+merge is gathered into a loaf, both sides' lines sealed together as evidence, and baked only by
+the person's ruling into one successor line. The loaf stays. Nothing is baked without the person.
 
 
 ## The kernel (vendored)

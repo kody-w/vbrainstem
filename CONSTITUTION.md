@@ -98,4 +98,6 @@ is kept, not lost.
 Every loaded copy of the person's file is its own dimension of the same Brainstem, sharing one
 identity and diverging only by what it learned. The person names the mainline at any time. Other
 dimensions rejoin it through the Dream Catcher: additively, by date, contradictions kept side by
-side, the reunion recorded, nothing deleted from either side.
+side, the reunion recorded, nothing deleted from either side. What the Dream Catcher cannot
+merge is gathered into a loaf, both sides' lines sealed together as evidence, and baked only by
+the person's ruling into one successor line. The loaf stays. Nothing is baked without the person.
