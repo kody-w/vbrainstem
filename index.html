@@ -1368,7 +1368,7 @@ def load_agent(path):
           "default-src 'none'",
           "script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' " + pyodideOrigin,
           "style-src 'unsafe-inline'",
-          "connect-src  https://raw.githubusercontent.com" + [AUTH_WORKER, GITHUB_API, DEFAULT_COPILOT_ENDPOINT,
+          "connect-src " + [AUTH_WORKER, GITHUB_API, "https://raw.githubusercontent.com", DEFAULT_COPILOT_ENDPOINT,
             copilotWildcard, pyodideOrigin].join(" "),
           "img-src data: blob:",
           "media-src 'none'",
