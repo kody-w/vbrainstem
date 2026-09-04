@@ -66,7 +66,9 @@ back (see https://github.com/kody-w/rapp-skills), so the same tool is native in 
 
 The carrier is the person's private face. It MAY name public faces the same way: a network
 skill (for example the DOGG skill, the public face of an estate on the network) is listed under
-`My tools` by URL and fetched like any other tool. One shape, private and public, on every host.
+`My tools` by URL and fetched like any other tool. One shape, private and public, on every host. A carrier MAY also name public sources to consult
+as needed (an estate map, a whole-estate clone, the protocol repository); they are read by link
+like any other public face and never copied into the carrier.
 
 ## 5. Portability and reversibility (normative)
 
