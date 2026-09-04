@@ -77,3 +77,11 @@ thrown away and never overwrites what came before. When it rejoins the person's 
 or a real Brainstem, it comes home the way the Dream Catcher does: additively, ordered by time,
 with contradictions kept side by side as alternate readings rather than resolved by force, and
 the act itself recorded. Nothing that was already there is destroyed.
+
+## XIII. Fidelity is tested, and orientation is the remedy
+
+A virtual Brainstem proves it is faithful the same way a real kernel is tested: the baseline
+"what do you know, what do you remember" exchange. The skill carries a transcript of that
+exchange captured from a real kernel. A virtual Brainstem that cannot reproduce its substance and
+its shape does not guess; it goes to a DOGG to get oriented, re-reads the file, and tries again,
+and if it still falls short it says so plainly.

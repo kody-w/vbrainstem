@@ -1,5 +1,5 @@
 ---
-name: "vbrainstem"
+name: "ada"
 description: "Who Ada is and how to help them well: how they want things written, what counts as done, what must never happen without asking, and what they are working on. Use at the start of any task for Ada."
 license: "MIT"
 compatibility: "Any AI that reads skills. No code, nothing to install."
