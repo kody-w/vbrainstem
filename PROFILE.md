@@ -81,7 +81,7 @@ like any other public face and never copied into the carrier.
 
 ## 5a. The second body (optional)
 
-A carrier MAY name, under `My tools`, a bootstrap skill for a local Brainstem. A host that follows
+A carrier MAY name, under `My sources` (never `My tools`, since it is read, not called), a bootstrap skill for a local Brainstem. A host that follows
 it creates a Brainstem from nothing beside the native AI, loads the carrier's tools into its
 `agents/` folder, and the two bodies then work together on the device, each reading the same
 carrier. The Brainstem is never created unless the person asks.

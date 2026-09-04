@@ -6,7 +6,8 @@ Usage:
   python3 tools/mint_frame.py verify <skill-dir> [--rapp-py PATH]
 
 The frame lives beside the skill as FRAME.json; the stream identity is minted once and kept in
-STREAM.json. Later revisions of the skill append seq+1 frames whose prev is the last frame_hash.
+STREAM.json. Later revisions of the skill append seq+1 frames whose prev is the predecessor's
+payload_hash (RAPP/1 section 7.4); each frame is verified against the head frame before it.
 The reference implementation is kody-w/rapp-1's rapp.py (stdlib); pass --rapp-py or set RAPP_PY.
 """
 import argparse, datetime as dt, hashlib, importlib.util, json, os, sys
@@ -54,12 +55,13 @@ def main() -> int:
     frames = [json.loads(l) for l in chain.read_text().splitlines() if l.strip()] if chain.exists() else []
     if frames and frames[-1]["payload"]["sha256"] == sha:
         print("no change since the last frame; nothing minted"); return 0
-    prev = frames[-1] if frames else None
+    head = frames[-1] if frames else None
+    prev = head["payload_hash"] if head else None
     utc = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     payload = {"schema": "vbrainstem/1-skill", "name": skill.name, "path": f"{skill.name}/SKILL.md", "sha256": sha, "bytes": len(data),
                "url": f"https://raw.githubusercontent.com/{a.owner}/vbrainstem/main/{skill.name}/SKILL.md"}
     frame = R.build_frame(kind=a.kind, stream_id=stream, seq=len(frames), utc=utc, payload=payload, prev=prev)
-    ok, step, why = R.verify_frame(frame, head=prev, stream_id_of_record=stream)
+    ok, step, why = R.verify_frame(frame, head=head, stream_id_of_record=stream)
     if not ok:
         print(f"refusing to write a frame that does not verify: {step}: {why}"); return 1
     with chain.open("a") as fh:

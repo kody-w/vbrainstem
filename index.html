@@ -967,8 +967,12 @@ def install_shims():
         _sys.modules["utils.azure_file_storage"] = st_mod
 
 
-def load_agent(path):
-    """Load one Python file and return its module and BasicAgent instance."""
+def load_agent(path, tool_name=None):
+    """Load one Python file and return its module and the BasicAgent instance for tool_name.
+
+    One class: it is the agent. Several: the one whose metadata name (or class name) equals
+    tool_name; no match means an error naming every agent, never a silent guess.
+    """
     install_shims()
     path = _Path(path).resolve()
     spec = __import__("importlib.util").util.spec_from_file_location("skill_agent_" + path.stem, path)
@@ -977,13 +981,22 @@ def load_agent(path):
     spec.loader.exec_module(module)
     base = _sys.modules["agents.basic_agent"].BasicAgent
     candidates = [
-        obj for obj in vars(module).values()
+        (name, obj) for name, obj in vars(module).items()
         if isinstance(obj, type) and issubclass(obj, base) and obj is not base
-        and obj.__module__ == module.__name__
+        and obj.__module__ == module.__name__ and not name.startswith("_")
+        and callable(getattr(obj, "perform", None))
     ]
     if not candidates:
         raise RuntimeError(f"{path.name}: no BasicAgent subclass found")
-    return module, candidates[-1]()
+    if len(candidates) == 1:
+        return module, candidates[0][1]()
+    instances = [(name, cls()) for name, cls in candidates]
+    wanted = (tool_name or "").strip()
+    for name, inst in instances:
+        if wanted and (str(getattr(inst, "metadata", {}).get("name", "")) == wanted or name == wanted or getattr(inst, "name", "") == wanted):
+            return module, inst
+    names = ", ".join(str(getattr(i, "metadata", {}).get("name", n)) for n, i in instances)
+    raise RuntimeError(f"{path.name} defines several agents ({names}); tool '{wanted or '?'}' is not one of them")
 `;
 
       function makeId() {
@@ -1153,6 +1166,7 @@ def load_agent(path):
           '  id: ' + JSON.stringify(newId),
           '  owner: ' + JSON.stringify(owner),
           '  grown_from: ' + JSON.stringify(meta.id),
+          ...(meta["mainline-id"] ? ['  mainline-id: ' + JSON.stringify(meta["mainline-id"])] : []),
           '  dialed_from: ' + JSON.stringify(url),
           '  face: "dimension"',
           '  created: ' + JSON.stringify(today),
@@ -1167,7 +1181,7 @@ def load_agent(path):
         if (!/^## Memory\s*$/m.test(body)) {
           body += "\n\n## Memory\n\nNewest first, dated.\n";
         }
-        body = body.replace(/^(## Memory\s*\n(?:[^\n]*\n)*?)(?=- |\n## |$)/m, (m) =>
+        body = body.replace(/^(## Memory[ \t]*\n(?:[^\n]*\n)*?)(?=- |\n## |(?![\s\S]))/m, (m) =>
           m + "- " + today + " Assembled from my public AI at " + url + "; this dimension began here.\n");
         if (!/^## Memory \(older\)\s*$/m.test(body)) {
           body += "\n\n## Memory (older)\n\n- (nothing yet)\n";
@@ -1529,7 +1543,7 @@ def load_agent(path):
 
       function replaceSection(body, heading, lines) {
         const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const re = new RegExp("(^## " + escaped + "\\s*\\n)([\\s\\S]*?)(?=\\n## |(?![\\s\\S]))", "m");
+        const re = new RegExp("(^## " + escaped + "[ \\t]*\\n)([\\s\\S]*?)(?=\\n## |(?![\\s\\S]))", "m");
         const intro = (body.match(re) || [])[2] || "";
         const keptIntro = intro.split("\n").filter((l) => !l.trim().startsWith("- ")).join("\n").replace(/\n+$/, "");
         const block = (keptIntro ? keptIntro + "\n\n" : "") + (lines.length ? lines.join("\n") : "- (nothing yet)") + "\n";
@@ -1539,10 +1553,29 @@ def load_agent(path):
         return body.replace(/\n*$/, "") + "\n\n## " + heading + "\n\n" + block;
       }
 
+      function sectionsOf(body) {
+        const out = new Map();
+        const re = /^## ([^\n]+)[ \t]*\n([\s\S]*?)(?=\n## |(?![\s\S]))/gm;
+        let m;
+        while ((m = re.exec(body)) !== null) {
+          out.set(m[1].trim(), m[2].trim());
+        }
+        return out;
+      }
+
       function mergeDimensions(existingText, incomingText, today) {
         const a = validatePersonFile(existingText);
         const b = validatePersonFile(incomingText);
-        const newer = (String(b.fields.metadata.updated) > String(a.fields.metadata.updated)) ? b : a;
+        const ua = String(a.fields.metadata.updated), ub = String(b.fields.metadata.updated);
+        let newer;
+        if (ub !== ua) {
+          newer = ub > ua ? b : a;
+        } else {
+          // Same date on both: decide by content, never by which side was handed in first.
+          const mainlineA = !a.fields.metadata["grown_from"], mainlineB = !b.fields.metadata["grown_from"];
+          newer = (mainlineA !== mainlineB) ? (mainlineA ? a : b) : (a.normalized <= b.normalized ? a : b);
+        }
+        const other = newer === a ? b : a;
         const seen = new Set();
         const lines = [];
         for (const line of memoryLinesOf(a.body).concat(memoryLinesOf(b.body))) {
@@ -1554,10 +1587,25 @@ def load_agent(path):
         if (added > 0) {
           lines.unshift("- " + today + " Reunited with another copy of me; " + added + " memory line(s) brought in.");
         }
+        // Anything outside the memory sections that the other copy had differently is set aside
+        // in the file, not dropped: the person decides what to keep.
+        const skip = new Set(["Memory", "Memory (older)"]);
+        const mine = sectionsOf(newer.body), theirs = sectionsOf(other.body);
+        const setAside = [];
+        for (const [heading, text] of theirs) {
+          if (skip.has(heading) || heading.startsWith("Set aside")) { continue; }
+          if ((mine.get(heading) || "") !== text) { setAside.push("### " + heading + "\n\n" + text); }
+        }
+        if (setAside.length) {
+          lines.unshift("- " + today + " Reunited: " + setAside.length + " section(s) differed between the copies; the other copy's version is kept under \"Set aside\" below.");
+        }
         let body = replaceSection(newer.body, "Memory", lines.slice(0, MEMORY_KEEP));
         body = replaceSection(body, "Memory (older)", lines.slice(MEMORY_KEEP));
+        if (setAside.length) {
+          body = body.replace(/\n*$/, "") + "\n\n## Set aside from another copy (" + today + ")\n\n" + setAside.join("\n\n") + "\n";
+        }
         const head = newer.normalized.split("\n---\n")[0].replace(/(updated: ")[^"]*(")/, "$1" + today + "$2");
-        return { text: head + "\n---\n" + body.replace(/^\n+/, "") + (body.endsWith("\n") ? "" : "\n"), added, keptFrom: newer === a ? "device" : "incoming" };
+        return { text: head + "\n---\n" + body.replace(/^\n+/, "") + (body.endsWith("\n") ? "" : "\n"), added, setAside: setAside.length, keptFrom: newer === a ? "device" : "incoming" };
       }
 
       async function setPersonFile(text, source = "device") {
@@ -1574,8 +1622,8 @@ def load_agent(path):
               els.fileWork.hidden = false;
               updateReadyState();
               const issues = await syncListedTools();
-              setMessage(els.fileMessage, "Reunited with the copy on this device: " + merged.added + " new memory line(s) brought in." + (issues.length ? " " + issues.join(" ") : ""), issues.length > 0);
-              return parsed;
+              setMessage(els.fileMessage, "Reunited with the copy on this device: " + merged.added + " new memory line(s) brought in." + (merged.setAside ? " " + merged.setAside + " section(s) differed and were set aside in the file for you to look at." : "") + (issues.length ? " " + issues.join(" ") : ""), issues.length > 0);
+              return Object.assign(parsed, { issues, reunited: merged.added, setAside: merged.setAside, keptFrom: merged.keptFrom });
             }
           } catch (error) {
             // fall through: not two copies of the same AI, or the existing copy is unreadable
@@ -1793,7 +1841,7 @@ def load_agent(path):
           return toolWorker;
         }
         const runSource = `
-_module, _instance = load_agent("/agent.py")
+_module, _instance = load_agent("/agent.py", _browser_tool_name or None)
 _arguments = _json.loads(_browser_args_json)
 _result = _instance.perform(**_arguments)
 _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) else str(_result if _result is not None else "")
@@ -1817,8 +1865,10 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           "    const py = await runtime();",
           "    py.FS.writeFile('/agent.py', data.code, { encoding: 'utf8' });",
           "    py.globals.set('_browser_args_json', JSON.stringify(data.args));",
+          "    py.globals.set('_browser_tool_name', String(data.toolName || ''));",
           "    const result = await py.runPythonAsync(RUN);",
           "    py.globals.delete('_browser_args_json');",
+          "    py.globals.delete('_browser_tool_name');",
           "    self.postMessage({ id: data.id, result });",
           "  } catch (error) {",
           "    self.postMessage({ id: data.id, error: error.message || String(error) });",
@@ -1856,7 +1906,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         const id = makeId();
         return new Promise((resolve, reject) => {
           toolRequests.set(id, { resolve, reject });
-          ensureToolWorker().postMessage({ id, code, args });
+          ensureToolWorker().postMessage({ id, code, args, toolName: skill.toolName });
         });
       }
 
@@ -2006,7 +2056,9 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             }
             logs.push("[" + name + "] " + String(result));
           } catch (error) {
-            result = "Error: " + error.message;
+            // The kernel writes "[name] ERROR: message"; keep the last line of a Python traceback.
+            const message = String(error.message || error).trim().split("\n").filter(Boolean).pop() || "unknown error";
+            result = "ERROR: " + message;
             logs.push("[" + (name || "?") + "] " + result);
           }
           messages.push({
@@ -2787,6 +2839,10 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           const outcome = await setPersonFile(dialed.json.content, "link");
           els.dialUrl.value = "";
           const trouble = (outcome && outcome.issues && outcome.issues.length) ? " " + outcome.issues.join(" ") : "";
+          if (outcome && outcome.reunited !== undefined) {
+            setMessage(els.fileMessage, "Reunited with the copy on this device: " + outcome.reunited + " new memory line(s) brought in." + (outcome.setAside ? " " + outcome.setAside + " section(s) differed and were set aside in the file for you to look at." : "") + trouble, Boolean(trouble));
+            return;
+          }
           setMessage(els.fileMessage, (dialed.json.face === "private"
             ? "Your AI is here from your private file, with the public one alongside. This device's copy is now the one you use."
             : (chosen === "private" && dialed.json.private_reason

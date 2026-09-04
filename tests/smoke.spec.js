@@ -258,7 +258,9 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
     expect(m1.json.text).toContain("Ada, baker and bookkeeper.");
     expect(m1.json.text).toContain('updated: "2026-09-05"');
     const mem = m1.json.text.split("## Memory\n")[1].split("## Memory (older)")[0].split("\n").filter((l) => l.startsWith("- "));
-    expect(mem).toEqual(["- 2026-09-05 Reunited with another copy of me; 1 memory line(s) brought in.", "- 2026-09-04 Spring menu drafted.", "- 2026-09-03 Likes rye.", "- 2026-09-02 Opened at 6."]);
+    expect(mem).toEqual(["- 2026-09-05 Reunited: 1 section(s) differed between the copies; the other copy's version is kept under \"Set aside\" below.", "- 2026-09-05 Reunited with another copy of me; 1 memory line(s) brought in.", "- 2026-09-04 Spring menu drafted.", "- 2026-09-03 Likes rye.", "- 2026-09-02 Opened at 6."]);
+    expect(m1.json.text).toContain("## Set aside from another copy (2026-09-05)");
+    expect(m1.json.text).toContain("Ada, baker.");
     const memLines = (t) => t.split("## Memory\n")[1].split("## Memory (older)")[0].split("\n").filter((l) => l.startsWith("- ") && !l.includes("Reunited"));
     expect(memLines(m2.json.text)).toEqual(memLines(m1.json.text));
   }
@@ -429,4 +431,97 @@ test("review fixes: multi-line tools, rejected token, visible dial outcomes, for
   await page.waitForTimeout(1500);
   expect(hits.face).toBe(before);
   expect(await page.evaluate(() => localStorage.getItem("vbrainstem.file"))).toBeNull();
+});
+
+
+test("round-two fixes: tool selection by name, reunion keeps identity and differences, dial shows the reunion", async ({ page }) => {
+  // round-two fixes
+  const twoClasses = [
+    "from agents.basic_agent import BasicAgent", "",
+    "class FirstAgent(BasicAgent):", "    def __init__(self):", "        self.name = 'FirstAgent'",
+    "        self.metadata = {'name': self.name, 'description': 'first', 'parameters': {'type': 'object', 'properties': {}, 'required': []}}",
+    "        super().__init__(self.name, self.metadata)", "    def perform(self, **kwargs):", "        return 'RESULT-FROM-FIRST'", "",
+    "class SecondAgent(BasicAgent):", "    def __init__(self):", "        self.name = 'SecondAgent'",
+    "        self.metadata = {'name': self.name, 'description': 'second', 'parameters': {'type': 'object', 'properties': {}, 'required': []}}",
+    "        super().__init__(self.name, self.metadata)", "    def perform(self, **kwargs):", "        return 'RESULT-FROM-SECOND'", ""].join("\n");
+  const sha = require("crypto").createHash("sha256").update(twoClasses, "utf8").digest("hex");
+  const skillFor = (toolName) => ["---", 'name: "' + toolName.toLowerCase().replace("agent", "") + '"', 'description: "Two classes in one file."', "metadata:", '  tool-name: "' + toolName + '"', '  agent-sha256: "' + sha + '"', "---", "",
+    "# Pair", "", "## What it needs", "", "```json", '{"type":"object","properties":{},"required":[]}', "```", "", "## The code", "",
+    "<!-- agent sha256=" + sha + " -->", "```python", twoClasses.replace(/\n$/, ""), "```", "<!-- /agent -->", ""].join("\n");
+  await page.route("https://raw.githubusercontent.com/someone/pair/main/first/SKILL.md", (r) => r.fulfill({ status: 200, body: skillFor("FirstAgent") }));
+  await page.route("https://raw.githubusercontent.com/someone/pair/main/nosuch/SKILL.md", (r) => r.fulfill({ status: 200, body: skillFor("NoSuchAgent") }));
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/copilot/token", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ token: "fake-copilot-token", expires_at: Math.floor(Date.now() / 1000) + 3600, endpoints: { api: "https://api.individual.githubcopilot.com" } }) }));
+  await page.route("https://api.github.com/copilot_internal/v2/token", (r) => r.fulfill({ status: 403, body: "no" }));
+  await page.route("https://api.individual.githubcopilot.com/models", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [{ id: "gpt-4o", model_picker_enabled: true, capabilities: { type: "chat" } }] }) }));
+  let turn = 0; let wanted = "FirstAgent"; const toolMessages = [];
+  await page.route("https://api.individual.githubcopilot.com/chat/completions", async (route) => {
+    const body = JSON.parse(route.request().postData() || "{}");
+    const tm = body.messages.filter((m) => m.role === "tool"); toolMessages.push(...tm);
+    turn += 1;
+    if (tm.length === 0) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "tool_calls", message: { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: wanted, arguments: "{}" } }] } }] }) });
+    } else {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "done: " + tm[tm.length - 1].content } }] }) });
+    }
+  });
+  const person = ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "vb-pair"', '  owner: "Ada"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "", "# Ada", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 x", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  await page.goto("/index.html");
+  await page.evaluate((p) => { localStorage.clear(); localStorage.setItem("github_token", "fake-github-token"); localStorage.setItem("vbrainstem.file", p); }, person);
+  await page.reload();
+  expect((await page.evaluate(() => window.vbrainstem.dispatch("POST", "/tools/load", { url: "https://raw.githubusercontent.com/someone/pair/main/first/SKILL.md" }))).status).toBe(200);
+  await page.locator('[data-open="tools"]').first().click();
+  await page.locator("#tool-url").fill("https://raw.githubusercontent.com/someone/pair/main/first/SKILL.md");
+  await page.locator("#load-tool-url").click();
+  await expect(page.locator("#tool-message")).toContainText("ready");
+  await page.locator("#tools-sheet [data-close]").click();
+  const chat = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "run first", conversation_history: [] }));
+  expect(chat.json.agent_logs).toBe("[FirstAgent] RESULT-FROM-FIRST");
+  // a tool name that matches no class in the file is an error, never a silent pick
+  wanted = "NoSuchAgent";
+  await page.locator('[data-open="tools"]').first().click();
+  await page.locator("#tool-url").fill("https://raw.githubusercontent.com/someone/pair/main/nosuch/SKILL.md");
+  await page.locator("#load-tool-url").click();
+  await expect(page.locator("#tool-message")).toContainText("ready");
+  await page.locator("#tools-sheet [data-close]").click();
+  const chat2 = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "run nosuch", conversation_history: [] }));
+  expect(chat2.json.agent_logs).toMatch(/^\[NoSuchAgent\] ERROR:/);
+  expect(chat2.json.agent_logs).not.toContain("RESULT-FROM");
+
+  // reunion: same-date copies decide by content, not argument order; differing sections are set aside, not dropped
+  const mk = (id, extra, who, mem) => ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "' + id + '"', ...extra, '  owner: "Ada"', '  created: "2026-09-01"', '  updated: "2026-09-04"', "---", "", "# Ada", "", "## Who I am", "", who, "", "## Memory", "", ...mem, "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  const main = mk("vb-main", [], "Ada, baker.", ["- 2026-09-04 Main memory."]);
+  const dim = mk("vb-dim", ['  grown_from: "pub-1"', '  mainline-id: "vb-main"'], "Ada, baker and bookkeeper.", ["- 2026-09-04 Phone memory."]);
+  const m1 = await page.evaluate(([a, b]) => window.vbrainstem.dispatch("POST", "/file/merge", { a, b, today: "2026-09-05" }), [main, dim]);
+  const m2 = await page.evaluate(([a, b]) => window.vbrainstem.dispatch("POST", "/file/merge", { a, b, today: "2026-09-05" }), [dim, main]);
+  expect(m1.json.text).toBe(m2.json.text);
+  expect(m1.json.text).toContain("Ada, baker.");
+  expect(m1.json.text).toContain("## Set aside from another copy (2026-09-05)");
+  expect(m1.json.text).toContain("Ada, baker and bookkeeper.");
+  expect(m1.json.text).toContain("- 2026-09-04 Phone memory.");
+  expect(m1.json.text).toContain("- 2026-09-04 Main memory.");
+  expect(m1.json.text).toMatch(/\n## Memory \(older\)\n/);
+
+  // an assembled public dimension carries the mainline id, so a later private dial reunites instead of replacing
+  const publicFace = ["---", 'name: "their-ai"', 'description: "Public face."', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "pub-2"', '  owner: "Ada"', '  mainline-id: "vb-main2"', '  private-repo: "someone/their-ai-private"', '  private-path: "vbrainstem/SKILL.md"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "", "# Their AI", "", "## Who I am", "", "Ada, in public.", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  const privateFile = mk("vb-main2", [], "Ada, privately.", ["- 2026-09-04 Private memory."]);
+  await page.route("https://raw.githubusercontent.com/someone/their-ai2/main/their-ai2/SKILL.md", (r) => r.fulfill({ status: 200, body: publicFace }));
+  await page.route("https://api.github.com/repos/someone/their-ai-private/contents/vbrainstem/SKILL.md**", (r) => r.fulfill({ status: 200, contentType: "text/plain", body: privateFile }));
+  await page.evaluate(() => { localStorage.removeItem("vbrainstem.file"); });
+  await page.reload();
+  await page.locator('[data-open="file"]').first().click();
+  await page.locator('#dial-face input[value="public"]').check();
+  await page.locator("#dial-url").fill("https://github.com/someone/their-ai2");
+  await page.locator("#dial-public").click();
+  await expect(page.locator("#file-message")).toContainText("new copy on this device");
+  expect(await page.evaluate(() => localStorage.getItem("vbrainstem.file"))).toContain('mainline-id: "vb-main2"');
+  // the phone learns something
+  await page.evaluate(() => { const f = localStorage.getItem("vbrainstem.file"); localStorage.setItem("vbrainstem.file", f.replace("## Memory\n", "## Memory\n\n- 2026-09-05 Learned on the phone.\n")); });
+  await page.locator('#dial-face input[value="private"]').check();
+  await page.locator("#dial-url").fill("https://github.com/someone/their-ai2");
+  await page.locator("#dial-public").click();
+  await expect(page.locator("#file-message")).toContainText("Reunited with the copy on this device");
+  const after = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
+  expect(after).toContain("- 2026-09-05 Learned on the phone.");
+  expect(after).toContain("- 2026-09-04 Private memory.");
+  expect(after).toContain("Ada, privately.");
 });

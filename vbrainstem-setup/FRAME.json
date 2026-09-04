@@ -1,20 +1,20 @@
 {
-  "frame_hash": "25bb0df5565dcfa7c80aa1aa3574541a5c5848d503f4f6aa4eed8668d7a049ae",
+  "frame_hash": "b0e34bab624be3d5dd8ef96dd5992a43403c23168559831f64511657eb51c5be",
   "kind": "skill.publish",
   "payload": {
-    "bytes": 7644,
+    "bytes": 7821,
     "name": "vbrainstem-setup",
     "path": "vbrainstem-setup/SKILL.md",
     "schema": "vbrainstem/1-skill",
-    "sha256": "cda186738a291b42049fd90bd47e93317ea593bd1b9f8961e5439328772b0a99",
+    "sha256": "8834d85e17bd96db73b196991cebff7b2d4e01cb4d8889ed3cbca93614c94b29",
     "url": "https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md"
   },
-  "payload_hash": "f328aeddb710bf07c74010de401ea4a6a8cdaa272d8575c831eafe93a77b98aa",
-  "prev": null,
+  "payload_hash": "bc4abce53dd189df76344be450f337b889186b34667bae8dd0fc49fdf23f7155",
+  "prev": "f328aeddb710bf07c74010de401ea4a6a8cdaa272d8575c831eafe93a77b98aa",
   "prev_wave": null,
-  "seq": 0,
+  "seq": 1,
   "sig": null,
   "spec": "rapp/1",
   "stream_id": "rappid:@kody-w/vbrainstem-setup:228be404333c42b53ecd48fae5e4d9f3a2e10fc459da19065b3f91adce70d228",
-  "utc": "2026-09-04T21:03:15.000Z"
+  "utc": "2026-09-04T22:00:41.000Z"
 }
