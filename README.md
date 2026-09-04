@@ -26,6 +26,15 @@ place your tool reads skills and ask the same thing:
 | GitHub Copilot CLI | `~/.copilot/skills/` |
 | Anything else that reads skills | its skills folder |
 
+## Make any AI your Brainstem, in its head
+
+Give your AI this second link and it becomes your Brainstem without running one: it reads your
+file, loads your tools, keeps your memory, and answers the way a local one would.
+
+```
+https://raw.githubusercontent.com/kody-w/vbrainstem/main/virtual-brainstem/SKILL.md
+```
+
 ## Take it with you
 
 Copy your `vbrainstem/SKILL.md` into another tool's skills folder. That is the whole move.
@@ -52,3 +61,7 @@ An earlier project under this name, a Brainstem that ran in the browser, is arch
 [vbrainstem-legacy](https://github.com/kody-w/vbrainstem-legacy).
 
 MIT.
+
+## On your phone or in a browser
+
+Open [vbrainstem](https://kody-w.github.io/vbrainstem/). Add your file and tools, then sign in with GitHub to chat from any phone or browser. Everything stays on that device, and you can export your current file whenever you want.
