@@ -193,7 +193,10 @@ Publishing is a separate, explicitly authorized operation:
 2. Push only each corresponding face directory. Keep private files, keys, local
    caches, and test reports out of the public repository and its Git history.
 3. Enable Pages on the public root. Its generated page redirects to:
-   `https://kody-w.github.io/vbrainstem/?dial=<owner>/<slug>&face=public&trust=<percent-encoded-estate-owner>`.
+   `https://kody-w.github.io/vbrainstem/?dial=<owner>/<slug>&space=<owner>/<slug>&face=public&trust=<percent-encoded-estate-owner>`.
+   `space` selects only a per-AI browser storage namespace. It is not a RAPP
+   identity or authorization grant and is not added to the signed receipt.
+   Links without an explicit `space` retain the host's legacy storage behavior.
 4. Test anonymous public loading, deliberately authorized private loading, and
    copying/exporting between isolated browser contexts. Use each sample prompt
    against the real host; report what actually ran.

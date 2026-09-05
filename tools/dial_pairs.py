@@ -229,6 +229,7 @@ def _raw(repo, path):
 
 def _dial_url(binding):
     return ("https://kody-w.github.io/vbrainstem/?dial=" + binding["public_repo"]
+            + "&space=" + binding["public_repo"]
             + "&face=public&trust=" + quote(binding["estate_owner"], safe=""))
 
 

@@ -64,6 +64,11 @@ class DialPairs(unittest.TestCase):
                 self.assertNotEqual(pair["public_id"], pair["private_id"])
                 self.assertTrue(DIAL.R.rappid_valid(pair["public_id"]))
                 self.assertTrue(DIAL.R.rappid_valid(pair["private_id"]))
+                query = parse_qs(urlsplit(pair["dial_url"]).query)
+                self.assertEqual(query.get("space"), ["kody-w/" + slug])
+                self.assertEqual(verdict["dial_url"], pair["dial_url"])
+                index = (Path(pair["directory"]) / "public" / "index.html").read_text()
+                self.assertIn("space=kody-w/" + slug, index)
 
     def test_each_persona_has_an_independent_identity(self):
         identities = set()
@@ -177,8 +182,10 @@ class DialPairs(unittest.TestCase):
         self.assertEqual(receipt["public_head"], json.loads((public / "FRAME.json").read_text()))
         self.assertEqual(receipt["public_sha256"], hashlib.sha256((public / "vb-atlas" / "SKILL.md").read_bytes()).hexdigest())
         self.assertEqual(DIAL.R.parse_detached_jws(receipt["sig"])[0]["kid"], pair["estate_owner"])
+        self.assertNotIn("space", receipt)
         self.assertEqual(parse_qs(urlsplit(pair["dial_url"]).query), {
-            "dial": ["kody-w/vb-atlas"], "face": ["public"], "trust": [pair["estate_owner"]],
+            "dial": ["kody-w/vb-atlas"], "space": ["kody-w/vb-atlas"],
+            "face": ["public"], "trust": [pair["estate_owner"]],
         })
         index = (public / "index.html").read_text(encoding="utf-8")
         self.assertIn("face=public", index)
