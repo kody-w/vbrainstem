@@ -8,7 +8,15 @@ knows you. Move to another tool and it comes with you. Delete it and you are bac
 
 ## Get yours in two minutes
 
-Give your AI this link and say "set up my AI file":
+Open [the setup chooser](https://kody-w.github.io/vbrainstem/) and choose ChatGPT,
+Claude Code, or GitHub Copilot CLI. Copy its prompt into that app.
+
+ChatGPT can create a downloadable file; this does not install it into future chats.
+Local Claude Code and Copilot CLI can save a personal skill when you allow the file write.
+Afterward, bring the file back with **Add your file** to use browser chat. Copies do not
+synchronize automatically.
+
+You can also give your AI this link and say "set up my AI file":
 
 ```
 https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md
@@ -76,4 +84,8 @@ MIT.
 
 ## On your phone or in a browser
 
-Open [vbrainstem](https://kody-w.github.io/vbrainstem/). Add your file and tools, then sign in with GitHub to chat from any phone or browser. Everything stays on that device, and you can export your current file whenever you want.
+Open [vbrainstem](https://kody-w.github.io/vbrainstem/). Add your file, then sign in with
+GitHub Copilot to chat. The browser stores its copy locally; chatting sends your message,
+active file, and relevant tool content to GitHub Copilot. Never put secrets in the file.
+Export it to move to another device. Forgetting one browser does not erase other devices,
+GitHub repositories, or earlier chats.

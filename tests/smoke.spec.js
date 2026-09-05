@@ -6,11 +6,11 @@ const personFile = path.join(root, "samples", "ada", "SKILL.md");
 const toolFile = path.join(root, "samples", "tools", "hello-world", "SKILL.md");
 const greeting = "Hello, Ada! Welcome to the RAPP Agent ecosystem.";
 const memoryFact = "Ada wants her name used in greetings.";
-const setupSkillUrl = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md";
+const setupSkillUrl = "https://kody-w.github.io/vbrainstem/vbrainstem-setup/SKILL.md";
 const setupPrompts = {
-  chatgpt: "Read " + setupSkillUrl + " and set up my vbrainstem in ChatGPT.",
-  claude: "Read " + setupSkillUrl + " and set up my vbrainstem in Claude Code.",
-  copilot: "Read " + setupSkillUrl + " and set up my vbrainstem in GitHub Copilot."
+  chatgpt: "Read " + setupSkillUrl + ". Create my vbrainstem file for ChatGPT.",
+  claude: "Read " + setupSkillUrl + ". Set up my vbrainstem in local Claude Code.",
+  copilot: "Read " + setupSkillUrl + ". Set up my vbrainstem in GitHub Copilot CLI."
 };
 const fs = require("fs");
 const coreSkillText = fs.readFileSync(path.join(root, "virtual-brainstem", "SKILL.md"), "utf8");
@@ -96,7 +96,7 @@ function answer(message, finishReason = "stop") {
   };
 }
 
-test("setup prompt works for ChatGPT, Claude Code, and Copilot", async ({ page }) => {
+test("renders and copies platform setup prompts", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -113,25 +113,25 @@ test("setup prompt works for ChatGPT, Claude Code, and Copilot", async ({ page }
   const tabs = page.getByRole("tab");
   await expect(tabs).toHaveCount(3);
   await expect(page.getByRole("tab", { name: "ChatGPT" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("#setup-title")).toHaveText("Use it in ChatGPT");
+  await expect(page.locator("#setup-title")).toHaveText("Create your file in ChatGPT");
   await expect(page.locator("#setup-prompt")).toHaveText(setupPrompts.chatgpt);
 
   await page.getByRole("tab", { name: "Claude Code" }).click();
   await expect(page.getByRole("tab", { name: "Claude Code" })).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#setup-title")).toHaveText("Use it in Claude Code");
-  await expect(page.locator("#setup-instruction")).toContainText("Claude Code session");
+  await expect(page.locator("#setup-instruction")).toContainText("local Claude Code session");
   await expect(page.locator("#setup-prompt")).toHaveText(setupPrompts.claude);
 
   await page.getByRole("button", { name: "Copy prompt for Claude Code" }).click();
   await expect(page.locator("#setup-copy-status")).toHaveText("Prompt copied. Paste it into Claude Code.");
   expect(await page.evaluate(() => window.__copiedSetupPrompt)).toBe(setupPrompts.claude);
 
-  await page.getByRole("tab", { name: "GitHub Copilot" }).click();
-  await expect(page.locator("#setup-title")).toHaveText("Use it in GitHub Copilot");
-  await expect(page.locator("#setup-instruction")).toContainText("GitHub Copilot session");
+  await page.getByRole("tab", { name: "GitHub Copilot CLI" }).click();
+  await expect(page.locator("#setup-title")).toHaveText("Use it in GitHub Copilot CLI");
+  await expect(page.locator("#setup-instruction")).toContainText("local Copilot CLI session");
   await expect(page.locator("#setup-prompt")).toHaveText(setupPrompts.copilot);
 
-  await page.getByRole("tab", { name: "GitHub Copilot" }).press("Home");
+  await page.getByRole("tab", { name: "GitHub Copilot CLI" }).press("Home");
   await expect(page.getByRole("tab", { name: "ChatGPT" })).toBeFocused();
   await expect(page.getByRole("tab", { name: "ChatGPT" })).toHaveAttribute("aria-selected", "true");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -366,7 +366,7 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   expect(dialed.json.content).toMatch(/^## Memory \(older\)/m);
   expect(dialed.json.face).toBe("public");
   privateAccess = true;
-  const dialedPrivate = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", { url: "their-ai" }));
+  const dialedPrivate = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", { url: "their-ai", face: "private" }));
   expect(dialedPrivate.json.face, "reason: " + dialedPrivate.json.private_reason).toBe("private");
   expect(dialedPrivate.json.content).toContain("The real Someone, privately.");
   expect(dialedPrivate.json.content).not.toContain("grown_from");
@@ -959,7 +959,8 @@ test("round-four fixes, part three: private file access is granted by a second s
   await page.locator("#dial-public").click();
   await expect(page.locator("#file-message")).toContainText("no private file access yet");
   expect(privateReads).toEqual(["Bearer fake-chat-token"]);
-  // 2. allow private file access: a second code, through the owner's app, asking only for repositories
+  // 2. broad OAuth is an explicit alternative, not presented as read-only access.
+  await page.getByText("Alternative: broad GitHub OAuth access", { exact: true }).click();
   await page.locator("#allow-private").click();
   await expect(page.locator("#sign-in-sheet")).toBeVisible();
   await expect(page.locator("#sign-in-title")).toHaveText("Allow private file access");
@@ -985,7 +986,7 @@ test("round-four fixes, part three: private file access is granted by a second s
   expect(stored).toContain("- 2026-09-04 Private memory.");
   const status = await page.evaluate(() => window.vbrainstem.dispatch("GET", "/login/status"));
   expect(status.json).toMatchObject({ pending: false, authenticated: true, private_access: true });
-  // 4. right after the chat sign-in, a file that names a private place is offered the second code at once
+  // 4. ordinary chat sign-in does not automatically request broader private permissions.
   await page.evaluate(() => { localStorage.removeItem("github_token"); localStorage.removeItem("github_repo_token"); });
   await page.reload();
   pollMode = "chat";
@@ -994,11 +995,7 @@ test("round-four fixes, part three: private file access is granted by a second s
   await page.locator("#start-sign-in").click();
   await expect(page.locator("#sign-in-message")).toContainText("Signed in", { timeout: 15000 });
   expect(deviceRequests[deviceRequests.length - 1]).toEqual({});
-  await expect(page.locator("#allow-private-next")).toBeVisible();
-  pollMode = "private";
-  await page.locator("#allow-private-next-button").click();
-  await expect(page.locator("#sign-in-title")).toHaveText("Allow private file access");
-  await expect(page.locator("#sign-in-start")).toBeVisible();
+  await expect(page.locator("#allow-private-next")).toBeHidden();
 });
 
 

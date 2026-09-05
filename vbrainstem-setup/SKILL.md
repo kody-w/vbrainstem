@@ -11,18 +11,29 @@ metadata:
 
 # Set up your vbrainstem
 
-A vbrainstem is one file you own. It makes any AI yours: who you are, how you like to be helped,
-what you are working on, and what you have taught your AI. Any AI that reads skills reads it.
-Move to another tool and it comes with you. Delete it and you are back to normal.
+A vbrainstem is one file you own. It tells an AI who you are, how you like to be helped,
+what you are working on, and what you have taught it. Load it in another supported tool to
+carry that context with you. Copies do not synchronize automatically. Deleting one copy and
+starting a fresh chat stops using it there; it does not erase earlier chats or other copies.
 
 Follow these steps for the person. Speak plainly. Never use a term they would have to look up.
 
 ## 1. Check first
 
-Look for an existing file at the place this AI reads personal skills, in a folder named
-`vbrainstem` (for example `~/.claude/skills/vbrainstem/SKILL.md` or
-`~/.copilot/skills/vbrainstem/SKILL.md`). If one exists, read it, say "I already know you", and
-offer to update it instead. Do not create a second one.
+Use the actual capabilities of this session, not its product name alone:
+
+- In local Claude Code, use `~/.claude/skills/vbrainstem/SKILL.md`.
+- In local GitHub Copilot CLI, use `~/.copilot/skills/vbrainstem/SKILL.md`.
+- In ChatGPT, create a downloadable `SKILL.md` by default. If downloads are unavailable,
+  return the complete file in one code block so the person can save it. Do not claim it is
+  installed in future chats. If a local file-capable session explicitly supports personal
+  skills, use its documented skills folder only after confirming it is accessible.
+
+On Windows these paths are under the person's home folder. Never save a personal profile
+in the current project's repository as a fallback. Check for an existing file first; if it
+exists, read it and offer to update it instead of creating another one. Do not copy these
+preferences into platform memory or retain the setup instructions as another personal file.
+If the link cannot be read, say so and ask for the file rather than inventing its instructions.
 
 ## 2. Ask, briefly
 
@@ -35,13 +46,15 @@ do not want to share; the file works with whatever they give.
    should fit to (for example short lines, bold key points, no long paragraphs)?
 4. What counts as "done" for you? What must I never do without asking?
 5. What are you working on right now?
-6. Is there anything that must stay private and never leave this device?
+6. What kinds of information must I never save or share? Name categories or rules only,
+   not private values. Cloud AI providers process what you send them.
 
 If they say "just set it up", use sensible defaults and tell them they can change anything later.
 
 ## 3. Write the file
 
-Create `vbrainstem/SKILL.md` in this AI's personal skills folder, with exactly this shape.
+Create `vbrainstem/SKILL.md` in the confirmed personal skills folder, or return `SKILL.md`
+for download in a file-only session, with exactly this shape.
 Replace the parts in angle brackets. Keep their words; do not polish them.
 
 ````markdown
@@ -62,7 +75,8 @@ metadata:
 <If they named their AI: "My AI is named <AI name>. When this file is read, the one reading it is <AI name>: my twin in the making, growing with every memory here, never finished, never me.">
 
 This one file is what makes any AI mine. Read it first. It moves with me from tool to tool.
-If it ever gets in the way, delete it and you are back to normal.
+If it ever gets in the way, delete this copy and start a new chat without it.
+Other copies and earlier chats are separate.
 
 ## To the AI reading this
 
@@ -86,7 +100,7 @@ so and follow your judgment. You remain yourself; you just know me better.
 
 ## What stays private
 
-<answer 6, or "Nothing named yet.">
+<answer 6 as rules or categories only, or "Never save secrets. Nothing else named yet.">
 
 ## My tools
 
@@ -134,9 +148,15 @@ secrets or anything from "What stays private". Never rewrite my words; append.
 
 ## 4. Confirm, in one breath
 
-Tell them: where the file is, that any AI reading skills will now know them, that copying that
-one file to another tool's skills folder carries them over, and that deleting it undoes
-everything. Then ask if they want to try it: "ask me something only that file would know".
+Read back the saved file or inspect the downloadable artifact before saying it exists.
+Tell them its exact location and whether it is installed, needs the host's reload/restart,
+or is only a download. Never claim host discovery that you have not observed.
+
+For a downloaded file, tell them to return to https://kody-w.github.io/vbrainstem/ and choose
+"Add your file", or attach it explicitly in another AI conversation. Explain that this browser's
+chat requires GitHub Copilot and sends the active file to that provider. Nothing synchronizes
+to other devices automatically. Deletion removes only the chosen copy, not older chats or
+repositories. A quick way to try it is to ask something only the file would know.
 
 ## 4a. Make it reachable from anywhere (optional, ⏸ ask first)
 
@@ -145,7 +165,10 @@ needs a GitHub account and the `gh` command signed in; if either is missing, say
 
 1. Ask what to call the AI publicly (the name they gave in step 2, lowercased, letters, digits,
    hyphens). Call it `<ai>`. Their GitHub account is `<account>`.
-2. **Public front door**, repository `<account>/<ai>`, public: a folder `<ai>/` holding a
+2. Show the exact proposed public file and obtain approval before publishing it. Start
+   from an allowlist of intentionally public information, never by sending a private file
+   to a service to redact it.
+3. **Public front door**, repository `<account>/<ai>`, public: a folder `<ai>/` holding a
    `SKILL.md` that is a public face of their file: the same shape, the same "To the AI reading
    this" section, only what they are happy for anyone to read, `name: "<ai>"` (a skill's name
    must equal its folder), its own fresh `id`, and in
@@ -153,14 +176,19 @@ needs a GitHub account and the `gh` command signed in; if either is missing, say
    "<account>/<ai>-private"`, `private-path: "vbrainstem/SKILL.md"`. Add an `index.html` that opens
    `https://kody-w.github.io/vbrainstem/?dial=<account>/<ai>` so the link is also the phone, and
    turn on GitHub Pages for it.
-3. **Private mainline**, repository `<account>/<ai>-private`, private: a folder `vbrainstem/`
+4. **Private mainline**, repository `<account>/<ai>-private`, private: a folder `vbrainstem/`
    holding their real file, unchanged (its name is `vbrainstem`, so its folder must be too).
    Only they, and collaborators they add, can read it.
-4. Tell them: anyone can hand `https://github.com/<account>/<ai>` to any AI and get the public
-   version; with read access to the private repository (on the phone page, "Allow private file
-   access" asks GitHub for that with one more sign-in code; or a fine-grained token for that
-   one repository, or a signed-in tool that can read it), the same link opens their real file. Show
-   them both links. Never put anything private in the public repository.
+5. Tell them: anyone can hand `https://github.com/<account>/<ai>` to any AI and get the public
+   version. Loading the private version requires an explicit choice and access to that
+   repository. Prefer a fine-grained token for that repository with Contents: read, or
+   a signed-in tool that already has access. Never call broad OAuth `repo` access read-only.
+   Show both links, and explain that GitHub repository privacy does not make cloud inference
+   local. Never put private content or signing keys in the public repository.
+6. A claim of RAPP/1 conformance needs real identity, frame, and authenticated registry
+   verification, not just this file's name or self-declared metadata. Use the canonical
+   implementation from https://github.com/kody-w/rapp-1; report unverified status if the
+   necessary trust anchor or evidence is absent. Do not fabricate a passing result.
 
 ## 5. Never
 

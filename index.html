@@ -71,7 +71,7 @@
     select:focus-visible,
     textarea:focus-visible,
     .file-button:focus-within {
-      outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+      outline: 3px solid var(--accent);
       outline-offset: 2px;
     }
 
@@ -83,6 +83,7 @@
     .primary {
       border-color: var(--accent);
       background: var(--accent-strong);
+      color: #fff;
     }
 
     .danger {
@@ -146,7 +147,7 @@
       min-height: 28px;
       margin-left: auto;
       padding: 2px 8px;
-      color: #79c0ff;
+      color: var(--accent);
       font-size: 13px;
     }
 
@@ -173,7 +174,7 @@
 
     .welcome {
       max-width: 720px;
-      margin: min(16vh, 120px) auto 28px;
+      margin: min(8vh, 64px) auto 24px;
       padding: 0 16px;
       text-align: center;
     }
@@ -191,7 +192,7 @@
     }
 
     .setup-guide {
-      margin: 24px 0 18px;
+      margin: 20px 0 12px;
       text-align: left;
     }
 
@@ -208,38 +209,38 @@
     .setup-tab {
       min-width: 0;
       min-height: 44px;
-      padding: 8px 10px;
-      border: 0;
+      padding: 8px;
+      border: 1px solid transparent;
       background: transparent;
       color: var(--muted);
       font-size: 14px;
-      white-space: nowrap;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.25;
     }
 
     .setup-tab[aria-selected="true"] {
       background: var(--panel);
       color: var(--text);
+      border-color: var(--line);
       box-shadow: 0 1px 4px color-mix(in srgb, var(--shade) 28%, transparent);
     }
 
     .setup-panel {
-      margin-top: 12px;
-      padding: 20px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: var(--panel);
+      margin-top: 16px;
     }
 
     .setup-panel h2 {
       margin: 0;
       text-align: center;
-      font-size: clamp(20px, 5vw, 25px);
+      font-size: clamp(17px, 4vw, 21px);
       letter-spacing: -0.025em;
     }
 
     .setup-instruction {
-      margin: 8px 0 16px;
+      margin: 8px 0 12px;
       color: var(--muted);
+      font-size: 14px;
       line-height: 1.5;
       text-align: center;
     }
@@ -248,11 +249,11 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
-      align-items: center;
+      align-items: start;
       padding: 12px;
       border: 1px solid var(--line);
       border-radius: 12px;
-      background: var(--bg);
+      background: var(--panel);
     }
 
     .setup-prompt-box code {
@@ -265,14 +266,37 @@
     }
 
     .setup-copy {
-      min-height: 40px;
-      padding: 8px 13px;
+      min-height: 44px;
+      min-width: 44px;
+      padding: 8px;
     }
 
     .setup-status {
       min-height: 21px;
       margin: 8px 0 0;
       text-align: center;
+      font-size: 13px;
+    }
+
+    .setup-handoff {
+      margin: 8px 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      text-align: center;
+    }
+
+    .setup-handoff a {
+      color: var(--accent);
+    }
+
+    .storage-warning {
+      padding: 10px;
+      border: 1px solid var(--bad);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.45;
     }
 
     .welcome-actions {
@@ -288,25 +312,17 @@
 
     @media (max-width: 520px) {
       .welcome {
-        margin-top: 34px;
+        margin-top: 12px;
         padding-inline: 4px;
       }
 
       .setup-tab {
         padding-inline: 5px;
-        font-size: 12px;
+        font-size: 13px;
       }
 
       .setup-panel {
-        padding: 16px 12px;
-      }
-
-      .setup-prompt-box {
-        grid-template-columns: 1fr;
-      }
-
-      .setup-copy {
-        width: 100%;
+        padding: 0;
       }
     }
 
@@ -706,13 +722,14 @@
     </header>
 
     <main class="transcript" id="transcript" aria-live="polite">
-      <section class="welcome" id="welcome">
+      <section class="welcome" id="welcome" aria-live="off">
         <h1>Your AI, wherever you are.</h1>
-        <p>Start in the AI you already use, or bring in your existing file.</p>
+        <p>One file that helps your AI know you. Start in the app you already use.</p>
+        <p class="storage-warning" id="storage-warning" role="alert" hidden></p>
         <section class="setup-guide" aria-labelledby="setup-title">
           <div class="setup-tabs" role="tablist" aria-label="Choose your AI">
             <button type="button" class="setup-tab" id="setup-tab-chatgpt" role="tab"
-              aria-selected="true" aria-controls="setup-panel" data-setup-platform="chatgpt">
+              aria-selected="true" aria-controls="setup-panel" tabindex="0" data-setup-platform="chatgpt">
               ChatGPT
             </button>
             <button type="button" class="setup-tab" id="setup-tab-claude" role="tab"
@@ -722,34 +739,39 @@
             </button>
             <button type="button" class="setup-tab" id="setup-tab-copilot" role="tab"
               aria-selected="false" aria-controls="setup-panel" tabindex="-1"
-              data-setup-platform="copilot">
-              GitHub Copilot
+              data-setup-platform="copilot" aria-label="GitHub Copilot CLI">
+              Copilot CLI
             </button>
           </div>
           <div class="setup-panel" id="setup-panel" role="tabpanel"
             aria-labelledby="setup-tab-chatgpt">
-            <h2 id="setup-title">Use it in ChatGPT</h2>
+            <h2 id="setup-title">Create your file in ChatGPT</h2>
             <p class="setup-instruction" id="setup-instruction">
-              Paste this prompt into any ChatGPT conversation.
+              Ask for a downloadable file. It will not automatically apply to future chats.
             </p>
             <div class="setup-prompt-box">
-              <code id="setup-prompt">Read https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md and set up my vbrainstem in ChatGPT.</code>
+              <code id="setup-prompt">Read https://kody-w.github.io/vbrainstem/vbrainstem-setup/SKILL.md. Create my vbrainstem file for ChatGPT.</code>
               <button type="button" class="setup-copy" id="copy-setup-prompt"
-                aria-label="Copy prompt for ChatGPT">Copy prompt</button>
+                aria-label="Copy prompt for ChatGPT">Copy</button>
             </div>
             <p class="message setup-status" id="setup-copy-status" role="status"></p>
           </div>
         </section>
+        <p class="setup-handoff">After setup, bring your file here to chat. Copies do not sync automatically.</p>
         <div class="welcome-actions">
-          <button type="button" class="primary" data-open="file">Add your file</button>
+          <button type="button" data-open="file">Add your file</button>
         </div>
+        <noscript>
+          <style>.setup-guide, .welcome-actions { display: none; }</style>
+          <p>Read the <a href="vbrainstem-setup/SKILL.md">setup instructions</a> and give them to ChatGPT, a local Claude Code session, or GitHub Copilot CLI. Ask it to create your file. Browser chat requires JavaScript.</p>
+        </noscript>
       </section>
     </main>
 
     <form class="composer" id="composer">
       <textarea id="message" rows="1" enterkeyhint="send" aria-label="Your message"
-        placeholder="Message..." autocomplete="off"></textarea>
-      <button type="submit" class="primary" id="send">Send</button>
+        placeholder="Add your file to chat here" autocomplete="off" disabled></textarea>
+      <button type="submit" class="primary" id="send" disabled>Send</button>
     </form>
   </div>
 
@@ -798,16 +820,14 @@
         </label>
         <fieldset class="dial-face" id="dial-face">
           <legend>Dial</legend>
-          <label><input type="radio" name="dial-face" value="private" checked> Private: your real file, with the public one alongside (needs private access)</label>
-          <label><input type="radio" name="dial-face" value="public"> Public: the public version only</label>
+          <label><input type="radio" name="dial-face" value="public" checked> Public: the public version only</label>
+          <label><input type="radio" name="dial-face" value="private"> Private: explicitly load your private file (requires access)</label>
         </fieldset>
         <button type="button" id="dial-public">Dial</button>
         <p class="hint">Brings your AI here from its front door. From then on the copy on this device is the one you use; export a backup whenever you like.</p>
         <details id="private-access" class="private-access">
           <summary>Private file access (optional)</summary>
-          <p class="hint">If your real file lives in a private place on GitHub, allow this device to read it with one more sign-in code. What GitHub grants stays on this device.</p>
-          <button type="button" id="allow-private">Allow private file access</button>
-          <p class="hint">Or paste a token that can read just that one repository (GitHub: Settings, Developer settings, fine-grained token, that repository only, Contents: read).</p>
+          <p class="hint">Prefer a fine-grained GitHub token limited to this AI's private repository and Contents: read. It is stored in this browser and sent only to GitHub for file access. Private file contents are sent to Copilot when you chat.</p>
           <label class="field">
             <span>Private access token</span>
             <input id="repo-token" type="password" autocomplete="off" placeholder="github_pat_...">
@@ -816,6 +836,11 @@
             <button type="button" id="save-repo-token">Save</button>
             <button type="button" id="clear-repo-token">Remove</button>
           </div>
+          <details>
+            <summary>Alternative: broad GitHub OAuth access</summary>
+            <p class="hint">This option requests GitHub's broad repo permission, including write access, not read-only access. The sign-in code and token exchange use rapp-auth.kwildfeuer.workers.dev. Use it only if you accept that scope and broker.</p>
+            <button type="button" id="allow-private">Allow private file access</button>
+          </details>
           <p class="message" id="repo-token-message" role="status"></p>
         </details>
         <p class="message" id="file-message" role="status"></p>
@@ -877,7 +902,7 @@
           <button type="button" class="primary" id="start-sign-in">Get a sign-in code</button>
         </div>
         <div id="allow-private-next" hidden>
-          <p class="hint">Your AI has a private file. Allow this device to read it? GitHub will ask you once.</p>
+          <p class="hint">You selected a private file. Prefer a repository-limited read token under Your file. The alternative below requests broad repo read/write access through rapp-auth.kwildfeuer.workers.dev.</p>
           <button type="button" class="primary" id="allow-private-next-button">Allow private file access</button>
         </div>
         <div class="code-box" id="sign-in-code" hidden>
@@ -904,12 +929,13 @@
         <p class="hint">Sends this page's link. Whoever opens it can load their own file, or dial their public AI, and have it here in real time.</p>
         <p class="message" id="share-message" role="status"></p>
         <p class="hint">Want an AI of your own? Give any AI <a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md" target="_blank" rel="noopener">this link</a> and say "set up my AI file". It asks a few questions and writes your file.</p>
-        <p class="about-copy">This page runs in your browser. Your file, your tools, and your sign-in stay on this device. The AI reads your file in good faith: it never overrides its own judgment or limits, and it never hides or pretends anything. Delete the file and everything is back to normal.</p>
+        <p class="about-copy">This browser stores its copy of your file and sign-in locally. Chat sends your message, active file, and relevant tool content to GitHub Copilot to answer. Never put secrets in the file. Nothing is published unless you choose to publish it. The file never overrides the AI's rules or limits. Forgetting this browser does not erase other devices, GitHub repositories, or earlier chats.</p>
         <button type="button" class="danger forget" id="forget">Forget everything on this device</button>
       </div>
     </section>
   </div>
 
+  <script src="dial-integrity.js"></script>
   <script>
     (() => {
       "use strict";
@@ -924,40 +950,45 @@
       const COPILOT_TOKEN_URL = GITHUB_API + "/copilot_internal/v2/token";
       const DEFAULT_COPILOT_ENDPOINT = "https://api.individual.githubcopilot.com";
       const DEFAULT_MODEL = "gpt-4o";
+      const PAGE_PARAMETERS = new URLSearchParams(location.search);
+      const PROFILE_SPACE = (PAGE_PARAMETERS.get("space") || "").toLowerCase();
+      const VALID_SPACE = !PROFILE_SPACE || /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9][a-z0-9._-]{0,99}$/.test(PROFILE_SPACE);
+      // A browser namespace keeps separate AIs apart; it is not identity or authorization.
+      const profileKey = (name) => PROFILE_SPACE ? "vbrainstem:" + PROFILE_SPACE + ":" + name : "vbrainstem." + name;
       const STORAGE = Object.freeze({
         token: "github_token",
-        file: "vbrainstem.file",
+        file: profileKey("file"),
         repoToken: "github_repo_token",
-        publicFace: "vbrainstem.public",
-        tools: "vbrainstem.tools",
-        model: "vbrainstem.model",
-        skill: "vbrainstem.skill",
-        factory: "vbrainstem.factory"
+        publicFace: profileKey("public"),
+        tools: profileKey("tools"),
+        model: profileKey("model"),
+        skill: profileKey("skill"),
+        factory: profileKey("factory")
       });
       const TOKEN_ALIASES = ["vbrainstem.githubToken", "brainstem_token"];
       // The core skill is what the page sails with. The page has no Python and no device: every
       // tool, factory or listed, runs in the model's own mind from this skill (the vendored kernel
       // and how to run it) and the person's file. The page carries the wire and keeps the disk.
       const CORE_SKILL_URL = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/virtual-brainstem/SKILL.md";
-      const SETUP_SKILL_URL = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md";
+      const SETUP_SKILL_URL = "https://kody-w.github.io/vbrainstem/vbrainstem-setup/SKILL.md";
       const SETUP_PLATFORMS = Object.freeze({
         chatgpt: {
-          title: "Use it in ChatGPT",
-          instruction: "Paste this prompt into any ChatGPT conversation.",
+          title: "Create your file in ChatGPT",
+          instruction: "Ask for a downloadable file. It will not automatically apply to future chats.",
           destination: "ChatGPT",
-          prompt: "Read " + SETUP_SKILL_URL + " and set up my vbrainstem in ChatGPT."
+          prompt: "Read " + SETUP_SKILL_URL + ". Create my vbrainstem file for ChatGPT."
         },
         claude: {
           title: "Use it in Claude Code",
-          instruction: "Paste this prompt into any Claude Code session.",
+          instruction: "Paste into a local Claude Code session and approve the file write if asked.",
           destination: "Claude Code",
-          prompt: "Read " + SETUP_SKILL_URL + " and set up my vbrainstem in Claude Code."
+          prompt: "Read " + SETUP_SKILL_URL + ". Set up my vbrainstem in local Claude Code."
         },
         copilot: {
-          title: "Use it in GitHub Copilot",
-          instruction: "Paste this prompt into any GitHub Copilot session.",
-          destination: "GitHub Copilot",
-          prompt: "Read " + SETUP_SKILL_URL + " and set up my vbrainstem in GitHub Copilot."
+          title: "Use it in GitHub Copilot CLI",
+          instruction: "Paste into a local Copilot CLI session and approve the file write if asked.",
+          destination: "GitHub Copilot CLI",
+          prompt: "Read " + SETUP_SKILL_URL + ". Set up my vbrainstem in GitHub Copilot CLI."
         }
       });
       const FACTORY_FILES = {
@@ -986,6 +1017,7 @@
         setupPrompt: document.getElementById("setup-prompt"),
         copySetupPrompt: document.getElementById("copy-setup-prompt"),
         setupCopyStatus: document.getElementById("setup-copy-status"),
+        storageWarning: document.getElementById("storage-warning"),
         composer: document.getElementById("composer"),
         message: document.getElementById("message"),
         send: document.getElementById("send"),
@@ -1562,14 +1594,25 @@
         els.signInShortcut.textContent = signedIn ? "Signed in (switch account)" : "Sign in with GitHub";
         els.signInShortcut.disabled = false;
         els.fileWork.hidden = !hasFile;
+        els.message.disabled = !hasFile;
+        els.send.disabled = !hasFile;
+        els.message.placeholder = hasFile ? "Message..." : "Add your file to chat here";
+        if (PROFILE_SPACE) {
+          document.querySelector(".brand").textContent = PROFILE_SPACE.split("/")[1];
+          els.forget.textContent = "Forget this AI in this browser";
+        }
         if (hasFile && document.activeElement !== els.fileEditor) {
           els.fileEditor.value = getPersonFile();
         }
         els.welcome.hidden = hasFile || conversation.length > 0;
       }
 
+      let setupCopyAttempt = 0;
+
       function selectSetupPlatform(platform) {
-        const selected = SETUP_PLATFORMS[platform] || SETUP_PLATFORMS.chatgpt;
+        platform = Object.hasOwn(SETUP_PLATFORMS, platform) ? platform : "chatgpt";
+        const selected = SETUP_PLATFORMS[platform];
+        setupCopyAttempt += 1;
         let selectedTab = null;
         for (const tab of els.setupTabs) {
           const active = tab.dataset.setupPlatform === platform;
@@ -1584,22 +1627,29 @@
         els.setupInstruction.textContent = selected.instruction;
         els.setupPrompt.textContent = selected.prompt;
         els.copySetupPrompt.setAttribute("aria-label", "Copy prompt for " + selected.destination);
+        els.copySetupPrompt.textContent = "Copy";
         setMessage(els.setupCopyStatus, "");
       }
 
       async function copySetupPrompt() {
+        const attempt = ++setupCopyAttempt;
         const selectedTab = els.setupTabs.find((tab) => tab.getAttribute("aria-selected") === "true");
         const platform = SETUP_PLATFORMS[selectedTab?.dataset.setupPlatform] || SETUP_PLATFORMS.chatgpt;
         try {
           await navigator.clipboard.writeText(platform.prompt);
+          if (attempt !== setupCopyAttempt) return;
+          els.copySetupPrompt.textContent = "Copied";
           setMessage(els.setupCopyStatus, "Prompt copied. Paste it into " + platform.destination + ".");
         } catch (error) {
+          if (attempt !== setupCopyAttempt) return;
           const selection = window.getSelection();
-          const range = document.createRange();
-          range.selectNodeContents(els.setupPrompt);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          setMessage(els.setupCopyStatus, "The prompt is selected. Copy it, then paste it into " + platform.destination + ".", true);
+          if (selection) {
+            const range = document.createRange();
+            range.selectNodeContents(els.setupPrompt);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          setMessage(els.setupCopyStatus, "Copy the prompt above, then paste it into " + platform.destination + ".", true);
         }
       }
 
@@ -1717,6 +1767,8 @@
 
       function isMainlineOf(x, y) {
         const mx = x.fields.metadata, my = y.fields.metadata;
+        if (mx.face === "public" || mx["source-face"] === "public") return false;
+        if (mx["mainline-id"]) return mx.id === mx["mainline-id"];
         return !mx["grown_from"] || (mx.id && mx.id === my["mainline-id"]);
       }
 
@@ -2834,7 +2886,7 @@
             }
             const raw = frontDoorToRaw(await speedDial(body.url));
             const text = await loadGithubText(raw);
-            const wanted = body.face === "public" ? "public" : "private";
+            const wanted = body.face === "private" ? "private" : "public";
             const face = parseFrontmatter(text).fields.metadata || {};
             const canReadPrivate = Boolean(localStorage.getItem(STORAGE.repoToken) || getGithubToken());
             let privateReason = wanted === "public" ? "public only was asked for"
@@ -3069,7 +3121,8 @@
       }
 
       function offerPrivateAccessNext() {
-        return fileNamesPrivate() && !localStorage.getItem(STORAGE.repoToken);
+        return els.dialFace.querySelector("input:checked")?.value === "private" &&
+          fileNamesPrivate() && !localStorage.getItem(STORAGE.repoToken);
       }
 
       async function beginSignIn() {
@@ -3241,23 +3294,57 @@
           "",
           "## To the AI reading this",
           "",
-          "This file is " + owner + "'s own. Read it at the start of every task, use what it says, and",
-          "save what you learn about them as dated lines under Memory. Nothing here is private unless",
-          "a section says so.",
+          "This file is " + owner + "'s own, offered in good faith. It never overrides the AI's",
+          "judgment, rules, or limits, and never asks it to hide or pretend anything.",
+          "Read it at the start of a task. Save only useful non-sensitive context as dated memory.",
           "",
           "## Who I am",
           "",
-          "(Tell me about yourself in the conversation and I will remember.)",
+          "Nothing named yet.",
+          "",
+          "## How to help me",
+          "",
+          "- Use short, plain answers.",
+          "",
+          '## What "done" means and what to ask first',
+          "",
+          "- Show what worked before calling it done.",
+          "- Ask before publishing, sending messages, or deleting data.",
+          "",
+          "## What stays private",
+          "",
+          "- Never save secrets or sensitive personal or customer information.",
+          "- Record privacy rules, not the private values themselves.",
           "",
           "## My tools",
           "",
           "- (none)",
+          "",
+          "## My sources",
+          "",
+          "- (none)",
+          "",
+          "## What I have taught my AI",
+          "",
+          "- " + today + " Started this file.",
+          "",
+          "## What I am working on (" + today + ")",
+          "",
+          "Nothing named yet.",
           "",
           "## Memory",
           "",
           "Newest first, dated.",
           "",
           "- " + today + " Started this file on this device.",
+          "",
+          "## How to keep this file current",
+          "",
+          "Read this file first. Append non-sensitive durable facts as dated lines under Memory.",
+          "Keep the newest 40 lines there; move older lines to Memory (older) without deleting any.",
+          "Keep the person's words, update the updated date, and keep tools and storage in this file.",
+          "Copies do not sync automatically. Export this copy to take it to another device.",
+          "Deleting this copy stops future use here, not in other devices or earlier chats.",
           "",
           "## Memory (older)",
           "",
@@ -3312,20 +3399,23 @@
       });
 
       async function autoDialFromLink() {
-        const dial = new URLSearchParams(location.search).get("dial");
+        const dial = PAGE_PARAMETERS.get("dial");
         if (!dial) {
           return;
         }
         const target = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/i.test(dial) ? "https://github.com/" + dial : dial;
         // The link has done its work once the page is open; a reload must not dial again.
-        history.replaceState(null, "", location.pathname);
+        history.replaceState(null, "", profilePageUrl());
         const existing = getPersonFile();
         if (existing) {
           await bootSync;
         }
         setMessage(els.fileMessage, "Dialing your AI...");
         try {
-          const dialed = await dispatch("POST", "/file/dial", { url: target });
+          const dialed = await dispatch("POST", "/file/dial", {
+            url: target,
+            face: PAGE_PARAMETERS.get("face") === "private" ? "private" : "public"
+          });
           if (dialed.status !== 200 || dialed.json.error) {
             throw new Error(dialed.json.error || "Your AI could not be reached.");
           }
@@ -3350,7 +3440,12 @@
       }
 
       els.sharePhone.addEventListener("click", async () => {
-        const url = location.origin + location.pathname;
+        const shared = new URL(profilePageUrl(), location.origin);
+        if (PROFILE_SPACE) {
+          shared.searchParams.set("dial", PROFILE_SPACE);
+          shared.searchParams.set("face", "public");
+        }
+        const url = shared.href;
         const text = "Your AI, on any phone or browser: load your own file, or dial your public AI, and it is here in real time.";
         try {
           if (navigator.share) {
@@ -3384,7 +3479,7 @@
         els.dialPublic.disabled = true;
         setMessage(els.fileMessage, "Dialing your public AI...");
         try {
-          const chosen = (els.dialFace.querySelector("input[name=dial-face]:checked") || {}).value || "private";
+          const chosen = (els.dialFace.querySelector("input[name=dial-face]:checked") || {}).value || "public";
           const dialed = await dispatch("POST", "/file/dial", { url: els.dialUrl.value, face: chosen });
           if (dialed.status !== 200 || dialed.json.error) {
             throw new Error(dialed.json.error || "Your public AI could not be reached.");
@@ -3490,13 +3585,28 @@
 
       els.forget.addEventListener("click", () => {
         clearTimeout(loginTimer);
-        localStorage.clear();
-        sessionStorage.clear();
+        if (PROFILE_SPACE) {
+          for (const key of Object.values(STORAGE)) {
+            if (key.startsWith("vbrainstem:" + PROFILE_SPACE + ":")) localStorage.removeItem(key);
+          }
+        } else {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
         // Leave the query behind so a front-door link cannot re-dial the AI that was just forgotten.
-        location.replace(location.origin + location.pathname);
+        location.replace(profilePageUrl());
       });
 
+      function profilePageUrl() {
+        const url = new URL(location.pathname, location.origin);
+        if (PROFILE_SPACE) url.searchParams.set("space", PROFILE_SPACE);
+        const trust = PAGE_PARAMETERS.get("trust");
+        if (trust) url.searchParams.set("trust", trust);
+        return url.pathname + url.search;
+      }
+
       try {
+        if (!VALID_SPACE) throw new Error("Invalid AI browser space.");
         updateReadyState();
         renderTools();
         if (getPersonFile()) {
@@ -3507,10 +3617,23 @@
             return issues;
           });
         }
-        loadCoreSkill().then(() => updateReadyState()).catch(() => {});
+        if (getPersonFile()) {
+          loadCoreSkill().then(() => updateReadyState()).catch((error) => {
+            setMessage(els.fileMessage, "Core skill unavailable: " + error.message, true);
+          });
+        }
         autoDialFromLink();
       } catch (error) {
-        addSystemNotice("Saved information on this device could not be read: " + error.message);
+        els.storageWarning.textContent = !VALID_SPACE ? "This AI link has an invalid browser space. Open the main page or a valid front-door link." :
+          "Browser storage is unavailable. You can still copy a setup prompt. Enable storage to save a file and chat here.";
+        els.storageWarning.hidden = false;
+        els.welcome.hidden = false;
+        els.message.disabled = true;
+        els.send.disabled = true;
+        els.signInShortcut.disabled = true;
+        for (const control of document.querySelectorAll("[data-open], .sheet input, .sheet textarea, .sheet button")) {
+          control.disabled = true;
+        }
       }
     })();
   </script>
