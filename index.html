@@ -1772,10 +1772,14 @@
               const text = await response.text();
               if (text.includes("## 1a. The virtual machine")) {
                 cached = { text, sha: await sha256(text), fetched: Date.now() };
-                try {
-                  localStorage.setItem(STORAGE.skill, JSON.stringify(cached));
-                } catch (error) {
-                  // no room to keep it; it will be fetched again next time
+                // Kept on the device only while a person's file is here: with no file there is
+                // nothing of theirs on this device, and "Forget everything" leaves nothing behind.
+                if (getPersonFile()) {
+                  try {
+                    localStorage.setItem(STORAGE.skill, JSON.stringify(cached));
+                  } catch (error) {
+                    // no room to keep it; it will be fetched again next time
+                  }
                 }
               }
             }

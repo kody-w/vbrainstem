@@ -35,7 +35,7 @@ jobs:
         run: |
           curl -fsSL https://raw.githubusercontent.com/kody-w/rapp-1/main/rapp.py -o /tmp/rapp.py
           RAPP_PY=/tmp/rapp.py python3 tools/mint_frame.py verify vbrainstem-setup
-      - name: Page smoke (mocked network, real Pyodide)
+      - name: Page smoke (mocked network; the model's mind mocked)
         working-directory: tests
         run: |
           npm ci
