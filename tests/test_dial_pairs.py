@@ -1,4 +1,4 @@
-"""Release gates for the four synthetic, separately published AI pairs."""
+"""Release gates for household favorites and compatible legacy publication pairs."""
 import base64
 import copy
 from datetime import datetime, timezone
@@ -38,6 +38,12 @@ report them instead of silently falling back.
 Do not volunteer public/private or repository internals in normal introductions.
 Provide truthful source, access, and verification diagnostics when asked; a saved
 snapshot does not prove it is the latest."""
+LEGACY_CATALOG_SHA256 = {
+    "vb-atlas": "22437e8d61abce6f9a005819674b2b9b5e44246977a6d8dfee37c0eef6d4bc15",
+    "vb-forge": "972b46ed894abf6b8c926a00f10442cc9f0f7da808cd0b956940e5b798988011",
+    "vb-quill": "4aea94aab54edaa625c1221d53874bbc4c1c2214633e5066762176a42507627b",
+    "vb-harbor": "7a2d0a0a584196722c30a4109fadcb192d64cb78e55d738643ea13cb13af7829",
+}
 
 
 class DialPairs(unittest.TestCase):
@@ -121,7 +127,8 @@ class DialPairs(unittest.TestCase):
         """Publish synthetic prior learning without rewriting the registered genesis."""
         directory = Path(pair["directory"])
         binding = {name: pair[name] for name in DIAL.BINDING_KEYS}
-        key = DIAL._load_key(self.keys / "kody-w-vb-atlas.ed25519.pem")
+        owner, slug = pair["public_repo"].split("/")
+        key = DIAL._load_key(self.keys / (owner + "-" + slug + ".ed25519.pem"))
         head = json.loads((directory / face / "FRAME.json").read_bytes())
         frame = DIAL.R.build_frame(
             kind=DIAL.KIND, stream_id=binding[face + "_id"], seq=head["seq"] + 1,
@@ -141,14 +148,74 @@ class DialPairs(unittest.TestCase):
             for name in ("public", "private"):
                 (directory / name / "DIAL.json").write_bytes(data)
 
-    def test_catalog_has_four_distinct_synthetic_roles(self):
+    def test_catalog_has_seven_supported_roles_and_exactly_four_household_favorites(self):
         catalog = DIAL.load_catalog()
-        self.assertEqual(set(catalog), {"vb-atlas", "vb-forge", "vb-quill", "vb-harbor"})
-        self.assertEqual(len({entry["role"] for entry in catalog.values()}), 4)
+        self.assertEqual(set(catalog), {
+            "vb-overwatch", "vb-scout", "vb-forge", "vb-sentinel",
+            "vb-atlas", "vb-quill", "vb-harbor",
+        })
+        self.assertEqual(DIAL.DEFAULT_FAVORITES, ("vb-overwatch", "vb-scout", "vb-forge", "vb-sentinel"))
+        self.assertEqual(len({entry["role"] for entry in catalog.values()}), 7)
+        self.assertEqual({slug for slug, entry in catalog.items() if entry["default_favorite"]},
+                         set(DIAL.DEFAULT_FAVORITES))
         for entry in catalog.values():
             self.assertTrue(entry["name"])
             self.assertTrue(entry["description"])
             self.assertTrue(entry["sample_prompt"])
+            self.assertIsInstance(entry["default_favorite"], bool)
+
+    def test_legacy_catalog_content_is_unchanged_for_existing_publications(self):
+        catalog = DIAL.load_catalog()
+        for slug, expected in LEGACY_CATALOG_SHA256.items():
+            content = {name: catalog[slug][name] for name in
+                       ("name", "role", "description", "working_style", "sample_prompt")}
+            self.assertEqual(hashlib.sha256(DIAL.R.canonical(content).encode("utf-8")).hexdigest(),
+                             expected, slug)
+
+    def test_catalog_refuses_missing_or_conflicting_favorite_flags(self):
+        original = DIAL.load_catalog()
+        for slug, value in (("vb-atlas", True), ("vb-forge", False), ("vb-scout", 1)):
+            catalog = copy.deepcopy(original)
+            catalog.setdefault(slug, {})["default_favorite"] = value
+            with self.subTest(slug=slug, value=value), \
+                    mock.patch.object(DIAL, "_read", return_value=self.encode_json(catalog)), \
+                    self.assertRaises(ValueError):
+                DIAL.load_catalog()
+        catalog = copy.deepcopy(original)
+        catalog["vb-forge"].pop("default_favorite", None)
+        with mock.patch.object(DIAL, "_read", return_value=self.encode_json(catalog)), \
+                self.assertRaises(ValueError):
+            DIAL.load_catalog()
+
+    def test_new_role_contacts_start_fresh_and_do_not_modify_existing_forge_or_legacy_pairs(self):
+        existing = {}
+        markers = [("LEGACY_LEARNING_ONLY_" + slug).encode() for slug in LEGACY_CATALOG_SHA256]
+        for slug, marker in zip(LEGACY_CATALOG_SHA256, markers):
+            pair = existing[slug] = self.legacy_pair(slug)
+            for face in ("public", "private"):
+                path = Path(pair["directory"]) / face / pair[face + "_skill_path"]
+                self.publish_skill(pair, face, path.read_bytes() + b"\n- " + marker + b"\n")
+        before = self.snapshot()
+        for slug in ("vb-overwatch", "vb-scout", "vb-sentinel"):
+            pair = self.create_pair(slug)
+            self.assertEqual(pair["public_repo"], "kody-w/" + slug)
+            self.assertEqual(pair["private_repo"], "kody-w/" + slug + "-private")
+            for face in ("public", "private"):
+                root = Path(pair["directory"]) / face
+                self.assertEqual(json.loads((root / "FRAME.json").read_bytes())["seq"], 0)
+                skill = (root / pair[face + "_skill_path"]).read_bytes()
+                for marker in markers:
+                    self.assertNotIn(marker, skill)
+                self.assertIn(b'  private-load: "auto-if-authorized"\n', skill)
+            self.assertNotIn("face", parse_qs(urlsplit(pair["dial_url"]).query))
+        after = self.snapshot()
+        for path, data in before.items():
+            self.assertEqual(after[path], data, str(path))
+        for pair in existing.values():
+            verdict = DIAL.verify_pair(pair["directory"], pair["estate_owner"])
+            self.assertEqual(verdict["frames_checked"], 4)
+            for name in ("public_id", "private_id", "estate_owner"):
+                self.assertEqual(verdict[name], pair[name])
 
     def test_positive_pairs_have_verified_registry_and_nonempty_frame_chains(self):
         for slug in DIAL.load_catalog():
@@ -172,7 +239,7 @@ class DialPairs(unittest.TestCase):
         for slug in DIAL.load_catalog():
             pair = self.create_pair(slug)
             identities.update((pair["public_id"], pair["private_id"], pair["estate_owner"]))
-        self.assertEqual(len(identities), 12)
+        self.assertEqual(len(identities), 21)
 
     def test_all_generated_json_and_frame_lines_are_canonical_bytes(self):
         for slug in DIAL.load_catalog():
@@ -325,13 +392,15 @@ class DialPairs(unittest.TestCase):
         self.assertNotIn("separate explicit request", index)
 
     def test_new_packages_use_automatic_existing_access_without_choice_or_false_fallback(self):
-        pair = self.create_pair()
-        for face in ("public", "private"):
-            skill = (Path(pair["directory"]) / face / pair[face + "_skill_path"]).read_text()
-            self.assertIn('  private-load: "auto-if-authorized"\n', skill)
-            self.assertIn(AUTOMATIC_ACCESS_POLICY, skill)
-            self.assertNotIn(LEGACY_ACCESS_POLICY, skill)
-            self.assertNotIn(f"This is my {face} face.", skill)
+        for slug in DIAL.DEFAULT_FAVORITES:
+            pair = self.create_pair(slug)
+            for face in ("public", "private"):
+                with self.subTest(slug=slug, face=face):
+                    skill = (Path(pair["directory"]) / face / pair[face + "_skill_path"]).read_text()
+                    self.assertIn('  private-load: "auto-if-authorized"\n', skill)
+                    self.assertIn(AUTOMATIC_ACCESS_POLICY, skill)
+                    self.assertNotIn(LEGACY_ACCESS_POLICY, skill)
+                    self.assertNotIn(f"This is my {face} face.", skill)
 
     def test_legacy_explicit_pair_still_verifies_before_revision(self):
         pair = self.legacy_pair()
@@ -341,8 +410,8 @@ class DialPairs(unittest.TestCase):
         self.assertEqual(verdict["frames_checked"], 2)
         self.assertEqual(self.snapshot(), before)
 
-    def test_all_four_legacy_personas_revise_with_their_existing_keys_and_identities(self):
-        for slug in DIAL.load_catalog():
+    def test_legacy_catalog_entries_revise_with_their_existing_keys_and_identities(self):
+        for slug in LEGACY_CATALOG_SHA256:
             with self.subTest(slug=slug):
                 pair = self.legacy_pair(slug)
                 result = DIAL.revise_pair(pair["directory"], self.keys, pair["estate_owner"])

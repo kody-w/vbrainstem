@@ -41,7 +41,8 @@ KIND = "body.publish"
 CHAT_ERROR_CODES = ("invalid-request", "unknown-session", "refused")
 DIAL_SCHEMA = "vbrainstem-dial/1"
 CARRIER_SCHEMA = "vbrainstem-carrier/1"
-SLUGS = {"vb-atlas", "vb-forge", "vb-quill", "vb-harbor"}
+DEFAULT_FAVORITES = ("vb-overwatch", "vb-scout", "vb-forge", "vb-sentinel")
+SLUGS = set(DEFAULT_FAVORITES) | {"vb-atlas", "vb-quill", "vb-harbor"}
 MAX_FILE_BYTES = 1024 * 1024
 BINDING_KEYS = {
     "estate_owner", "public_id", "private_id", "public_repo", "public_skill_path",
@@ -160,13 +161,17 @@ def _artifact_json(data):
 
 
 def load_catalog():
+    """Load supported contacts; favorite flags are not signed carrier metadata."""
     catalog = _json(_read(HERE / "dial_pairs_catalog.json"))
     _require(isinstance(catalog, dict) and set(catalog) == SLUGS, "unexpected synthetic catalog")
-    for entry in catalog.values():
+    for slug, entry in catalog.items():
         _require(isinstance(entry, dict), "invalid catalog entry")
         for key in ("name", "role", "description", "working_style", "sample_prompt"):
             _require(isinstance(entry.get(key), str) and entry[key].strip(), f"catalog requires {key}")
-    _require(len({entry["role"] for entry in catalog.values()}) == 4, "roles must be distinct")
+        _require(isinstance(entry.get("default_favorite"), bool)
+                 and entry["default_favorite"] == (slug in DEFAULT_FAVORITES),
+                 "catalog must mark exactly the four household default favorites")
+    _require(len({entry["role"] for entry in catalog.values()}) == len(catalog), "roles must be distinct")
     return catalog
 
 

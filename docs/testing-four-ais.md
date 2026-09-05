@@ -1,8 +1,34 @@
-# Four synthetic AI publication fixtures
+# Four household favorites and compatible publication fixtures
 
 `tools/dial_pairs.py` creates local, signed, append-only publication packages
-for `vb-atlas` (research), `vb-forge` (builder), `vb-quill` (writer), and
-`vb-harbor` (planner). The catalog is `tools/dial_pairs_catalog.json`.
+from the seven supported entries in `tools/dial_pairs_catalog.json`. The four
+default household favorites are **Overwatch, Scout, Forge, and Sentinel**:
+
+| Contact slug | Role | Default favorite |
+|---|---|---|
+| `vb-overwatch` | Coordination / overview | Yes |
+| `vb-scout` | Discovery / research | Yes |
+| `vb-forge` | Building / implementation | Yes |
+| `vb-sentinel` | Checking results / risks | Yes |
+| `vb-atlas` | Research; retained compatibility entry | No |
+| `vb-quill` | Writing; retained compatibility entry | No |
+| `vb-harbor` | Planning; retained compatibility entry | No |
+
+`DEFAULT_FAVORITES` exports the ordered tuple
+`("vb-overwatch", "vb-scout", "vb-forge", "vb-sentinel")`; every catalog entry
+also has an explicitly validated Boolean `default_favorite` field. Favorite
+selection is catalog information, not carrier metadata or a RAPP wire change.
+All five original content fields of the retained entries remain unchanged so
+their existing signed publications still verify.
+
+The new Overwatch, Scout, and Sentinel entries define independent synthetic
+contacts. Do not rename Atlas, Quill, or Harbor into them or copy those demos'
+learned memories. Preserve the existing `vb-forge` IDs, key, and history. Household
+role names and catalog entries do not prove that a contact has been published:
+publication and trusted addresses must be established separately. In particular,
+unrelated `rapp-overwatch` and `rapp-sentinel` framework projects are not these
+contact publications.
+
 Public/private faces may be called DOGG/GODD; these labels introduce no RAPP wire
 field, kind family, endpoint, or egg variant.
 
@@ -28,7 +54,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s tests -p test_dial_
 Tests create and remove their fixtures under the already ignored
 `tests/test-results/`, not the operating system's temporary directory. They check:
 
-- Four distinct personas, eight independent carrier IDs, and four signing owners.
+- Seven supported personas, fourteen independent carrier IDs, seven signing
+  owners, and exactly four default favorites.
 - Signed registries, registered nonempty genesis chains, detached frame and receipt
   signatures, exact skill bytes, and access-neutral landing redirects.
 - Wrong owner, unsigned/tampered documents, duplicate JSON members, unrelated
@@ -42,6 +69,8 @@ Tests create and remove their fixtures under the already ignored
 - Retained user learning and Storage bytes, canonical signed successor links,
   partial-face revisions, wrong revision keys/owners, and staged/signing/install
   failures that leave the original publication intact.
+- New household contacts start with only their own synthetic fixture memory.
+  Existing Forge and legacy contact bytes, keys, and learned history stay intact.
 
 ## Create, then verify
 
@@ -50,18 +79,21 @@ real publication staging and signing keys. Do not commit the signing directory.
 
 ```sh
 python3 -B tools/dial_pairs.py create \
-  --slug vb-atlas --owner kody-w \
+  --slug vb-overwatch --owner kody-w \
   --output /path/to/local-packages \
   --key-dir /path/to/local-signing-keys
 
 python3 -B tools/dial_pairs.py verify \
-  --directory /path/to/local-packages/vb-atlas \
-  --expected-owner 'rappid:@kody-w/vb-atlas-estate:THE_SAVED_64_HEX_TAIL'
+  --directory /path/to/local-packages/vb-overwatch \
+  --expected-owner 'rappid:@kody-w/vb-overwatch-estate:THE_SAVED_64_HEX_TAIL'
 ```
 
 Use the actual `estate_owner` printed by the first creation, retained through a
 trusted channel. Never obtain the verification argument from an untrusted
-download's own declaration. Repeat `create` for the other three catalog slugs.
+download's own declaration. Create Scout and Sentinel only as deliberately new
+contacts. For existing Forge, use its retained package and key with `verify` or
+`revise`, not a new output/key location that would mint a replacement identity.
+Legacy catalog slugs remain supported without being default favorites.
 `create` returns `directory`, the seven binding fields below, and `dial_url`;
 `verify` returns `status: "verified"`, `faces_checked`, and `frames_checked`.
 Validation failures raise `ValueError`; filesystem failures may raise `OSError`.
@@ -91,9 +123,9 @@ local command revises only an already recognized, fully verified pair:
 
 ```sh
 python3 -B tools/dial_pairs.py revise \
-  --directory /path/to/local-packages/vb-atlas \
+  --directory /path/to/local-packages/vb-forge \
   --key-dir /path/to/local-signing-keys \
-  --expected-owner 'rappid:@kody-w/vb-atlas-estate:THE_SAVED_64_HEX_TAIL'
+  --expected-owner 'rappid:@kody-w/vb-forge-estate:THE_SAVED_64_HEX_TAIL'
 ```
 
 The API is `revise_pair(directory, key_dir, expected_owner)`. It returns the usual
@@ -119,8 +151,8 @@ and public content hash. The public landing page drops `face=public` while retai
 
 Before installing anything, the tool copies the complete pair to a sibling stage
 outside either published face, patches it, and runs the same full verifier against
-that stage. It checks that the original package bytes did not change before swapping directories and
-restores the original location on an installation exception. Failed preflight,
+that stage. It checks that the original package bytes did not change before
+swapping directories and restores the original location on an installation exception. Failed preflight,
 signing, staging, or verification never becomes a success-shaped fallback.
 Work on a quiescent local copy; this is not a concurrent-writer or power-loss
 recovery service. Root `.git` directories are retained as opaque local metadata.
