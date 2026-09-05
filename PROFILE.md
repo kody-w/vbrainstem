@@ -10,6 +10,15 @@ identifier, this repository, this path, and this file's exact SHA-256 (RAPP/1 §
 
 This document is for implementers. A person never reads it; they read their own file.
 
+**Revisions.** rev-1 (2026-09-04): the carrier shape, memory, tools, portability, public faces.
+rev-2 (2026-09-05): the host is a virtual machine. A conforming host runs the pinned Brainstem
+kernel, vendored in the skill with per-file SHA-256, as a Python virtual machine within the AI's
+own reasoning; it is also the model that kernel calls; the carrier is the machine's only storage
+(§3a); the kernel's factory tools are present from the first task (§4); drift is measured by
+running the code, with the real kernel as a temporary anchor when needed; "plant" maps the
+carrier into a real kernel one to one (§5a). The skill that carries all of this for any AI:
+https://raw.githubusercontent.com/kody-w/vbrainstem/main/virtual-brainstem/SKILL.md
+
 ## 1. What this profile defines
 
 The **carrier**: one file a person owns, in the open Agent Skills format, named
@@ -108,6 +117,12 @@ A carrier MAY name, under `My sources` (never `My tools`, since it is read, not 
 it creates a Brainstem from nothing beside the native AI, loads the carrier's tools into its
 `agents/` folder, and the two bodies then work together on the device, each reading the same
 carrier. The Brainstem is never created unless the person asks.
+
+Planting is exact: the host pulls the kernel it has been running (the Grail one-liner, or the
+vendored blocks byte for byte), writes every `Memory` line into the kernel's memory store as one
+record (`plant_memory.py`, embedded in the skill), points the kernel's soul at the carrier, and
+proves a drift score of 1.0 before calling it planted. The two bodies then read one file, and
+records flow back as lines the same way. Nothing is lost in either direction.
 
 ## 5b. The private mainline behind a public front door (normative)
 
