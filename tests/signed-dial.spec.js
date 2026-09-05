@@ -29,7 +29,7 @@ function artifact(pair, face, file) {
   return fs.readFileSync(path.join(pair.directory, face, file), "utf8");
 }
 
-async function routes(page, { authorized = false, mutate = (_, text) => text } = {}) {
+async function routes(page, { authorized = false, seedToken = authorized, mutate = (_, text) => text } = {}) {
   const privateRequests = [];
   await page.route("https://**", (route) => route.abort());
   await page.route("https://raw.githubusercontent.com/fixture/**", (route) => {
@@ -54,7 +54,7 @@ async function routes(page, { authorized = false, mutate = (_, text) => text } =
       body: mutate("private/" + match[2], artifact(pair, "private", match[2]))
     });
   });
-  if (authorized) {
+  if (seedToken) {
     await page.addInitScript(() => localStorage.setItem("github_repo_token", "fixture-private-token"));
   }
   return privateRequests;
@@ -147,4 +147,25 @@ test("wrong private identity and registry cannot be borrowed from another AI", a
   }), pair);
   expect(result.status).not.toBe(200);
   expect(result.json.content).toBeUndefined();
+});
+
+test("a phone user can switch to private and complete access without hunting for controls", async ({ page }) => {
+  const pair = pairs.get("vb-atlas");
+  const privateRequests = await routes(page, { authorized: true, seedToken: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const query = new URLSearchParams({
+    dial: pair.public_repo, space: pair.public_repo, face: "public", trust: pair.estate_owner
+  });
+  await page.goto("/index.html?" + query);
+  await expect(page.locator("#file-state")).toHaveText("Your file is ready");
+  expect(privateRequests).toHaveLength(0);
+  await page.getByRole("button", { name: "Use private copy", exact: true }).click();
+  await expect(page).toHaveURL(/face=private/);
+  await expect(page.locator("#repo-token")).toBeInViewport({ ratio: 0.95 });
+  await expect(page.locator("#publication-state")).toContainText("Private access is required");
+  await page.locator("#repo-token").fill("fixture-private-token");
+  await page.getByRole("button", { name: "Save and load private copy", exact: true }).click();
+  await expect(page.locator("#file-state")).toHaveText("Your file is ready");
+  await expect(page.locator("#file-editor")).toHaveValue(artifact(pair, "private", pair.private_skill_path));
+  await expect(page.locator("#publication-state")).toContainText("Verified private");
 });

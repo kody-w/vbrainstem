@@ -103,8 +103,8 @@ contain Orion's memories or real personal/customer data.
 | Quill | Writing and editing | [Open Quill](https://kody-w.github.io/vb-quill/) | [vb-quill-private](https://github.com/kody-w/vb-quill-private) |
 | Harbor | Planning and dependencies | [Open Harbor](https://kody-w.github.io/vb-harbor/) | [vb-harbor-private](https://github.com/kody-w/vb-harbor-private) |
 
-Open **File** to see publication verification or deliberately choose the private
-copy. Private loading needs GitHub repository access; a denied request never
+Choose **Use private copy** to deliberately switch, or open **File** to see
+publication verification. Private loading needs GitHub repository access; a denied request never
 substitutes the public copy. The four AIs, and their public/private copies, use
 separate browser state. A public link never contains a private file.
 
