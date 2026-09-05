@@ -827,9 +827,9 @@ test("round-four fixes, part three: private file access is granted by a second s
   await expect(page.locator("#sign-in-title")).toHaveText("Allow private file access");
   await page.locator("#start-sign-in").click();
   await expect(page.locator("#device-code")).toHaveText("CODE-1");
-  expect(deviceRequests[0]).toEqual({ client_id: "Ov23liuueQBIUggrH8NG", scope: "repo" });
+  expect(deviceRequests[0]).toEqual({ client_id: "Ov23liXWPqaiWnxt9cLz", scope: "repo" });
   await expect(page.locator("#sign-in-message")).toContainText("Private file access allowed", { timeout: 15000 });
-  expect(polls[polls.length - 1].client_id).toBe("Ov23liuueQBIUggrH8NG");
+  expect(polls[polls.length - 1].client_id).toBe("Ov23liXWPqaiWnxt9cLz");
   expect(await page.evaluate(() => localStorage.getItem("github_repo_token"))).toBe("repo-token-1");
   expect(await page.evaluate(() => localStorage.getItem("github_token"))).toBe("fake-chat-token");
   await page.locator("#sign-in-sheet [data-close]").click();
