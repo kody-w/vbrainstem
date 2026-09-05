@@ -375,22 +375,22 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   {
     const mk = (id, updated, who, mem) => ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "' + id + '"', '  owner: "Ada"', '  created: "2026-09-01"', '  updated: "' + updated + '"', "---", "", "# Ada", "", "## Who I am", "", who, "", "## Memory", "", "Newest first.", "", ...mem, "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
     const A = mk("vb-aaaa", "2026-09-03", "Ada, baker.", ["- 2026-09-03 Likes rye.", "- 2026-09-02 Opened at 6."]);
-    const B = mk("vb-aaaa", "2026-09-04", "Ada, baker and bookkeeper.", ["- 2026-09-04 Spring menu drafted.", "- 2026-09-02 Opened at 6."]);
+    const B = mk("vb-aaaa", "2026-09-04", "Ada, baker.", ["- 2026-09-04 Spring menu drafted.", "- 2026-09-02 Opened at 6."]);
     const m1 = await page.evaluate(([a, b]) => window.vbrainstem.dispatch("POST", "/file/merge", { a, b, today: "2026-09-05" }), [A, B]);
     const m2 = await page.evaluate(([a, b]) => window.vbrainstem.dispatch("POST", "/file/merge", { a: b, b: a, today: "2026-09-05" }), [A, B]);
     expect(m1.json.added).toBe(1);
-    expect(m1.json.text).toContain("Ada, baker and bookkeeper.");
+    expect(m1.json.text).toContain("Ada, baker.");
     expect(m1.json.text).toContain('updated: "2026-09-05"');
     const mem = m1.json.text.split("## Memory\n")[1].split("## Memory (older)")[0].split("\n").filter((l) => l.startsWith("- "));
-    expect(mem).toEqual(["- 2026-09-05 Reunited two copies of me: 2 memory line(s) were in only one of them; 1 section(s) differed and the other copy's version is kept under \"Set aside from another copy\".", "- 2026-09-04 Spring menu drafted.", "- 2026-09-03 Likes rye.", "- 2026-09-02 Opened at 6."]);
-    expect(m1.json.text).toContain("## Set aside from another copy");
+    expect(mem[0]).toMatch(/^- 2026-09-05 Reunited two copies of me: 2 memory line\(s\).*reunion-id: [0-9a-f]{64}/);
+    expect(mem.slice(1)).toEqual(["- 2026-09-04 Spring menu drafted.", "- 2026-09-03 Likes rye.", "- 2026-09-02 Opened at 6."]);
     expect(m1.json.text).toContain("Ada, baker.");
     const memLines = (t) => t.split("## Memory\n")[1].split("## Memory (older)")[0].split("\n").filter((l) => l.startsWith("- ") && !l.includes("Reunited"));
     expect(memLines(m2.json.text)).toEqual(memLines(m1.json.text));
   }
 
   await page.setInputFiles("#person-file", personFile);
-  await expect(page.getByText("Your file is ready.", { exact: true })).toBeVisible();
+  await expect(page.locator("#file-message")).toContainText(/Your file is ready|already included/);
   await page.getByRole("button", { name: "Close your file" }).click();
 
   await page.getByRole("button", { name: "Open your tools" }).click();
@@ -549,10 +549,11 @@ test("review fixes: multi-line tools, rejected token, visible dial outcomes, for
   // the dial outcome is visible on the main surface, and the failed tool is reported, not hidden
   await expect(page.locator("#file-message")).toContainText("could not be loaded");
   await expect(page.locator("body")).toContainText("Your AI is here");
-  // opening the front-door link again with the same AI present reunites instead of asking to forget
+  // A new legacy public dimension cannot replace the selected identity on an ancestry claim.
   await page.goto("/index.html?dial=someone/their-ai");
-  await expect(page.locator("main, .transcript, #transcript").first()).toContainText("Reunited with the copy on this device");
-  await expect(page.locator("#file-sheet")).toBeHidden();
+  await expect(page.locator("#file-message")).toContainText("A different AI is already on this device");
+  await expect(page.locator("#file-sheet")).toBeVisible();
+  await page.locator("#file-sheet [data-close]").click();
   // forget on the front-door link must not re-dial
   const before = hits.face;
   await page.locator('[data-open="about"]').first().click();
@@ -621,21 +622,18 @@ test("round-two fixes: tool selection by name, reunion keeps identity and differ
   expect(chat2.json.agent_logs).toMatch(/^\[NoSuchAgent\] ERROR:/);
   expect(chat2.json.agent_logs).not.toContain("RESULT-FROM");
 
-  // reunion: same-date copies decide by content, not argument order; differing sections are set aside, not dropped
+  // An ancestry claim cannot authorize a cross-identity or policy-changing reunion.
   const mk = (id, extra, who, mem) => ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "' + id + '"', ...extra, '  owner: "Ada"', '  created: "2026-09-01"', '  updated: "2026-09-04"', "---", "", "# Ada", "", "## Who I am", "", who, "", "## Memory", "", ...mem, "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
   const main = mk("vb-main", [], "Ada, baker.", ["- 2026-09-04 Main memory."]);
   const dim = mk("vb-dim", ['  grown_from: "pub-1"', '  mainline-id: "vb-main"'], "Ada, baker and bookkeeper.", ["- 2026-09-04 Phone memory."]);
   const m1 = await page.evaluate(([a, b]) => window.vbrainstem.dispatch("POST", "/file/merge", { a, b, today: "2026-09-05" }), [main, dim]);
   const m2 = await page.evaluate(([a, b]) => window.vbrainstem.dispatch("POST", "/file/merge", { a, b, today: "2026-09-05" }), [dim, main]);
-  expect(m1.json.text).toBe(m2.json.text);
-  expect(m1.json.text).toContain("Ada, baker.");
-  expect(m1.json.text).toContain("## Set aside from another copy");
-  expect(m1.json.text).toContain("Ada, baker and bookkeeper.");
-  expect(m1.json.text).toContain("- 2026-09-04 Phone memory.");
-  expect(m1.json.text).toContain("- 2026-09-04 Main memory.");
-  expect(m1.json.text).toMatch(/\n## Memory \(older\)\n/);
+  expect(m1.status).not.toBe(200);
+  expect(m2.status).not.toBe(200);
+  expect(m1.json.error).toContain("different identities");
+  expect(m2.json.error).toContain("different identities");
 
-  // an assembled public dimension carries the mainline id, so a later private dial reunites instead of replacing
+  // An unsigned legacy mainline-id is not the trusted-source approval required for an upgrade.
   const publicFace = ["---", 'name: "their-ai"', 'description: "Public face."', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "pub-2"', '  owner: "Ada"', '  mainline-id: "vb-main2"', '  private-repo: "someone/their-ai-private"', '  private-path: "vbrainstem/SKILL.md"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "", "# Their AI", "", "## Who I am", "", "Ada, in public.", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
   const privateFile = mk("vb-main2", [], "Ada, privately.", ["- 2026-09-04 Private memory."]);
   await page.route("https://raw.githubusercontent.com/someone/their-ai2/main/their-ai2/SKILL.md", (r) => r.fulfill({ status: 200, body: publicFace }));
@@ -653,11 +651,11 @@ test("round-two fixes: tool selection by name, reunion keeps identity and differ
   await page.locator('#dial-face input[value="private"]').check();
   await page.locator("#dial-url").fill("https://github.com/someone/their-ai2");
   await page.locator("#dial-public").click();
-  await expect(page.locator("#file-message")).toContainText("Reunited with the copy on this device");
+  await expect(page.locator("#file-message")).toContainText("different identities");
   const after = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
   expect(after).toContain("- 2026-09-05 Learned on the phone.");
-  expect(after).toContain("- 2026-09-04 Private memory.");
-  expect(after).toContain("Ada, privately.");
+  expect(after).not.toContain("- 2026-09-04 Private memory.");
+  expect(after).toContain("Ada, in public.");
 });
 
 
@@ -668,9 +666,9 @@ test("round-three fixes: reunion authority by identity, idempotent set-aside, wr
   const mk = (id, extra, updated, who, mem) => ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "' + id + '"', ...extra, '  owner: "Ada"', '  created: "2026-08-01"', '  updated: "' + updated + '"', "---", "", "# Ada", "", "## Who I am", "", who, "", "## Memory", "", ...mem, "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
   const merge = (a, b) => page.evaluate(([x, y]) => window.vbrainstem.dispatch("POST", "/file/merge", { a: x, b: y, today: "2026-09-06" }), [a, b]);
 
-  // 1. the mainline keeps its identity and its sections even when the dimension was written more recently
+  // 1. Same-identity, same-policy copies combine memories without electing rules by date.
   const mainline = mk("vb-main", [], "2026-09-01", "Ada, baker.", ["- 2026-09-01 Main memory."]);
-  const dimension = mk("vb-dim", ['  grown_from: "pub-1"', '  mainline-id: "vb-main"', '  face: "dimension"'], "2026-09-05", "Ada, baker and bookkeeper.", ["- 2026-09-05 Phone memory."]);
+  const dimension = mk("vb-main", [], "2026-09-05", "Ada, baker.", ["- 2026-09-05 Phone memory."]);
   const ab = await merge(mainline, dimension);
   const ba = await merge(dimension, mainline);
   expect(ab.json.text).toBe(ba.json.text);
@@ -680,27 +678,25 @@ test("round-three fixes: reunion authority by identity, idempotent set-aside, wr
   expect(head).not.toContain("grown_from");
   expect(head).toContain('updated: "2026-09-06"');
   expect(ab.json.text).toMatch(/## Who I am\n\nAda, baker\.\n/);
-  expect(ab.json.text).toContain("### Who I am\n\nAda, baker and bookkeeper.");
   expect(ab.json.text).toContain("- 2026-09-05 Phone memory.");
   expect(ab.json.text).toContain("- 2026-09-01 Main memory.");
   expect(ab.json.text.match(/Reunited two copies of me/g).length).toBe(1);
   expect(ab.json.added).toBe(1);
   expect(ba.json.added).toBe(1);
 
-  // 2. meeting the same copy again changes nothing: one set-aside section, one note, same bytes
+  // 2. Meeting the same copy again changes nothing: one note and the same bytes.
   const again = await merge(ab.json.text, dimension);
   expect(again.json.text).toBe(ab.json.text);
   const reversed = await merge(dimension, ab.json.text);
   expect(reversed.json.text).toBe(ab.json.text);
-  expect(again.json.text.match(/## Set aside from another copy/g).length).toBe(1);
+  expect(again.json.text.match(/Reunited two copies of me/g).length).toBe(1);
   expect(again.json.added).toBe(0);
 
   // 3. a memory entry that wraps onto an indented line stays one entry through a reunion and an append
   const wrapped = mk("vb-w1", [], "2026-09-02", "Ada.", ["- 2026-09-02 A long memory that", "  wraps onto a second line."]);
-  const other = mk("vb-w2", ['  grown_from: "vb-w1"', '  mainline-id: "vb-w1"'], "2026-09-03", "Ada.", ["- 2026-09-03 Short."]);
+  const other = mk("vb-w1", [], "2026-09-03", "Ada.", ["- 2026-09-03 Short."]);
   const w = await merge(wrapped, other);
-  expect(w.json.text).toContain("- 2026-09-02 A long memory that wraps onto a second line.");
-  expect(w.json.text).not.toMatch(/\n  wraps onto/);
+  expect(w.json.text).toContain("- 2026-09-02 A long memory that\n  wraps onto a second line.");
   await page.evaluate((f) => localStorage.setItem("vbrainstem.file", f), wrapped);
   await page.reload();
   const wrappedAppend = await page.evaluate(() => { localStorage.setItem("github_token", "fake-github-token"); return true; });
@@ -887,7 +883,7 @@ test("round-four fixes, part two: set-aside stays visible to the AI, seals decid
   expect(dialed.status).toBe(200);
   expect(dialed.json.content).toContain("Ada, on trunk.");
 
-  // 4. a front-door link opened with the same AI already here reunites, and the link does not dial again on reload
+  // 4. Re-dialing a legacy public face mints another identity; refuse instead of merging its ancestry claim.
   await page.evaluate(() => { localStorage.removeItem("vbrainstem.file"); });
   const publicFace = ["---", 'name: "their-ai"', 'description: "Public face."', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "pub-link"', '  owner: "Ada"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "", "# Their AI", "", "## Who I am", "", "Ada, in public.", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
   await page.route("https://raw.githubusercontent.com/someone/their-ai/main/their-ai/SKILL.md", (r) => r.fulfill({ status: 200, body: publicFace }));
@@ -897,7 +893,7 @@ test("round-four fixes, part two: set-aside stays visible to the AI, seals decid
   expect(await page.evaluate(() => localStorage.getItem("vbrainstem.file"))).toContain('grown_from: "pub-link"');
   await page.evaluate(() => { const f = localStorage.getItem("vbrainstem.file"); localStorage.setItem("vbrainstem.file", f.replace("## Memory\n", "## Memory\n\n- 2026-09-05 Learned here.\n")); });
   await page.goto("/index.html?dial=someone/their-ai");
-  await expect(page.locator("main, .transcript, #transcript").first()).toContainText("Reunited with the copy on this device");
+  await expect(page.locator("#file-message")).toContainText("A different AI is already on this device");
   const after = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
   expect(after).toContain("- 2026-09-05 Learned here.");
   expect(after).not.toContain("Forget everything first");
@@ -977,13 +973,13 @@ test("round-four fixes, part three: private file access is granted by a second s
   await page.locator('#dial-face input[value="private"]').check();
   await page.locator("#dial-url").fill("https://github.com/someone/their-ai");
   await page.locator("#dial-public").click();
-  // the public copy assembled by the first dial reunites with the private mainline the access now reaches
-  await expect(page.locator("#file-message")).toContainText("Reunited with the copy on this device");
+  // Access alone does not supply the exact-source approval needed to replace the public identity.
+  await expect(page.locator("#file-message")).toContainText("different identities");
   expect(privateReads[privateReads.length - 1]).toBe("Bearer repo-token-1");
   const stored = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
-  expect(stored).toContain('id: "vb-main3"');
-  expect(stored).toContain("Ada, privately.");
-  expect(stored).toContain("- 2026-09-04 Private memory.");
+  expect(stored).toContain('mainline-id: "vb-main3"');
+  expect(stored).toContain("Ada, in public.");
+  expect(stored).not.toContain("- 2026-09-04 Private memory.");
   const status = await page.evaluate(() => window.vbrainstem.dispatch("GET", "/login/status"));
   expect(status.json).toMatchObject({ pending: false, authenticated: true, private_access: true });
   // 4. ordinary chat sign-in does not automatically request broader private permissions.

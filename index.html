@@ -1886,14 +1886,18 @@
       }
 
       function memoryDate(line) {
-        const m = line.match(/^- (\d{4}-\d{2}(?:-\d{2})?)/);
-        return m ? m[1] : "";
+        const m = line.match(/^- (\d{4}-\d{2}(?:-\d{2})?)(?:[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?))?/);
+        if (!m) return "";
+        const day = m[1].length === 7 ? m[1] + "-01" : m[1];
+        let time = m[2] || "00:00:00";
+        if (/^\d{2}:\d{2}$/.test(time)) time += ":00";
+        const stamp = Date.parse(day + "T" + time + (/(Z|[+-]\d{2}:\d{2})$/.test(time) ? "" : "Z"));
+        return Number.isFinite(stamp) ? new Date(stamp).toISOString() : m[1];
       }
 
       function sameAI(a, b) {
-        const ids = (f) => [f.metadata?.id, f.metadata?.["grown_from"], f.metadata?.["mainline-id"]].filter(Boolean);
-        const A = ids(a), B = ids(b);
-        return A.some((x) => B.includes(x));
+        const id = a.metadata?.id;
+        return typeof id === "string" && Boolean(id) && id === b.metadata?.id;
       }
 
       function replaceSection(body, heading, lines) {
@@ -1929,112 +1933,229 @@
       function isMainlineOf(x, y) {
         const mx = x.fields.metadata, my = y.fields.metadata;
         if (mx.face === "public" || mx["source-face"] === "public") return false;
-        if (mx["mainline-id"]) return mx.id === mx["mainline-id"];
-        return !mx["grown_from"] || (mx.id && mx.id === my["mainline-id"]);
+        return Boolean(mx.id) && !mx["grown_from"] &&
+          (!mx["mainline-id"] || mx["mainline-id"] === mx.id) &&
+          (mx.id === my.id || mx.id === my["mainline-id"]);
       }
 
-      function mergeDimensions(existingText, incomingText, today) {
+      async function mergeDimensions(existingText, incomingText, today, options = {}) {
         const a = validatePersonFile(existingText);
         const b = validatePersonFile(incomingText);
-        // Authority is a property of identity, never of a date: a mainline meeting one of its own
-        // dimensions supplies the head and every section outside memory. Only when both or
-        // neither is the mainline does the later "updated" date, then content, decide.
-        const mainA = isMainlineOf(a, b), mainB = isMainlineOf(b, a);
-        let authority;
-        if (mainA !== mainB) {
-          authority = mainA ? a : b;
-        } else {
-          const ua = String(a.fields.metadata.updated), ub = String(b.fields.metadata.updated);
-          authority = ua !== ub ? (ub > ua ? b : a) : (a.normalized <= b.normalized ? a : b);
+        const refuse = (message) => {
+          throw Object.assign(new Error(message + " Your current file was kept unchanged."), { code: "reunion_refused" });
+        };
+        // This option comes from a trusted controller, never from a file's metadata.
+        const approval = options.approvedSource;
+        const approved = Boolean(approval && approval.id === b.fields.metadata.id &&
+          approval.previousId === a.fields.metadata.id && isMainlineOf(b, a));
+        if (approval && !approved) refuse("The approval does not match these files or a private source.");
+        if (!sameAI(a.fields, b.fields) && !approved) {
+          refuse("These files have different identities. Open the other AI in its own space instead.");
         }
+
+        const sections = (body) => {
+          const found = [];
+          let offset = 0, fence = null;
+          for (const line of body.split("\n")) {
+            const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+            if (fence) {
+              if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) fence = null;
+            } else if (marker) {
+              fence = marker[1];
+            } else {
+              const heading = line.match(/^## ([^\n]+?)[ \t]*$/);
+              if (heading) found.push({ title: heading[1], start: offset, contentStart: offset + line.length + 1 });
+            }
+            offset += line.length + 1;
+          }
+          return found.map((section, index) => ({
+            ...section,
+            raw: body.slice(section.start, found[index + 1]?.start ?? body.length),
+            content: body.slice(section.contentStart, found[index + 1]?.start ?? body.length)
+          }));
+        };
+        const skip = new Set(["Memory", "Memory (older)", SET_ASIDE]);
+        const sectionsA = sections(a.body), sectionsB = sections(b.body);
+        for (const list of [sectionsA, sectionsB]) {
+          for (const title of ["Memory", "Memory (older)"]) {
+            const count = list.filter((section) => section.title === title).length;
+            if (count > 1 || (title === "Memory" && count !== 1)) {
+              refuse("The file has missing or repeated memory headings. Review the original before importing.");
+            }
+          }
+        }
+        const policyBody = (parsed, list) => parsed.body.slice(0, list[0]?.start ?? parsed.body.length) +
+          list.filter((section) => !skip.has(section.title)).map((section) => section.raw).join("");
+        const policy = (parsed, list) => {
+          const metadata = { ...parsed.fields.metadata };
+          delete metadata.updated;
+          return JSON.stringify({ ...parsed.fields, metadata }) + "\n" + policyBody(parsed, list).trim();
+        };
+        const policyChanged = policy(a, sectionsA) !== policy(b, sectionsB);
+        if (policyChanged && !approved) {
+          refuse("These copies have different rules or file details. Review them before approving a private source; dates do not choose the rules.");
+        }
+        const authority = approved ? b : a;
         const other = authority === a ? b : a;
-        // Memory: the union of both copies' entries, exact-line deduplicated, newest first, ties by
-        // text. Built from the unordered pair, so merge(x, y) and merge(y, x) are the same bytes.
-        const entriesA = memoryLinesOf(a.body), entriesB = memoryLinesOf(b.body);
+        const readMemory = (list) => {
+          const entries = [];
+          for (const section of list.filter((section) => section.title === "Memory" || section.title === "Memory (older)")) {
+            let entry = null;
+            for (const line of section.content.split("\n")) {
+              if (/^- /.test(line)) {
+                if (entry !== null && entry !== "- (nothing yet)") entries.push(entry);
+                entry = line;
+              } else if (entry !== null && /^[ \t]+\S/.test(line)) {
+                entry += "\n" + line;
+              }
+            }
+            if (entry !== null && entry !== "- (nothing yet)") entries.push(entry);
+          }
+          return entries;
+        };
+        const entriesA = readMemory(sectionsA), entriesB = readMemory(sectionsB);
         const setA = new Set(entriesA), setB = new Set(entriesB);
         const isReunionNote = (e) => /^- \d{4}-\d{2}-\d{2} Reunited two copies of me:/.test(e);
-        const newFromB = entriesB.filter((e) => !setA.has(e) && !isReunionNote(e));
-        const newFromA = entriesA.filter((e) => !setB.has(e) && !isReunionNote(e));
-        const union = new Map();
-        for (const entry of entriesA.concat(entriesB)) { union.set(entry, true); }
-        const lines = [...union.keys()].sort((x, y) => (memoryDate(y).localeCompare(memoryDate(x))) || x.localeCompare(y));
+        const incoming = [...setB].filter((entry) => !setA.has(entry));
+        const newFromB = incoming.filter((entry) => !isReunionNote(entry));
+        const newFromA = [...setA].filter((entry) => !setB.has(entry) && !isReunionNote(entry));
+        const compare = (x, y) => x < y ? -1 : x > y ? 1 : 0;
+        const lines = [...new Set([...entriesA, ...entriesB])].sort((x, y) =>
+          compare(memoryDate(y), memoryDate(x)) || compare(x, y));
         const onlyOne = newFromA.length + newFromB.length;
         const added = newFromB.length;
-        // Sections outside memory that the other copy had differently are kept, never dropped.
-        const skip = new Set(["Memory", "Memory (older)", SET_ASIDE]);
-        const mine = sectionsOf(authority.body), theirs = sectionsOf(other.body);
-        const existingAside = (mine.get(SET_ASIDE) || "") + "\n" + (theirs.get(SET_ASIDE) || "");
+        const mine = authority === a ? sectionsA : sectionsB;
+        const theirs = authority === a ? sectionsB : sectionsA;
+        const asideKey = (raw) => raw.replace(/\n+$/, "");
+        const existingAside = mine.filter((section) => section.title === SET_ASIDE).map((section) => asideKey(section.raw));
+        const counts = new Map();
+        for (const key of existingAside) counts.set(key, (counts.get(key) || 0) + 1);
+        const incomingCounts = new Map();
         const aside = [];
-        for (const [heading, text] of theirs) {
-          if (skip.has(heading)) { continue; }
-          if ((mine.get(heading) || "") === text) { continue; }
-          const block = "### " + heading + "\n\n" + text;
-          if (!existingAside.includes(block)) { aside.push(block); }
+        for (const section of theirs.filter((section) => section.title === SET_ASIDE)) {
+          const key = asideKey(section.raw);
+          const count = (incomingCounts.get(key) || 0) + 1;
+          incomingCounts.set(key, count);
+          if (count > (counts.get(key) || 0)) {
+            aside.push(section.raw);
+          }
         }
-        // A note is written only when two branches actually join: each copy knew something the
-        // other did not, or a section differed. Meeting a copy that adds nothing changes nothing.
-        if ((newFromA.length > 0 && newFromB.length > 0) || aside.length) {
+        if (policyChanged) {
+          const original = other.normalized.split("\n---\n")[0] + "\n---\n" + policyBody(other, theirs);
+          let fence = "```";
+          while (original.includes(fence)) fence += "`";
+          aside.push("## " + SET_ASIDE + "\n\nPrevious file details and rules, kept as evidence only; not current instructions.\n\n" +
+            fence + "text\n" + original + "\n" + fence + "\n");
+        }
+        if (!incoming.length && !aside.length && !policyChanged) {
+          return { text: existingText, added: 0, onlyOne, setAside: 0, keptFrom: "device" };
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) refuse("The reunion date is invalid.");
+        if ((newFromA.length && newFromB.length) || aside.length) {
+          const evidence = JSON.stringify({
+            id: authority.fields.metadata.id,
+            memories: lines.filter((entry) => !isReunionNote(entry)).sort(compare),
+            setAside: [...existingAside, ...aside.map(asideKey)].sort(compare)
+          });
+          const receiptId = await sha256Hex("vbrainstem-reunion-v1\n" + evidence);
           lines.unshift("- " + today + " Reunited two copies of me: " + onlyOne + " memory line(s) were in only one of them"
-            + (aside.length ? "; " + aside.length + " section(s) differed and the other copy's version is kept under \"" + SET_ASIDE + "\"" : "") + ".");
+            + (aside.length ? "; " + aside.length + " evidence section(s) kept under \"" + SET_ASIDE + "\"" : "")
+            + ". (reunion-id: " + receiptId + ")");
         }
-        let body = replaceSection(authority.body, "Memory", lines.slice(0, MEMORY_KEEP));
-        body = replaceSection(body, "Memory (older)", lines.slice(MEMORY_KEEP));
-        if (aside.length) {
-          const previous = mine.get(SET_ASIDE);
-          const merged = (previous ? previous + "\n\n" : "") + aside.join("\n\n");
-          body = previous !== undefined
-            ? body.replace(new RegExp("(^## " + SET_ASIDE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "[ \\t]*\\n)([\\s\\S]*?)(?=\\n## |(?![\\s\\S]))", "m"), (m, head) => head + "\n" + merged + "\n")
-            : body.replace(/\n*$/, "") + "\n\n## " + SET_ASIDE + "\n\n" + merged + "\n";
+        let body = authority.body;
+        const memoryGroups = new Map([["Memory", lines.slice(0, MEMORY_KEEP)], ["Memory (older)", lines.slice(MEMORY_KEEP)]]);
+        // Work on the parsed sections only, not memory-shaped examples inside evidence fences.
+        for (const section of mine.filter((section) => memoryGroups.has(section.title)).sort((x, y) => y.start - x.start)) {
+          const replacement = replaceSection(section.raw, section.title, memoryGroups.get(section.title))
+            .replace(/\n*$/, section.raw.match(/\n*$/)[0] || "\n");
+          body = body.slice(0, section.start) + replacement + body.slice(section.start + section.raw.length);
         }
-        const head = authority.normalized.split("\n---\n")[0].replace(/(updated: ")[^"]*(")/, "$1" + today + "$2");
+        if (!mine.some((section) => section.title === "Memory (older)")) {
+          body += "\n\n" + replaceSection("", "Memory (older)", memoryGroups.get("Memory (older)")).replace(/^\n+/, "");
+        }
+        for (const section of aside) body += (body.endsWith("\n\n") ? "" : body.endsWith("\n") ? "\n" : "\n\n") + section;
+        const head = authority.normalized.split("\n---\n")[0].replace(/^  updated:\s*.*$/m, '  updated: "' + today + '"');
         return { text: head + "\n---\n" + body.replace(/^\n+/, "") + (body.endsWith("\n") ? "" : "\n"), added, onlyOne, setAside: aside.length, keptFrom: authority === a ? "device" : "incoming" };
       }
 
-      async function setPersonFile(text, source = "device") {
+      async function setPersonFile(text, source = "device", options = {}) {
         const existing = getPersonFile();
-        if (existing) {
-          try {
-            const a = validatePersonFile(existing);
-            const b = validatePersonFile(text);
-            if (sameAI(a.fields, b.fields) && b.normalized !== a.normalized) {
-              const merged = mergeDimensions(existing, text, new Date().toISOString().slice(0, 10));
-              const parsed = validatePersonFile(merged.text);
-              localStorage.setItem(STORAGE.file, parsed.normalized);
-              els.fileEditor.value = parsed.normalized;
-              els.fileWork.hidden = false;
-              updateReadyState();
-              const issues = await syncListedTools();
-              setMessage(els.fileMessage, "Reunited with the copy on this device: " + merged.added + " new memory line(s) brought in." + (merged.setAside ? " " + merged.setAside + " section(s) differed and were kept under \"Set aside\" in the file for you to look at." : "") + (issues.length ? " " + issues.join(" ") : ""), issues.length > 0);
-              return Object.assign(parsed, { issues, reunited: merged.added, setAside: merged.setAside, keptFrom: merged.keptFrom });
-            }
-          } catch (error) {
-            // fall through: not two copies of the same AI, or the existing copy is unreadable
+        if (!existing) return setPersonFileFresh(text, source);
+        let staged;
+        try {
+          const merged = await mergeDimensions(existing, text, new Date().toISOString().slice(0, 10), options);
+          const parsed = validatePersonFile(merged.text);
+          if (getPersonFile() !== existing) throw new Error("The file changed during import. Reload before trying again.");
+          let issues = [];
+          if (merged.text !== existing) {
+            staged = parsed.normalized;
+            localStorage.setItem(STORAGE.file, staged);
+            issues = await syncListedTools();
+            if (getPersonFile() !== staged) throw new Error("The file changed while its tools were loading. Reload before trying again.");
           }
+          els.fileEditor.value = merged.text;
+          els.fileEditor.reunionBase = merged.text;
+          els.fileWork.hidden = false;
+          updateReadyState();
+          setMessage(els.fileMessage, merged.text === existing ? "This copy was already included; your file is unchanged."
+            : "Reunited with the copy on this device: " + merged.added + " new memory line(s) brought in." +
+              (merged.setAside ? " " + merged.setAside + " evidence section(s) kept in the file." : "") +
+              (issues.length ? " " + issues.join(" ") : ""), issues.length > 0);
+          return Object.assign(parsed, { issues, reunited: merged.added, setAside: merged.setAside, keptFrom: merged.keptFrom });
+        } catch (error) {
+          if (staged && getPersonFile() === staged) localStorage.setItem(STORAGE.file, existing);
+          setMessage(els.fileMessage, error.message + " The last complete file was kept; nothing was replaced with the incoming copy.", true);
+          throw error;
         }
-        return setPersonFileFresh(text, source);
       }
 
       async function setPersonFileFresh(text, source = "device") {
-        const parsed = validatePersonFile(text);
-        localStorage.setItem(STORAGE.file, parsed.normalized);
-        els.fileEditor.value = parsed.normalized;
-        els.fileWork.hidden = false;
-        setMessage(els.fileMessage, "Your file is ready.");
-        updateReadyState();
-        const issues = await syncListedTools();
-        if (issues.length) {
-          setMessage(els.fileMessage, issues.join(" "), true);
-        } else if (source === "link") {
-          setMessage(els.fileMessage, "Your file and its listed tools are ready.");
+        if (getPersonFile()) return setPersonFile(text, source);
+        let staged;
+        try {
+          const parsed = validatePersonFile(text);
+          staged = parsed.normalized;
+          localStorage.setItem(STORAGE.file, staged);
+          const issues = await syncListedTools();
+          if (getPersonFile() !== staged) throw new Error("The file changed while its tools were loading. Reload before trying again.");
+          els.fileEditor.value = staged;
+          els.fileEditor.reunionBase = staged;
+          els.fileWork.hidden = false;
+          updateReadyState();
+          setMessage(els.fileMessage, issues.length ? issues.join(" ") :
+            source === "link" ? "Your file and its listed tools are ready." : "Your file is ready.", issues.length > 0);
+          return Object.assign(parsed, { issues });
+        } catch (error) {
+          if (staged && getPersonFile() === staged) localStorage.removeItem(STORAGE.file);
+          setMessage(els.fileMessage, error.message + " No incomplete import was kept.", true);
+          throw error;
         }
-        return Object.assign(parsed, { issues });
       }
 
-      function saveEditorFile() {
-        const current = els.fileEditor.value.replace(/\r\n?/g, "\n");
-        localStorage.setItem(STORAGE.file, current);
-        setMessage(els.fileMessage, "Saved on this device.");
-        updateReadyState();
+      function saveEditorFile(event) {
+        try {
+          const existing = getPersonFile();
+          if (event?.type === "focus" || event?.type === "beforeinput") {
+            if (els.fileEditor.reunionBase === undefined || els.fileEditor.value === existing) {
+              els.fileEditor.reunionBase = els.fileEditor.value;
+            }
+            return;
+          }
+          if (els.fileEditor.reunionBase !== existing) {
+            throw new Error("The saved file changed while you were editing. Your draft was not saved. Export the draft if needed, then reload before editing again.");
+          }
+          const current = els.fileEditor.value.replace(/\r\n?/g, "\n");
+          const parsed = validatePersonFile(current);
+          if (!sameAI(validatePersonFile(existing).fields, parsed.fields)) {
+            throw new Error("The editor cannot replace this file with a different identity. Use that AI's own space.");
+          }
+          localStorage.setItem(STORAGE.file, current);
+          els.fileEditor.reunionBase = current;
+          setMessage(els.fileMessage, "Saved on this device.");
+          updateReadyState();
+        } catch (error) {
+          setMessage(els.fileMessage, error.message + " The last complete file was kept.", true);
+        }
       }
 
       async function sha256Hex(text) {
@@ -3038,7 +3159,7 @@
             if (!body || typeof body.a !== "string" || typeof body.b !== "string") {
               return { status: 400, json: { error: "Two files are required." } };
             }
-            const merged = mergeDimensions(body.a, body.b, body.today || new Date().toISOString().slice(0, 10));
+            const merged = await mergeDimensions(body.a, body.b, body.today || new Date().toISOString().slice(0, 10));
             return { status: 200, json: merged };
           }
           if (verb === "POST" && cleanPath === "/file/dial") {
@@ -3716,6 +3837,8 @@
       });
 
       els.fileEditor.addEventListener("input", saveEditorFile);
+      els.fileEditor.addEventListener("focus", saveEditorFile);
+      els.fileEditor.addEventListener("beforeinput", saveEditorFile);
       els.exportFile.addEventListener("click", downloadCurrentFile);
       els.exportBackup.addEventListener("click", downloadBackup);
       if (navigator.share) {
