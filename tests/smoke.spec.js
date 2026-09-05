@@ -6,6 +6,12 @@ const personFile = path.join(root, "samples", "ada", "SKILL.md");
 const toolFile = path.join(root, "samples", "tools", "hello-world", "SKILL.md");
 const greeting = "Hello, Ada! Welcome to the RAPP Agent ecosystem.";
 const memoryFact = "Ada wants her name used in greetings.";
+const setupSkillUrl = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md";
+const setupPrompts = {
+  chatgpt: "Read " + setupSkillUrl + " and set up my vbrainstem in ChatGPT.",
+  claude: "Read " + setupSkillUrl + " and set up my vbrainstem in Claude Code.",
+  copilot: "Read " + setupSkillUrl + " and set up my vbrainstem in GitHub Copilot."
+};
 const fs = require("fs");
 const coreSkillText = fs.readFileSync(path.join(root, "virtual-brainstem", "SKILL.md"), "utf8");
 const CORE_SKILL_URL = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/virtual-brainstem/SKILL.md";
@@ -89,6 +95,47 @@ function answer(message, finishReason = "stop") {
     }]
   };
 }
+
+test("setup prompt works for ChatGPT, Claude Code, and Copilot", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text) => {
+          window.__copiedSetupPrompt = text;
+        }
+      }
+    });
+  });
+
+  await page.goto("/index.html");
+
+  const tabs = page.getByRole("tab");
+  await expect(tabs).toHaveCount(3);
+  await expect(page.getByRole("tab", { name: "ChatGPT" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#setup-title")).toHaveText("Use it in ChatGPT");
+  await expect(page.locator("#setup-prompt")).toHaveText(setupPrompts.chatgpt);
+
+  await page.getByRole("tab", { name: "Claude Code" }).click();
+  await expect(page.getByRole("tab", { name: "Claude Code" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#setup-title")).toHaveText("Use it in Claude Code");
+  await expect(page.locator("#setup-instruction")).toContainText("Claude Code session");
+  await expect(page.locator("#setup-prompt")).toHaveText(setupPrompts.claude);
+
+  await page.getByRole("button", { name: "Copy prompt for Claude Code" }).click();
+  await expect(page.locator("#setup-copy-status")).toHaveText("Prompt copied. Paste it into Claude Code.");
+  expect(await page.evaluate(() => window.__copiedSetupPrompt)).toBe(setupPrompts.claude);
+
+  await page.getByRole("tab", { name: "GitHub Copilot" }).click();
+  await expect(page.locator("#setup-title")).toHaveText("Use it in GitHub Copilot");
+  await expect(page.locator("#setup-instruction")).toContainText("GitHub Copilot session");
+  await expect(page.locator("#setup-prompt")).toHaveText(setupPrompts.copilot);
+
+  await page.getByRole("tab", { name: "GitHub Copilot" }).press("Home");
+  await expect(page.getByRole("tab", { name: "ChatGPT" })).toBeFocused();
+  await expect(page.getByRole("tab", { name: "ChatGPT" })).toHaveAttribute("aria-selected", "true");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
 
 test("mobile file, tools, chat, memory, export, routes, and reset", async ({ page }) => {
   const calls = new Map();

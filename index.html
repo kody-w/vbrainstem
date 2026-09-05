@@ -172,7 +172,7 @@
     }
 
     .welcome {
-      max-width: 560px;
+      max-width: 720px;
       margin: min(16vh, 120px) auto 28px;
       padding: 0 16px;
       text-align: center;
@@ -184,14 +184,130 @@
       letter-spacing: -0.035em;
     }
 
-    .welcome p {
+    .welcome > p {
       margin: 0 0 18px;
       color: var(--muted);
       line-height: 1.55;
     }
 
-    .welcome button {
+    .setup-guide {
+      margin: 24px 0 18px;
+      text-align: left;
+    }
+
+    .setup-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-strong);
+    }
+
+    .setup-tab {
+      min-width: 0;
+      min-height: 44px;
+      padding: 8px 10px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .setup-tab[aria-selected="true"] {
+      background: var(--panel);
+      color: var(--text);
+      box-shadow: 0 1px 4px color-mix(in srgb, var(--shade) 28%, transparent);
+    }
+
+    .setup-panel {
+      margin-top: 12px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+    }
+
+    .setup-panel h2 {
+      margin: 0;
+      text-align: center;
+      font-size: clamp(20px, 5vw, 25px);
+      letter-spacing: -0.025em;
+    }
+
+    .setup-instruction {
+      margin: 8px 0 16px;
+      color: var(--muted);
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .setup-prompt-box {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--bg);
+    }
+
+    .setup-prompt-box code {
+      overflow-wrap: anywhere;
+      color: var(--text);
+      font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.55;
+      user-select: all;
+    }
+
+    .setup-copy {
+      min-height: 40px;
+      padding: 8px 13px;
+    }
+
+    .setup-status {
+      min-height: 21px;
+      margin: 8px 0 0;
+      text-align: center;
+    }
+
+    .welcome-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 9px;
+    }
+
+    .welcome-actions button {
       padding: 0 18px;
+    }
+
+    @media (max-width: 520px) {
+      .welcome {
+        margin-top: 34px;
+        padding-inline: 4px;
+      }
+
+      .setup-tab {
+        padding-inline: 5px;
+        font-size: 12px;
+      }
+
+      .setup-panel {
+        padding: 16px 12px;
+      }
+
+      .setup-prompt-box {
+        grid-template-columns: 1fr;
+      }
+
+      .setup-copy {
+        width: 100%;
+      }
     }
 
     .turn {
@@ -592,8 +708,41 @@
     <main class="transcript" id="transcript" aria-live="polite">
       <section class="welcome" id="welcome">
         <h1>Your AI, wherever you are.</h1>
-        <p>Bring in your file and your tools, then pick up the conversation.</p>
-        <button type="button" class="primary" data-open="file">Add your file</button>
+        <p>Start in the AI you already use, or bring in your existing file.</p>
+        <section class="setup-guide" aria-labelledby="setup-title">
+          <div class="setup-tabs" role="tablist" aria-label="Choose your AI">
+            <button type="button" class="setup-tab" id="setup-tab-chatgpt" role="tab"
+              aria-selected="true" aria-controls="setup-panel" data-setup-platform="chatgpt">
+              ChatGPT
+            </button>
+            <button type="button" class="setup-tab" id="setup-tab-claude" role="tab"
+              aria-selected="false" aria-controls="setup-panel" tabindex="-1"
+              data-setup-platform="claude">
+              Claude Code
+            </button>
+            <button type="button" class="setup-tab" id="setup-tab-copilot" role="tab"
+              aria-selected="false" aria-controls="setup-panel" tabindex="-1"
+              data-setup-platform="copilot">
+              GitHub Copilot
+            </button>
+          </div>
+          <div class="setup-panel" id="setup-panel" role="tabpanel"
+            aria-labelledby="setup-tab-chatgpt">
+            <h2 id="setup-title">Use it in ChatGPT</h2>
+            <p class="setup-instruction" id="setup-instruction">
+              Paste this prompt into any ChatGPT conversation.
+            </p>
+            <div class="setup-prompt-box">
+              <code id="setup-prompt">Read https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md and set up my vbrainstem in ChatGPT.</code>
+              <button type="button" class="setup-copy" id="copy-setup-prompt"
+                aria-label="Copy prompt for ChatGPT">Copy prompt</button>
+            </div>
+            <p class="message setup-status" id="setup-copy-status" role="status"></p>
+          </div>
+        </section>
+        <div class="welcome-actions">
+          <button type="button" class="primary" data-open="file">Add your file</button>
+        </div>
       </section>
     </main>
 
@@ -790,6 +939,27 @@
       // tool, factory or listed, runs in the model's own mind from this skill (the vendored kernel
       // and how to run it) and the person's file. The page carries the wire and keeps the disk.
       const CORE_SKILL_URL = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/virtual-brainstem/SKILL.md";
+      const SETUP_SKILL_URL = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md";
+      const SETUP_PLATFORMS = Object.freeze({
+        chatgpt: {
+          title: "Use it in ChatGPT",
+          instruction: "Paste this prompt into any ChatGPT conversation.",
+          destination: "ChatGPT",
+          prompt: "Read " + SETUP_SKILL_URL + " and set up my vbrainstem in ChatGPT."
+        },
+        claude: {
+          title: "Use it in Claude Code",
+          instruction: "Paste this prompt into any Claude Code session.",
+          destination: "Claude Code",
+          prompt: "Read " + SETUP_SKILL_URL + " and set up my vbrainstem in Claude Code."
+        },
+        copilot: {
+          title: "Use it in GitHub Copilot",
+          instruction: "Paste this prompt into any GitHub Copilot session.",
+          destination: "GitHub Copilot",
+          prompt: "Read " + SETUP_SKILL_URL + " and set up my vbrainstem in GitHub Copilot."
+        }
+      });
       const FACTORY_FILES = {
         ContextMemory: "rapp_brainstem/agents/context_memory_agent.py",
         HackerNews: "rapp_brainstem/agents/hacker_news_agent.py",
@@ -809,6 +979,13 @@
         shade: document.getElementById("shade"),
         transcript: document.getElementById("transcript"),
         welcome: document.getElementById("welcome"),
+        setupTabs: Array.from(document.querySelectorAll("[data-setup-platform]")),
+        setupPanel: document.getElementById("setup-panel"),
+        setupTitle: document.getElementById("setup-title"),
+        setupInstruction: document.getElementById("setup-instruction"),
+        setupPrompt: document.getElementById("setup-prompt"),
+        copySetupPrompt: document.getElementById("copy-setup-prompt"),
+        setupCopyStatus: document.getElementById("setup-copy-status"),
         composer: document.getElementById("composer"),
         message: document.getElementById("message"),
         send: document.getElementById("send"),
@@ -1389,6 +1566,41 @@
           els.fileEditor.value = getPersonFile();
         }
         els.welcome.hidden = hasFile || conversation.length > 0;
+      }
+
+      function selectSetupPlatform(platform) {
+        const selected = SETUP_PLATFORMS[platform] || SETUP_PLATFORMS.chatgpt;
+        let selectedTab = null;
+        for (const tab of els.setupTabs) {
+          const active = tab.dataset.setupPlatform === platform;
+          tab.setAttribute("aria-selected", String(active));
+          tab.tabIndex = active ? 0 : -1;
+          if (active) {
+            selectedTab = tab;
+          }
+        }
+        els.setupPanel.setAttribute("aria-labelledby", selectedTab?.id || "setup-tab-chatgpt");
+        els.setupTitle.textContent = selected.title;
+        els.setupInstruction.textContent = selected.instruction;
+        els.setupPrompt.textContent = selected.prompt;
+        els.copySetupPrompt.setAttribute("aria-label", "Copy prompt for " + selected.destination);
+        setMessage(els.setupCopyStatus, "");
+      }
+
+      async function copySetupPrompt() {
+        const selectedTab = els.setupTabs.find((tab) => tab.getAttribute("aria-selected") === "true");
+        const platform = SETUP_PLATFORMS[selectedTab?.dataset.setupPlatform] || SETUP_PLATFORMS.chatgpt;
+        try {
+          await navigator.clipboard.writeText(platform.prompt);
+          setMessage(els.setupCopyStatus, "Prompt copied. Paste it into " + platform.destination + ".");
+        } catch (error) {
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(els.setupPrompt);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          setMessage(els.setupCopyStatus, "The prompt is selected. Copy it, then paste it into " + platform.destination + ".", true);
+        }
       }
 
       function openSheet(name) {
@@ -2968,6 +3180,30 @@
       els.signInShortcut.addEventListener("click", () => showSignIn("chat"));
       els.allowPrivate.addEventListener("click", () => showSignIn("private"));
       els.allowPrivateNextButton.addEventListener("click", () => showSignIn("private"));
+      for (const tab of els.setupTabs) {
+        tab.addEventListener("click", () => selectSetupPlatform(tab.dataset.setupPlatform));
+        tab.addEventListener("keydown", (event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+            return;
+          }
+          event.preventDefault();
+          const current = els.setupTabs.indexOf(tab);
+          let next = current;
+          if (event.key === "ArrowLeft") {
+            next = (current - 1 + els.setupTabs.length) % els.setupTabs.length;
+          } else if (event.key === "ArrowRight") {
+            next = (current + 1) % els.setupTabs.length;
+          } else if (event.key === "Home") {
+            next = 0;
+          } else if (event.key === "End") {
+            next = els.setupTabs.length - 1;
+          }
+          const nextTab = els.setupTabs[next];
+          selectSetupPlatform(nextTab.dataset.setupPlatform);
+          nextTab.focus();
+        });
+      }
+      els.copySetupPrompt.addEventListener("click", copySetupPrompt);
 
       els.personFile.addEventListener("change", async () => {
         const file = els.personFile.files?.[0];
