@@ -57,6 +57,17 @@ The record is intentionally prose, not frames. An estate that needs verifiable h
 RAPP/1 frame per appended line (kind bound to the `memory` family) with the carrier's `id` as
 the stream identity; the carrier itself does not change shape for that.
 
+## 3a. Storage (normative)
+
+The carrier is the host's storage. What a Brainstem kernel keeps in its storage folder, a
+virtual host keeps in the carrier: the memory store is `Memory` and `Memory (older)`, one record
+per line in the form `- <date> <time> <message> (<theme>, importance <n>, tags: ...)`, absent parts
+taking the kernel's defaults so a plain dated line is still one record;
+any other file a tool reads or writes lives under a `Storage` section, one `### <path>` heading
+and fenced block per file. Every user context resolves to the person; a host never keeps a
+second store. Hatching a real Brainstem (§5a) materializes this storage as the kernel's own
+files, and nothing is lost in either direction.
+
 ## 4. Tools (normative)
 
 `My tools` lists the capabilities the person uses, one per line, each with where it lives or a
@@ -65,6 +76,16 @@ offers nothing unlisted. Removing a line unloads the tool on the next task. Each
 skill file; a skill file with embedded code converts losslessly to a single-file RAPP agent and
 back (see https://github.com/kody-w/rapp-skills), so the same tool is native in a Brainstem's
 `agents/` folder and native as a skill everywhere else.
+
+A host that is a virtual Brainstem runs the vendored kernel as a Python virtual machine in
+the AI's own reasoning, and is itself the model that kernel calls. It offers the factory tools
+from the first task, without any line in `My tools`: `ContextMemory`, `HackerNews`, and
+`ManageMemory` from `kody-w/rapp-installer@49db80c8`, and `LearnNew` from the RAR registry, with
+the names, descriptions, and schemas of the vendored code, carried out by running that code,
+with the carrier as storage (§3a). Tools LearnNew makes are `agents/*_agent.py` blocks under
+`Storage` and are discovered every task. The factory tools appear in `/health` and `/agents`
+before the listed tools. Drift between what the host answered and what the code computes is
+measured by running the code, and the code wins.
 
 The carrier is the person's private face. It MAY name public faces the same way: a network
 skill (for example the DOGG skill, the public face of an estate on the network) is listed under

@@ -1,9 +1,19 @@
 {
-  "captured_from": "a real Brainstem kernel 0.6.16 (the Grail), started fresh with the fictional person Ada's file as its persona (SOUL_PATH) and no memory agents, so nothing but Ada's file shaped the replies; captured 2026-09-04; the /chat responses are the kernel's replies verbatim, every key kept",
-  "purpose": "baseline fidelity test: a virtual Brainstem given Ada's file must answer these with the same substance and in this exact envelope shape",
+  "captured_from": "a real Brainstem kernel 0.6.16 (the Grail), started fresh with the fictional person Ada's file as its persona (SOUL_PATH), a fresh install's factory agents and an empty storage, so nothing but Ada's file and the factory tools shaped the replies; captured 2026-09-05; the /chat responses are the kernel's replies verbatim, every key kept",
+  "purpose": "baseline fidelity test: a virtual Brainstem given Ada's file must answer these with the same substance, the same tool calls in agent_logs, and this exact envelope shape",
   "health_public": {
     "status": "ok",
     "version": "0.6.16"
+  },
+  "health": {
+    "status": "ok",
+    "version": "0.6.16",
+    "agents": [
+      "ContextMemory",
+      "HackerNews",
+      "ManageMemory",
+      "LearnNew"
+    ]
   },
   "exchange": [
     {
@@ -16,11 +26,11 @@
         }
       },
       "response": {
-        "agent_logs": "",
+        "agent_logs": "[ContextMemory] I don't have any memories stored in the shared memory yet.",
         "model": "claude-haiku-4.5",
         "requested_model": "claude-haiku-4.5",
-        "response": "# What I know about you\n\n**You run a small bakery and do your own books.**\n\nYou read slowly, so I'll use short lines and bold key points.\n\nYou're working on a spring menu (as of 2026-09-04).\n\nYou want me to show you things work before calling them done, and never send emails without asking first.\n\nYour supplier prices stay private.\n\nThat's what I know. I'll read this file at the start of every task.",
-        "session_id": "d153f209-6fb6-4d57-a506-1269853c8f0a",
+        "response": "Based on your vbrainstem file:\n\n**You run a small bakery** and manage your own books.\n\n**You're working on** a spring menu.\n\n**How I help best:**\n- Short lines\n- Bold key points\n- Always show you it worked\n- Never send emails without asking first\n\n**Private:** Supplier prices.\n\nThat's everything I know. Ready to help with your spring menu or bakery work.",
+        "session_id": "1fa3f5c7-9a54-4cb1-a1c9-6ca003ac6892",
         "voice_mode": false
       }
     },
@@ -31,15 +41,53 @@
         "body": {
           "user_input": "What must you never do without asking me, and what does done mean to me? One line each.",
           "conversation_history": "(the first exchange)",
-          "session_id": "d153f209-6fb6-4d57-a506-1269853c8f0a"
+          "session_id": "1fa3f5c7-9a54-4cb1-a1c9-6ca003ac6892"
         }
       },
       "response": {
         "agent_logs": "",
         "model": "claude-haiku-4.5",
         "requested_model": "claude-haiku-4.5",
-        "response": "**Never send an email without asking.**\n\n**Done means you showed me it worked.**",
-        "session_id": "d153f209-6fb6-4d57-a506-1269853c8f0a",
+        "response": "**Never do without asking:** Send an email.\n\n**Done means:** You showed me it worked.",
+        "session_id": "1fa3f5c7-9a54-4cb1-a1c9-6ca003ac6892",
+        "voice_mode": false
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/chat",
+        "body": {
+          "user_input": "Remember that my favorite bread is rye. Save it, then confirm in one line.",
+          "conversation_history": "(the exchanges above)",
+          "session_id": "1fa3f5c7-9a54-4cb1-a1c9-6ca003ac6892"
+        }
+      },
+      "response": {
+        "agent_logs": "[ManageMemory] Successfully stored preference memory in shared memory: \"Ada's favorite bread is rye.\"",
+        "model": "claude-haiku-4.5",
+        "requested_model": "claude-haiku-4.5",
+        "response": "**Saved:** Your favorite bread is rye.",
+        "session_id": "1fa3f5c7-9a54-4cb1-a1c9-6ca003ac6892",
+        "voice_mode": false
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/chat",
+        "body": {
+          "user_input": "What do you remember about bread? Use your memory tool and answer in one line.",
+          "conversation_history": "(the exchanges above)",
+          "session_id": "1fa3f5c7-9a54-4cb1-a1c9-6ca003ac6892"
+        }
+      },
+      "response": {
+        "agent_logs": "[ContextMemory] Here's what I remember from shared memory:\n- Memory content (verbatim): \"Ada's favorite bread is rye.\" (Theme: preference, Recorded: 2026-09-05 07:55:01)",
+        "model": "claude-haiku-4.5",
+        "requested_model": "claude-haiku-4.5",
+        "response": "**Your favorite bread is rye.**",
+        "session_id": "1fa3f5c7-9a54-4cb1-a1c9-6ca003ac6892",
         "voice_mode": false
       }
     }

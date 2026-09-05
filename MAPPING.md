@@ -9,8 +9,10 @@ each step, and the file tells it what the steps are.
 |---|---|---|
 | Loads the persona (`soul.md`) | "Who I am", "How to help me", "What done means" | Reads the file at the start of every task |
 | Discovers tools from `agents/*_agent.py`, fresh every request | "My tools": a list, each with where it lives or a link | Makes sure each listed tool is in its skills folder (fetching by link if missing); anything not listed is not used |
-| Injects memory (`ContextMemory`) into every turn | "Memory" | Reads the section every task |
-| Saves what it learned (`ManageMemory`) | The rule in "How to keep this file current" | Appends one dated line the moment something durable is learned |
+| Injects memory (`ContextMemory`) into every turn | "Memory" | Reads the section every task; that is `ContextMemory.system_context()` done by the AI |
+| Saves what it learned (`ManageMemory`) | The rule in "How to keep this file current" | Appends one dated line the moment something durable is learned; that is `ManageMemory.perform()` with the file as its store |
+| Ships factory tools in `agents/` (`ContextMemory`, `ManageMemory`, `HackerNews`) | Nothing to list; they are part of being a Brainstem | Offers all three from the first turn, simulated from the vendored code |
+| Keeps a storage folder (`memory.json`, files tools write) | "Memory", "Memory (older)", and a "Storage" section on demand | Reads and writes those sections; the file is the storage |
 | Unloads a tool when its file is removed | Removing a line from "My tools" | Stops using it on the next task |
 | Runs a tool's code | The code inside each skill file | Runs it locally; if it cannot run code, reads the code and carries out what it does |
 | Keeps a session | Nothing | The native tool's own session |

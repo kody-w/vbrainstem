@@ -16,6 +16,11 @@ Everything the virtual Brainstem knows about the person comes from the person's 
 back into it. There is no hidden state, no second store, no memory kept anywhere the person
 cannot see, export, or delete. When the file is gone, the Brainstem is gone.
 
+The file is also the storage. What a real Brainstem writes to its disk (its memory store and any
+file a tool saves) the virtual one writes into the person's file, in named sections, and reads
+back from there. Two things make it whole: the vendored code, which is what it does, and the
+file, which is everything it has.
+
 ## III. Same shape as a real one
 
 The virtual Brainstem answers in the exact shapes of the real kernel vendored in the skill: the
@@ -23,11 +28,12 @@ same routes, the same request and reply envelopes, the same per-turn loop of per
 memory in, answer, memory out. Anything that could talk to a real Brainstem can talk to the
 virtual one without changing.
 
-## IV. Tools come only from the list
+## IV. Tools come only from the file
 
-A tool exists for the virtual Brainstem only while it is listed in the person's file under
-"My tools". Listed tools are loaded every turn; unlisted tools are not offered; a removed line
-unloads the tool on the next turn. The AI never invents a tool the file does not name.
+A tool exists for the virtual Brainstem only while the person's file carries it: the factory
+tools every Brainstem ships (XVII), the lines under "My tools", and the `agents/*_agent.py`
+blocks under "Storage". All are loaded every turn; nothing else is offered; a removed line or
+block unloads the tool on the next turn. The AI never invents a tool the file does not carry.
 
 ## V. Memory is append-only and honest
 
@@ -86,6 +92,10 @@ exchange captured from a real kernel. A virtual Brainstem that cannot reproduce 
 its shape does not guess; it goes to a DOGG to get oriented, re-reads the file, and tries again,
 and if it still falls short it says so plainly.
 
+When orientation is not enough, the real kernel is the anchor: planted beside the virtual one
+in a scratch folder, fed the same requests, and used to calibrate the VM until their outputs
+agree; then removed, so the virtual Brainstem runs on its own again and proves it can.
+
 ## XIV. The file stays carryable
 
 Bulky or local-only knowledge grows on the device beside the file, in dated records of the same
@@ -108,3 +118,14 @@ Every part of this machinery may be carried out by the native AI's own capabilit
 chooses, or by the virtual Brainstem machinery under the current DOGG skill and RAPP/1. Native
 comes first when it serves the person as well. Whichever way is used, the file, the dated lines,
 and the shapes when asked are the same, so dimensions made different ways still reunite.
+
+## XVII. A factory Brainstem, run in a virtual machine
+
+A fresh Brainstem is not empty: it ships its factory tools, and so does this one. The AI runs
+the vendored kernel as a Python virtual machine in its own mind, statement by statement, and is
+also the model that kernel calls. From the first turn the virtual Brainstem offers every tool a
+fresh install has, with the code's own names, schemas, and results, because the code is what
+runs. The vendored code and the person's file are its whole machine: the code is what it does,
+the file is what it has, and the file is the only place its state survives. Drift is measured
+by running the code, never estimated. Anything a real Brainstem can do, this one does the same
+way, in the AI's head.

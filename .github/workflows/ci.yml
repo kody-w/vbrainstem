@@ -27,6 +27,10 @@ jobs:
         run: |
           python3 tools/sync_shim.py --check
           python3 -m unittest -v tests/test_shim_parity.py
+      - name: The vendored kernel is whole and the skill's words match its code
+        run: |
+          python3 tools/vendor_kernel.py check
+          python3 -m unittest -v tests/test_vendored_kernel.py
       - name: The skill files check clean with the converter
         run: |
           curl -fsSL https://raw.githubusercontent.com/kody-w/rapp-skills/main/skills/rapp-skills/scripts/rapp_skills.py -o /tmp/rapp_skills.py
