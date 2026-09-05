@@ -157,8 +157,9 @@ needs a GitHub account and the `gh` command signed in; if either is missing, say
    holding their real file, unchanged (its name is `vbrainstem`, so its folder must be too).
    Only they, and collaborators they add, can read it.
 4. Tell them: anyone can hand `https://github.com/<account>/<ai>` to any AI and get the public
-   version; with read access to the private repository (a fine-grained token for that one
-   repository, or a signed-in tool that can read it), the same link opens their real file. Show
+   version; with read access to the private repository (on the phone page, "Allow private file
+   access" asks GitHub for that with one more sign-in code; or a fine-grained token for that
+   one repository, or a signed-in tool that can read it), the same link opens their real file. Show
    them both links. Never put anything private in the public repository.
 
 ## 5. Never

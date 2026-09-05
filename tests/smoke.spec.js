@@ -785,3 +785,80 @@ test("round-four fixes, part two: set-aside stays visible to the AI, seals decid
   const health = await page.evaluate(() => window.vbrainstem.dispatch("GET", "/health"));
   expect(health.json.soul).toBe("loaded");
 });
+
+
+test("round-four fixes, part three: private file access is granted by a second sign-in code, never pasted", async ({ page }) => {
+  // private access by code
+  const deviceRequests = [];
+  let pollMode = "private";
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/auth/device", async (route) => {
+    deviceRequests.push(JSON.parse(route.request().postData() || "{}"));
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ device_code: "dc-" + deviceRequests.length, user_code: "CODE-" + deviceRequests.length, verification_uri: "https://github.com/login/device", expires_in: 900, interval: 1 }) });
+  });
+  const polls = [];
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/auth/device/poll", async (route) => {
+    const body = JSON.parse(route.request().postData() || "{}");
+    polls.push(body);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: pollMode === "private" ? "repo-token-1" : "chat-token-1" }) });
+  });
+  const publicFace = ["---", 'name: "their-ai"', 'description: "Public face."', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "pub-3"', '  owner: "Ada"', '  mainline-id: "vb-main3"', '  private-repo: "someone/their-ai-private"', '  private-path: "vbrainstem/SKILL.md"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "", "# Their AI", "", "## Who I am", "", "Ada, in public.", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  const privateFile = ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "vb-main3"', '  owner: "Ada"', '  created: "2026-09-01"', '  updated: "2026-09-04"', "---", "", "# Ada", "", "## Who I am", "", "Ada, privately.", "", "## Memory", "", "- 2026-09-04 Private memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  await page.route("https://raw.githubusercontent.com/someone/their-ai/main/their-ai/SKILL.md", (r) => r.fulfill({ status: 200, body: publicFace }));
+  const privateReads = [];
+  await page.route("https://api.github.com/repos/someone/their-ai-private/contents/vbrainstem/SKILL.md**", async (route) => {
+    const auth = route.request().headers()["authorization"] || "";
+    privateReads.push(auth);
+    if (auth === "Bearer repo-token-1") { await route.fulfill({ status: 200, contentType: "text/plain", body: privateFile }); return; }
+    await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ message: "Not Found" }) });
+  });
+  await page.goto("/index.html");
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("github_token", "fake-chat-token"); });
+  await page.reload();
+  // 1. a private dial with only the chat sign-in says what to do, and does not pretend
+  await page.locator('[data-open="file"]').first().click();
+  await page.locator('#dial-face input[value="private"]').check();
+  await page.locator("#dial-url").fill("https://github.com/someone/their-ai");
+  await page.locator("#dial-public").click();
+  await expect(page.locator("#file-message")).toContainText("no private file access yet");
+  expect(privateReads).toEqual(["Bearer fake-chat-token"]);
+  // 2. allow private file access: a second code, through the owner's app, asking only for repositories
+  await page.locator("#allow-private").click();
+  await expect(page.locator("#sign-in-sheet")).toBeVisible();
+  await expect(page.locator("#sign-in-title")).toHaveText("Allow private file access");
+  await page.locator("#start-sign-in").click();
+  await expect(page.locator("#device-code")).toHaveText("CODE-1");
+  expect(deviceRequests[0]).toEqual({ client_id: "Ov23liuueQBIUggrH8NG", scope: "repo" });
+  await expect(page.locator("#sign-in-message")).toContainText("Private file access allowed", { timeout: 15000 });
+  expect(polls[polls.length - 1].client_id).toBe("Ov23liuueQBIUggrH8NG");
+  expect(await page.evaluate(() => localStorage.getItem("github_repo_token"))).toBe("repo-token-1");
+  expect(await page.evaluate(() => localStorage.getItem("github_token"))).toBe("fake-chat-token");
+  await page.locator("#sign-in-sheet [data-close]").click();
+  // 3. the same dial now opens the private file with the granted access
+  await page.locator('[data-open="file"]').first().click();
+  await page.locator('#dial-face input[value="private"]').check();
+  await page.locator("#dial-url").fill("https://github.com/someone/their-ai");
+  await page.locator("#dial-public").click();
+  // the public copy assembled by the first dial reunites with the private mainline the access now reaches
+  await expect(page.locator("#file-message")).toContainText("Reunited with the copy on this device");
+  expect(privateReads[privateReads.length - 1]).toBe("Bearer repo-token-1");
+  const stored = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
+  expect(stored).toContain('id: "vb-main3"');
+  expect(stored).toContain("Ada, privately.");
+  expect(stored).toContain("- 2026-09-04 Private memory.");
+  const status = await page.evaluate(() => window.vbrainstem.dispatch("GET", "/login/status"));
+  expect(status.json).toMatchObject({ pending: false, authenticated: true, private_access: true });
+  // 4. right after the chat sign-in, a file that names a private place is offered the second code at once
+  await page.evaluate(() => { localStorage.removeItem("github_token"); localStorage.removeItem("github_repo_token"); });
+  await page.reload();
+  pollMode = "chat";
+  await page.locator("#sign-in-shortcut").click();
+  await expect(page.locator("#sign-in-title")).toHaveText("Sign in with GitHub");
+  await page.locator("#start-sign-in").click();
+  await expect(page.locator("#sign-in-message")).toContainText("Signed in", { timeout: 15000 });
+  expect(deviceRequests[deviceRequests.length - 1]).toEqual({});
+  await expect(page.locator("#allow-private-next")).toBeVisible();
+  pollMode = "private";
+  await page.locator("#allow-private-next-button").click();
+  await expect(page.locator("#sign-in-title")).toHaveText("Allow private file access");
+  await expect(page.locator("#sign-in-start")).toBeVisible();
+});

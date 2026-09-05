@@ -654,9 +654,11 @@
         </fieldset>
         <button type="button" id="dial-public">Dial</button>
         <p class="hint">Brings your AI here from its front door. From then on the copy on this device is the one you use; export a backup whenever you like.</p>
-        <details class="private-access">
+        <details id="private-access" class="private-access">
           <summary>Private file access (optional)</summary>
-          <p class="hint">If your real file lives in a private place on GitHub, paste a token that can read just that one repository (GitHub: Settings, Developer settings, fine-grained token, that repository only, Contents: read). It stays on this device.</p>
+          <p class="hint">If your real file lives in a private place on GitHub, allow this device to read it with one more sign-in code. What GitHub grants stays on this device.</p>
+          <button type="button" id="allow-private">Allow private file access</button>
+          <p class="hint">Or paste a token that can read just that one repository (GitHub: Settings, Developer settings, fine-grained token, that repository only, Contents: read).</p>
           <label class="field">
             <span>Private access token</span>
             <input id="repo-token" type="password" autocomplete="off" placeholder="github_pat_...">
@@ -722,8 +724,12 @@
       </div>
       <div class="sheet-body">
         <div id="sign-in-start">
-          <p class="hint">Use the GitHub account that has Copilot access.</p>
+          <p class="hint" id="sign-in-hint">Use the GitHub account that has Copilot access.</p>
           <button type="button" class="primary" id="start-sign-in">Get a sign-in code</button>
+        </div>
+        <div id="allow-private-next" hidden>
+          <p class="hint">Your AI has a private file. Allow this device to read it? GitHub will ask you once.</p>
+          <button type="button" class="primary" id="allow-private-next-button">Allow private file access</button>
         </div>
         <div class="code-box" id="sign-in-code" hidden>
           <p>Copy this code:</p>
@@ -761,6 +767,10 @@
 
       const VERSION = "1.0.0";
       const AUTH_WORKER = "https://rapp-auth.kwildfeuer.workers.dev";
+      // Private file access is granted by a second sign-in code through the page owner's own
+      // GitHub app, asking only to read repositories; nothing is pasted, the code goes to GitHub.
+      const PRIVATE_ACCESS_CLIENT_ID = "Ov23liuueQBIUggrH8NG";
+      const PRIVATE_ACCESS_SCOPE = "repo";
       const GITHUB_API = "https://api.github.com";
       const COPILOT_TOKEN_URL = GITHUB_API + "/copilot_internal/v2/token";
       const DEFAULT_COPILOT_ENDPOINT = "https://api.individual.githubcopilot.com";
@@ -811,6 +821,11 @@
         personFile: document.getElementById("person-file"),
         filePaste: document.getElementById("file-paste"),
         usePaste: document.getElementById("use-paste"),
+        signInTitle: document.getElementById("sign-in-title"),
+        signInHint: document.getElementById("sign-in-hint"),
+        allowPrivate: document.getElementById("allow-private"),
+        allowPrivateNext: document.getElementById("allow-private-next"),
+        allowPrivateNextButton: document.getElementById("allow-private-next-button"),
         startName: document.getElementById("start-name"),
         startFile: document.getElementById("start-file"),
         fileUrl: document.getElementById("file-url"),
@@ -2553,19 +2568,23 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         };
       }
 
-      async function startLogin() {
-        if (pendingLogin && Date.now() < pendingLogin.expiresAt) {
+      async function startLogin(purpose = "chat") {
+        if (pendingLogin && Date.now() < pendingLogin.expiresAt && pendingLogin.purpose === purpose) {
           return {
             user_code: pendingLogin.userCode,
-            verification_uri: pendingLogin.verificationUri
+            verification_uri: pendingLogin.verificationUri,
+            purpose
           };
         }
+        const request = purpose === "private"
+          ? { client_id: PRIVATE_ACCESS_CLIENT_ID, scope: PRIVATE_ACCESS_SCOPE }
+          : {};
         let response;
         for (let attempt = 0; attempt < 2; attempt += 1) {
           response = await allowedFetch(AUTH_WORKER + "/api/auth/device", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: "{}"
+            body: JSON.stringify(request)
           });
           if (![429, 502, 503].includes(response.status) || attempt === 1) {
             break;
@@ -2580,6 +2599,8 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           throw new Error("The sign-in service returned an incomplete response.");
         }
         pendingLogin = {
+          purpose,
+          clientId: request.client_id || "",
           deviceCode: data.device_code,
           userCode: data.user_code,
           verificationUri: data.verification_uri || "",
@@ -2588,6 +2609,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           lastPoll: 0
         };
         return {
+          purpose,
           user_code: pendingLogin.userCode,
           verification_uri: pendingLogin.verificationUri
         };
@@ -2609,7 +2631,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         const response = await allowedFetch(AUTH_WORKER + "/api/auth/device/poll", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_code: pendingLogin.deviceCode })
+          body: JSON.stringify(Object.assign({ device_code: pendingLogin.deviceCode }, pendingLogin.clientId ? { client_id: pendingLogin.clientId } : {}))
         });
         if ([429, 502, 503].includes(response.status)) {
           pendingLogin.interval = Math.min(pendingLogin.interval + 5, 30);
@@ -2617,11 +2639,16 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         }
         const data = await response.json();
         if (data.access_token) {
-          localStorage.setItem(STORAGE.token, data.access_token);
+          const purpose = pendingLogin.purpose;
           pendingLogin = null;
+          if (purpose === "private") {
+            localStorage.setItem(STORAGE.repoToken, data.access_token);
+            return { status: "ok", purpose, message: "Private file access allowed on this device." };
+          }
+          localStorage.setItem(STORAGE.token, data.access_token);
           copilotSession = null;
           updateReadyState();
-          return { status: "ok", message: "Signed in with GitHub." };
+          return { status: "ok", purpose, message: "Signed in with GitHub." };
         }
         if (data.error === "slow_down") {
           pendingLogin.interval += 5;
@@ -2702,7 +2729,9 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
                 validatePersonFile(mainline);
                 return { status: 200, json: { content: mainline, public_content: text, source: privateUrl, face: "private" } };
               } catch (error) {
-                privateReason = error.message;
+                privateReason = localStorage.getItem(STORAGE.repoToken)
+                  ? error.message
+                  : "this device has no private file access yet; allow it under Your file, Private file access";
               }
             }
             return { status: 200, json: { content: assembleFromPublicFace(text, raw), public_content: text, source: raw, face: "public", private_reason: privateReason } };
@@ -2740,7 +2769,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             };
           }
           if (verb === "POST" && cleanPath === "/login") {
-            return { status: 200, json: await startLogin() };
+            return { status: 200, json: await startLogin(body && body.purpose === "private" ? "private" : "chat") };
           }
           if (verb === "POST" && cleanPath === "/login/poll") {
             return { status: 200, json: await pollLogin() };
@@ -2751,6 +2780,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
                 status: 200,
                 json: {
                   pending: true,
+                  purpose: pendingLogin.purpose,
                   user_code: pendingLogin.userCode,
                   verification_uri: pendingLogin.verificationUri,
                   expires_in: Math.max(0, Math.floor((pendingLogin.expiresAt - Date.now()) / 1000))
@@ -2759,7 +2789,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             }
             return {
               status: 200,
-              json: { pending: false, authenticated: Boolean(getGithubToken()) }
+              json: { pending: false, authenticated: Boolean(getGithubToken()), private_access: Boolean(localStorage.getItem(STORAGE.repoToken)) }
             };
           }
           return { status: 404, json: { error: "not found", path: cleanPath } };
@@ -2892,10 +2922,41 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         await navigator.share({ files: [file], title: "My vbrainstem" });
       }
 
+      let signInPurpose = "chat";
+
+      function renderSignInPurpose(purpose) {
+        signInPurpose = purpose;
+        const isPrivate = purpose === "private";
+        els.signInTitle.textContent = isPrivate ? "Allow private file access" : "Sign in with GitHub";
+        els.signInHint.textContent = isPrivate
+          ? "Use the GitHub account that can read your private file. GitHub asks once whether this device may read your repositories; the code goes to GitHub, never here."
+          : "Use the GitHub account that has Copilot access.";
+        els.startSignIn.textContent = isPrivate ? "Get a code" : "Get a sign-in code";
+        els.allowPrivateNext.hidden = true;
+      }
+
+      function fileNamesPrivate() {
+        for (const text of [localStorage.getItem(STORAGE.publicFace), getPersonFile()]) {
+          try {
+            const meta = parseFrontmatter(text || "").fields.metadata || {};
+            if (meta["private-repo"]) {
+              return true;
+            }
+          } catch (error) {
+            // not a readable file; nothing private named
+          }
+        }
+        return false;
+      }
+
+      function offerPrivateAccessNext() {
+        return fileNamesPrivate() && !localStorage.getItem(STORAGE.repoToken);
+      }
+
       async function beginSignIn() {
         els.startSignIn.disabled = true;
         setMessage(els.signInMessage, "Starting...");
-        const result = await dispatch("POST", "/login", {});
+        const result = await dispatch("POST", "/login", { purpose: signInPurpose });
         els.startSignIn.disabled = false;
         if (result.status !== 200 || result.json.error) {
           setMessage(els.signInMessage, result.json.error || "Sign-in could not start.", true);
@@ -2916,7 +2977,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
 
       async function resumeSignIn() {
         const result = await dispatch("GET", "/login/status");
-        if (!result.json.pending) {
+        if (!result.json.pending || (result.json.purpose || "chat") !== signInPurpose) {
           els.signInStart.hidden = false;
           els.signInCode.hidden = true;
           return;
@@ -2930,7 +2991,8 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
       }
 
       // Every way into the sign-in sheet renders it from the same state.
-      async function showSignIn() {
+      async function showSignIn(purpose = "chat") {
+        renderSignInPurpose(typeof purpose === "string" ? purpose : "chat");
         openSheet("signin");
         await resumeSignIn();
       }
@@ -2941,8 +3003,19 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           const result = await dispatch("POST", "/login/poll", {});
           const data = result.json;
           if (data.status === "ok") {
-            setMessage(els.signInMessage, "Signed in. You can return to the conversation.");
+            els.signInCode.hidden = true;
             updateReadyState();
+            if (data.purpose === "private") {
+              setMessage(els.signInMessage, "Private file access allowed. Dial your AI again to use it.");
+              loginTimer = setTimeout(closeSheets, 1500);
+              return;
+            }
+            if (offerPrivateAccessNext()) {
+              setMessage(els.signInMessage, "Signed in.");
+              els.allowPrivateNext.hidden = false;
+              return;
+            }
+            setMessage(els.signInMessage, "Signed in. You can return to the conversation.");
             loginTimer = setTimeout(closeSheets, 900);
             return;
           }
@@ -2981,7 +3054,9 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           els.composer.requestSubmit();
         }
       });
-      els.signInShortcut.addEventListener("click", showSignIn);
+      els.signInShortcut.addEventListener("click", () => showSignIn("chat"));
+      els.allowPrivate.addEventListener("click", () => showSignIn("private"));
+      els.allowPrivateNextButton.addEventListener("click", () => showSignIn("private"));
 
       els.personFile.addEventListener("change", async () => {
         const file = els.personFile.files?.[0];
@@ -3173,6 +3248,9 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           if (outcome && outcome.reunited !== undefined) {
             setMessage(els.fileMessage, "Reunited with the copy on this device: " + outcome.reunited + " new memory line(s) brought in." + (outcome.setAside ? " " + outcome.setAside + " section(s) differed and were kept under \"Set aside\" in the file for you to look at." : "") + trouble, Boolean(trouble));
             return;
+          }
+          if (chosen === "private" && /no private file access yet/.test(dialed.json.private_reason || "")) {
+            document.getElementById("private-access").open = true;
           }
           setMessage(els.fileMessage, (dialed.json.face === "private"
             ? "Your AI is here from your private file, with the public one alongside. This device's copy is now the one you use."
