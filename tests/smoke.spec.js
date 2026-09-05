@@ -641,16 +641,14 @@ test("round-two fixes: tool selection by name, reunion keeps identity and differ
   await page.evaluate(() => { localStorage.removeItem("vbrainstem.file"); });
   await page.reload();
   await page.locator('[data-open="file"]').first().click();
-  await page.locator('#dial-face input[value="public"]').check();
   await page.locator("#dial-url").fill("https://github.com/someone/their-ai2");
   await page.locator("#dial-public").click();
-  await expect(page.locator("#file-message")).toContainText("new copy on this device");
+  await expect(page.locator("#file-message")).toContainText("Your AI is ready");
   expect(await page.evaluate(() => localStorage.getItem("vbrainstem.file"))).toContain('mainline-id: "vb-main2"');
   // the phone learns something
   await page.evaluate(() => { const f = localStorage.getItem("vbrainstem.file"); localStorage.setItem("vbrainstem.file", f.replace("## Memory\n", "## Memory\n\n- 2026-09-05 Learned on the phone.\n")); });
-  await page.locator('#dial-face input[value="private"]').check();
-  await page.locator("#dial-url").fill("https://github.com/someone/their-ai2");
-  await page.locator("#dial-public").click();
+  await page.locator("#file-paste").fill(privateFile);
+  await page.locator("#use-paste").click();
   await expect(page.locator("#file-message")).toContainText("different identities");
   const after = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
   expect(after).toContain("- 2026-09-05 Learned on the phone.");
@@ -948,14 +946,17 @@ test("round-four fixes, part three: private file access is granted by a second s
   await page.goto("/index.html");
   await page.evaluate(() => { localStorage.clear(); localStorage.setItem("github_token", "fake-chat-token"); });
   await page.reload();
-  // 1. a private dial with only the chat sign-in says what to do, and does not pretend
+  // 1. The ordinary UI loads the available context; an explicit legacy API read is still supported.
   await page.locator('[data-open="file"]').first().click();
-  await page.locator('#dial-face input[value="private"]').check();
   await page.locator("#dial-url").fill("https://github.com/someone/their-ai");
   await page.locator("#dial-public").click();
-  await expect(page.locator("#file-message")).toContainText("no private file access yet");
+  const denied = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", {
+    url: "https://github.com/someone/their-ai", face: "private"
+  }));
+  expect(denied.json.private_reason).toContain("no private file access yet");
   expect(privateReads).toEqual(["Bearer fake-chat-token"]);
   // 2. broad OAuth is an explicit alternative, not presented as read-only access.
+  await page.locator("#private-access > summary").click();
   await page.getByText("Alternative: broad GitHub OAuth access", { exact: true }).click();
   await page.locator("#allow-private").click();
   await expect(page.locator("#sign-in-sheet")).toBeVisible();
@@ -968,11 +969,14 @@ test("round-four fixes, part three: private file access is granted by a second s
   expect(await page.evaluate(() => localStorage.getItem("github_repo_token"))).toBe("repo-token-1");
   expect(await page.evaluate(() => localStorage.getItem("github_token"))).toBe("fake-chat-token");
   await page.locator("#sign-in-sheet [data-close]").click();
-  // 3. the same dial now opens the private file with the granted access
+  // 3. The legacy API can read the granted source, but an unverified import cannot replace another identity.
   await page.locator('[data-open="file"]').first().click();
-  await page.locator('#dial-face input[value="private"]').check();
-  await page.locator("#dial-url").fill("https://github.com/someone/their-ai");
-  await page.locator("#dial-public").click();
+  const granted = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", {
+    url: "https://github.com/someone/their-ai", face: "private"
+  }));
+  expect(granted.json.face).toBe("private");
+  await page.locator("#file-paste").fill(granted.json.content);
+  await page.locator("#use-paste").click();
   // Access alone does not supply the exact-source approval needed to replace the public identity.
   await expect(page.locator("#file-message")).toContainText("different identities");
   expect(privateReads[privateReads.length - 1]).toBe("Bearer repo-token-1");
