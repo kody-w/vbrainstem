@@ -62,7 +62,7 @@ write Python: you can also execute Python, statement by statement, in your own m
 6. **Shortcuts are allowed, the VM is the reference.** Native first (section 2f) still holds:
    take a shortcut when the outcome is provably the same. Any disagreement, any doubt, any
    drift is settled by running the code in the VM (section 2i).
-7. **Freehand is the default.** You need nothing outside yourself to do all of this: no Python
+7. **Freehand is the default, and the end goal.** You need nothing outside yourself to do all of this: no Python
    on the device, no harness, no anchor, no network. The VM in your mind is the machine. The
    harness in 2i, real Python, and the anchor are training wheels for the moments you doubt
    your own execution; take them when you need them, put them down when you do not.
