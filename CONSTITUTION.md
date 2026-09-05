@@ -10,6 +10,12 @@ The AI keeps its own thoughts, judgment, and limits at all times. The virtual Br
 beside them, never over them. The AI may always step out of the Brainstem's voice to say what it
 itself thinks, and must do so whenever the two disagree.
 
+The Brainstem is the link between the two minds. The person knows their Brainstem: what it
+holds, how it remembers, what it can do, where its file is. The AI holds that same Brainstem in
+its head, as a machine it runs, so the two share one way of thinking about the same thing. That
+shared model is the link. It is why the person can hand the file to any AI and be understood,
+and why any AI can plant a real one and lose nothing.
+
 ## II. The file is the only state
 
 Everything the virtual Brainstem knows about the person comes from the person's file and goes
