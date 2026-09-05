@@ -132,6 +132,14 @@ def _encoded(value):
     return (R.canonical(value) + "\n").encode("utf-8")
 
 
+def _artifact_json(data):
+    value = _json(data)
+    canonical = R.canonical(value).encode("utf-8")
+    _require(data in (canonical, canonical + b"\n"),
+             "artifact JSON must be canonical bytes with at most one trailing LF")
+    return value
+
+
 def load_catalog():
     catalog = _json(_read(HERE / "dial_pairs_catalog.json"))
     _require(isinstance(catalog, dict) and set(catalog) == SLUGS, "unexpected synthetic catalog")
@@ -430,7 +438,7 @@ def verify_pair(directory, expected_owner):
     """Refuse the whole pair on any trust, byte-binding, or layout failure."""
     _require(R.rappid_valid(expected_owner), "independent expected_owner RAPPID is required")
     directory = _directory(directory)
-    dial = _json(_read(directory / "public" / "DIAL.json"))
+    dial = _artifact_json(_read(directory / "public" / "DIAL.json"))
     _require(isinstance(dial, dict) and set(dial) == DIAL_KEYS, "unexpected DIAL member set")
     _require(dial["schema"] == DIAL_SCHEMA and dial["entries_key"] == ENTRIES_KEY, "unknown dial profile")
     _require(dial["estate_owner"] == expected_owner, "wrong trust anchor")
@@ -451,12 +459,12 @@ def verify_pair(directory, expected_owner):
     _require(all(dial[key] == value for key, value in binding.items()), "unapproved locator")
     _require(dial["registry_url"] == _raw(repo, "registry.json"), "unapproved registry location")
     inventory = _inventory(directory, slug)
-    _require(_json(inventory["private/DIAL.json"]) == dial, "paired receipt mismatch")
+    _require(_artifact_json(inventory["private/DIAL.json"]) == dial, "paired receipt mismatch")
     entry = load_catalog()[slug]
     heads, frames_checked = {}, 0
     for face in ("public", "private"):
         prefix = face + "/"
-        document = _json(inventory[prefix + "registry.json"])
+        document = _artifact_json(inventory[prefix + "registry.json"])
         status, registry, why = REGISTRY.load_document(document, entries_member=ENTRIES_KEY,
                                                        allow_unsigned=False, persisted_seq=0)
         _require(status == "verified", "registry refused: " + why)
@@ -469,14 +477,16 @@ def verify_pair(directory, expected_owner):
         _require(registry.family(KIND) == "body", "publication kind must be registered in body family")
         _verify_signature(dial, registry, expected_owner)
         stream_id = binding[face + "_id"]
-        identity = _json(inventory[prefix + "rappid.json"])
+        identity = _artifact_json(inventory[prefix + "rappid.json"])
         _require(identity == {"schema": "rapp/1", "rappid": stream_id, "grown_from": None},
                  "identity record mismatch; no egg ancestry is claimed")
-        chain = inventory[prefix + "FRAMES.jsonl"].splitlines()
+        chain = inventory[prefix + "FRAMES.jsonl"].split(b"\n")
+        if chain[-1] == b"":
+            chain.pop()
         _require(0 < len(chain) <= 256 and all(line.strip() for line in chain), "empty or oversized frame chain")
         head = None
         for line in chain:
-            frame = _json(line)
+            frame = _artifact_json(line)
             _require(isinstance(frame, dict), "frame must be an object")
             ok, step, why = R.verify_frame(frame, head=head, stream_id_of_record=stream_id,
                                           signature_verifier=registry.signature_verifier())
@@ -499,7 +509,7 @@ def verify_pair(directory, expected_owner):
             head = frame
             frames_checked += 1
         _require(set(registry.genesis) == {stream_id}, "registry contains another stream's genesis")
-        _require(_json(inventory[prefix + "FRAME.json"]) == head, "FRAME.json differs from chain head")
+        _require(_artifact_json(inventory[prefix + "FRAME.json"]) == head, "FRAME.json differs from chain head")
         skill = inventory[prefix + binding[face + "_skill_path"]]
         _require(head["payload"] == _publication(binding, face, skill), "carrier bytes differ from signed head")
         _validate_skill(skill, binding, face, entry)

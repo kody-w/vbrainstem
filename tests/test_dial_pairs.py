@@ -44,6 +44,9 @@ class DialPairs(unittest.TestCase):
         document["sig"] = protected + ".." + base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")
         return document
 
+    def encode_json(self, document):
+        return (DIAL.R.canonical(document) + "\n").encode("utf-8")
+
     def test_catalog_has_four_distinct_synthetic_roles(self):
         catalog = DIAL.load_catalog()
         self.assertEqual(set(catalog), {"vb-atlas", "vb-forge", "vb-quill", "vb-harbor"})
@@ -76,6 +79,40 @@ class DialPairs(unittest.TestCase):
             pair = self.create_pair(slug)
             identities.update((pair["public_id"], pair["private_id"], pair["estate_owner"]))
         self.assertEqual(len(identities), 12)
+
+    def test_all_generated_json_and_frame_lines_are_canonical_bytes(self):
+        for slug in DIAL.load_catalog():
+            pair = self.create_pair(slug)
+            for path in Path(pair["directory"]).rglob("*"):
+                if path.suffix == ".json":
+                    data = path.read_bytes()
+                    self.assertEqual(data, self.encode_json(json.loads(data)), str(path))
+                elif path.name == "FRAMES.jsonl":
+                    data = path.read_bytes()
+                    expected = b"".join(self.encode_json(json.loads(line)) for line in data.splitlines())
+                    self.assertEqual(data, expected, str(path))
+
+    def test_noncanonical_artifacts_are_refused_despite_valid_signatures(self):
+        pair = self.create_pair()
+        for name in ("DIAL.json", "registry.json", "FRAME.json", "FRAMES.jsonl"):
+            path = Path(pair["directory"]) / "public" / name
+            original = path.read_bytes()
+            for changed in (b" " + original, original + b"\n", original.replace(b"\n", b"\r\n")):
+                path.write_bytes(changed)
+                try:
+                    with self.subTest(name=name, prefix=changed[:1]), self.assertRaises(ValueError):
+                        DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
+                finally:
+                    path.write_bytes(original)
+
+    def test_json_may_omit_its_single_trailing_lf(self):
+        pair = self.create_pair()
+        for path in Path(pair["directory"]).rglob("*"):
+            if path.suffix == ".json" or path.name == "FRAMES.jsonl":
+                data = path.read_bytes()
+                self.assertTrue(data.endswith(b"\n"))
+                path.write_bytes(data[:-1])
+        self.assertEqual(DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])["status"], "verified")
 
     def test_repeated_create_preserves_identity_bytes_and_keys(self):
         first = self.create_pair()
@@ -126,10 +163,10 @@ class DialPairs(unittest.TestCase):
             with self.subTest(signature=signature):
                 document = copy.deepcopy(original)
                 document["sig"] = signature
-                path.write_text(json.dumps(document), encoding="utf-8")
+                path.write_bytes(self.encode_json(document))
                 with self.assertRaises(ValueError):
                     DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
-        path.write_text(json.dumps(original), encoding="utf-8")
+        path.write_bytes(self.encode_json(original))
 
     def test_foreign_stream_and_corrupt_hash_are_refused(self):
         pair = self.create_pair()
@@ -141,7 +178,7 @@ class DialPairs(unittest.TestCase):
             with self.subTest(key=key):
                 changed = copy.deepcopy(frames)
                 changed[0][key] = value
-                path.write_text("\n".join(json.dumps(frame) for frame in changed) + "\n", encoding="utf-8")
+                path.write_bytes(b"".join(self.encode_json(frame) for frame in changed))
                 with self.assertRaises(ValueError):
                     DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
         path.write_text(original, encoding="utf-8")
@@ -197,8 +234,8 @@ class DialPairs(unittest.TestCase):
         original = json.loads((public / "FRAME.json").read_text())
         for sig in (None, "invalid-signature"):
             frame = dict(original, sig=sig)
-            (public / "FRAMES.jsonl").write_text(json.dumps(frame) + "\n")
-            (public / "FRAME.json").write_text(json.dumps(frame) + "\n")
+            (public / "FRAMES.jsonl").write_bytes(self.encode_json(frame))
+            (public / "FRAME.json").write_bytes(self.encode_json(frame))
             with self.subTest(sig=sig), self.assertRaises(ValueError):
                 DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
 
@@ -209,7 +246,7 @@ class DialPairs(unittest.TestCase):
         for entry_type in ("protocol", "genesis", "kind"):
             document = copy.deepcopy(original)
             document["entries"] = [entry for entry in document["entries"] if entry["type"] != entry_type]
-            path.write_text(json.dumps(self.resign(document)))
+            path.write_bytes(self.encode_json(self.resign(document)))
             with self.subTest(entry_type=entry_type), self.assertRaises(ValueError):
                 DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
 
@@ -228,9 +265,9 @@ class DialPairs(unittest.TestCase):
         ):
             receipt = copy.deepcopy(original)
             receipt[field] = value
-            encoded = json.dumps(self.resign(receipt))
-            path.write_text(encoded)
-            (directory / "private" / "DIAL.json").write_text(encoded)
+            encoded = self.encode_json(self.resign(receipt))
+            path.write_bytes(encoded)
+            (directory / "private" / "DIAL.json").write_bytes(encoded)
             with self.subTest(field=field), self.assertRaises(ValueError):
                 DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
 
@@ -284,7 +321,7 @@ class DialPairs(unittest.TestCase):
         for sig in (None, "invalid-signature"):
             receipt = dict(original, sig=sig)
             for face in ("public", "private"):
-                (directory / face / "DIAL.json").write_text(json.dumps(receipt))
+                (directory / face / "DIAL.json").write_bytes(self.encode_json(receipt))
             with self.subTest(sig=sig), self.assertRaises(ValueError):
                 DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
 
@@ -296,15 +333,15 @@ class DialPairs(unittest.TestCase):
             kind=frame["kind"], stream_id=frame["stream_id"], seq=2, utc=frame["utc"],
             payload=frame["payload"], prev=frame["payload_hash"], sig=frame["sig"],
         )
-        (public / "FRAMES.jsonl").write_text(json.dumps(frame) + "\n" + json.dumps(self.resign(skipped)) + "\n")
+        (public / "FRAMES.jsonl").write_bytes(self.encode_json(frame) + self.encode_json(self.resign(skipped)))
         with self.assertRaises(ValueError):
             DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
-        (public / "FRAMES.jsonl").write_text(json.dumps(frame) + "\n")
+        (public / "FRAMES.jsonl").write_bytes(self.encode_json(frame))
         registry = json.loads((public / "registry.json").read_text())
         for entry in registry["entries"]:
             if entry["type"] == "genesis":
                 entry["frame_hash"] = "0" * 64
-        (public / "registry.json").write_text(json.dumps(self.resign(registry)))
+        (public / "registry.json").write_bytes(self.encode_json(self.resign(registry)))
         with self.assertRaises(ValueError):
             DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
 
@@ -316,7 +353,7 @@ class DialPairs(unittest.TestCase):
         identity_path = Path(pair["directory"]) / "public" / "rappid.json"
         identity["rappid"] = pair["public_id"]
         identity["grown_from"] = pair["private_id"]
-        identity_path.write_text(json.dumps(identity))
+        identity_path.write_bytes(self.encode_json(identity))
         with self.assertRaises(ValueError):
             DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
 

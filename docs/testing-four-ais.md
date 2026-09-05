@@ -106,6 +106,13 @@ installing duplicate tools. Each persona has a distinct acceptance prompt.
 
 ## Exact signature and binding contract
 
+All emitted JSON files are exact UTF-8 `R.canonical(document)` bytes plus one LF.
+Each `FRAMES.jsonl` line has the same canonical encoding. Verification accepts the
+canonical bytes with zero or one terminal LF, not arbitrary whitespace, CRLF, or
+blank frame lines. Browser readers can parse and compare against canonical bytes
+before signature validation; duplicate keys cannot survive that byte-equality
+check. Do not use general `trim()` or silently normalize received bytes.
+
 All JSON uses the pinned reference canonicalizer. Every signature is detached
 compact JWS over `canonical(document without sig)`, with protected header exactly:
 
@@ -206,6 +213,10 @@ public frame and byte hash, and request private access only after a separate
 explicit action. Show the resolved private source and verified head when loading
 the latest private snapshot. Do not silently fall back to public as if private
 loading succeeded.
+
+The public browser verifier must use native WebCrypto Ed25519. If it is unavailable or
+unsupported, show verification as unavailable and refuse trusted loading. There is
+no unsigned, simulated, or alternate-algorithm fallback.
 
 These gates prove the emitted snapshots' signatures, bindings, and isolation—not
 global freshness, correct behavior of a model, safe execution of arbitrary tools,
