@@ -3,14 +3,15 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 
 const root = path.resolve(__dirname, "../..");
-const slugs = ["vb-atlas", "vb-forge", "vb-quill", "vb-harbor"];
+const slugs = ["vb-overwatch", "vb-scout", "vb-forge", "vb-sentinel"];
+const supported = [...slugs, "vb-atlas", "vb-quill", "vb-harbor"];
 
 function createFixtures() {
   const parent = path.join(root, "tests/test-results");
   fs.mkdirSync(parent, { recursive: true });
   const staging = fs.mkdtempSync(path.join(parent, "dial-fixtures-"));
   const pairs = new Map();
-  for (const slug of slugs) {
+  for (const slug of supported) {
     pairs.set(slug, JSON.parse(execFileSync("python3", [
       "-B", path.join(root, "tools/dial_pairs.py"), "create", "--slug", slug, "--owner", "fixture",
       "--output", path.join(staging, "packages"), "--key-dir", path.join(staging, "keys")

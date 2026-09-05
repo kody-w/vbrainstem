@@ -26,13 +26,13 @@ test("favorites are visible, keyboard reachable and use one automatic dial addre
 });
 
 test("authorized access automatically loads full context without a mode choice", async ({ page }) => {
-  const pair = fixtures.pairs.get("vb-atlas");
+  const pair = fixtures.pairs.get("vb-overwatch");
   await installRoutes(page, fixtures.pairs, { authorized: true });
   await page.goto(address(pair));
   await page.getByRole("button", { name: "Open your file", exact: true }).click();
   await expect(page.locator("#file-editor")).toHaveValue(artifact(pair, "private", pair.private_skill_path));
   await expect(page.locator("#file-state")).toHaveText("Ready");
-  await expect(page.locator(".brand")).toHaveText("Atlas");
+  await expect(page.locator(".brand")).toHaveText("Overwatch");
   await expect(page.getByRole("button", { name: /Use (public|private) copy/ })).toHaveCount(0);
 });
 
