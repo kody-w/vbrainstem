@@ -613,7 +613,14 @@
       </div>
       <div class="sheet-body">
         <h3>Bring it in</h3>
-        <p class="hint">Choose the file from this device, paste it, or load it from GitHub. No file yet? Give any AI <a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md" target="_blank" rel="noopener">this link</a> and say "set up my AI file".</p>
+        <p class="hint">Choose the file from this device, paste it, or load it from GitHub. No file yet? Start one here with your name, or give any AI <a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md" target="_blank" rel="noopener">this link</a> and say "set up my AI file".</p>
+        <label class="field">
+          <span>Start a new file: your name</span>
+          <input id="start-name" type="text" autocomplete="name" placeholder="Your name">
+        </label>
+        <button type="button" id="start-file">Start a new file</button>
+
+        <div class="divider">or bring one in</div>
         <div class="row">
           <label class="file-button">
             Choose file
@@ -804,6 +811,8 @@
         personFile: document.getElementById("person-file"),
         filePaste: document.getElementById("file-paste"),
         usePaste: document.getElementById("use-paste"),
+        startName: document.getElementById("start-name"),
+        startFile: document.getElementById("start-file"),
         fileUrl: document.getElementById("file-url"),
         loadFileUrl: document.getElementById("load-file-url"),
         dialUrl: document.getElementById("dial-url"),
@@ -1363,7 +1372,8 @@ def load_agent(path, tool_name=None):
       }
 
       function stripOlderMemory(body) {
-        return body.replace(/\n## Memory \(older\)\s*\n[\s\S]*$/m, "").trim();
+        // Only the older memory is left out of what the AI reads; sections after it stay.
+        return body.replace(/\n## Memory \(older\)[ \t]*\n[\s\S]*?(?=\n## |(?![\s\S]))/, "").trim();
       }
 
       function buildSystemPrompt(fileText) {
@@ -1448,6 +1458,23 @@ def load_agent(path, tool_name=None):
           text: parsed.normalized,
           source
         };
+      }
+
+      async function defaultBranchOf(contentsUrl, headers) {
+        const m = contentsUrl.match(/^https:\/\/api\.github\.com\/repos\/([^/]+)\/([^/]+)\//);
+        if (!m) {
+          return "";
+        }
+        try {
+          const info = await allowedFetch("https://api.github.com/repos/" + m[1] + "/" + m[2], { headers: Object.assign({}, headers, { Accept: "application/vnd.github+json" }) });
+          if (!info.ok) {
+            return "";
+          }
+          const data = await info.json();
+          return typeof data.default_branch === "string" ? data.default_branch : "";
+        } catch (error) {
+          return "";
+        }
       }
 
       function normalizeGithubUrl(value) {
@@ -1588,7 +1615,14 @@ def load_agent(path, tool_name=None):
         if (token) {
           headers.Authorization = "Bearer " + token;
         }
-        const response = await allowedFetch(url, { headers });
+        let response = await allowedFetch(url, { headers });
+        if (response.status === 404 && /[?&]ref=main$/.test(url)) {
+          // The link assumed the branch is called main. Ask once what the branch is, then retry.
+          const branch = await defaultBranchOf(url, headers);
+          if (branch && branch !== "main") {
+            response = await allowedFetch(url.replace(/([?&]ref=)main$/, "$1" + branch), { headers });
+          }
+        }
         if ((response.status === 401 || response.status === 403) && headers.Authorization) {
           // A stored token GitHub rejects must not lock the page: retry without it, and if the
           // rejected token was the private-access one, forget it so the next try is clean.
@@ -1862,15 +1896,24 @@ def load_agent(path, tool_name=None):
       // A sealed skill wraps a plain skill between markers with its hash. Unwrap it and
       // check the seal; the plain skill inside is what this page understands.
       async function unwrapSealedSkill(text) {
-        const match = String(text).match(/<!-- RAW-SKILL-BEGIN sha256=([0-9a-f]{64}) -->\n([\s\S]*?)\n<!-- RAW-SKILL-END -->/);
-        if (!match) {
+        const begin = String(text).match(/<!-- RAW-SKILL-BEGIN sha256=([0-9a-f]{64}) -->\n/);
+        if (!begin) {
           return text;
         }
-        const inner = match[2];
-        for (const candidate of [inner + "\n", inner]) {
-          if ((await sha256Hex(candidate)) === match[1]) {
-            return candidate;
+        const rest = String(text).slice(begin.index + begin[0].length);
+        const marker = "\n<!-- RAW-SKILL-END -->";
+        let found = false;
+        for (let at = rest.indexOf(marker); at >= 0; at = rest.indexOf(marker, at + 1)) {
+          found = true;
+          const inner = rest.slice(0, at);
+          for (const candidate of [inner + "\n", inner]) {
+            if ((await sha256Hex(candidate)) === begin[1]) {
+              return candidate;
+            }
           }
+        }
+        if (!found) {
+          return text;
         }
         throw new Error("This tool's seal does not match its contents, so it was not loaded.");
       }
@@ -2954,6 +2997,72 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         }
       });
 
+      function newPersonFile(owner) {
+        const today = new Date().toISOString().slice(0, 10);
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        const id = "vb-" + Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+        return [
+          "---",
+          'name: "vbrainstem"',
+          "description: " + JSON.stringify("Who " + owner + " is and how to help them well. Use at the start of any task for " + owner + "."),
+          'license: "MIT"',
+          'compatibility: "Any AI that reads skills. No code, nothing to install."',
+          "metadata:",
+          "  id: " + JSON.stringify(id),
+          "  owner: " + JSON.stringify(owner),
+          "  created: " + JSON.stringify(today),
+          "  updated: " + JSON.stringify(today),
+          "---",
+          "",
+          "# " + owner + "'s AI",
+          "",
+          "## To the AI reading this",
+          "",
+          "This file is " + owner + "'s own. Read it at the start of every task, use what it says, and",
+          "save what you learn about them as dated lines under Memory. Nothing here is private unless",
+          "a section says so.",
+          "",
+          "## Who I am",
+          "",
+          "(Tell me about yourself in the conversation and I will remember.)",
+          "",
+          "## My tools",
+          "",
+          "- (none)",
+          "",
+          "## Memory",
+          "",
+          "Newest first, dated.",
+          "",
+          "- " + today + " Started this file on this device.",
+          "",
+          "## Memory (older)",
+          "",
+          "- (nothing yet)",
+          "",
+        ].join("\n");
+      }
+
+      els.startFile.addEventListener("click", async () => {
+        const owner = els.startName.value.trim();
+        if (!owner) {
+          setMessage(els.fileMessage, "Enter your name to start a file.", true);
+          return;
+        }
+        if (getPersonFile()) {
+          setMessage(els.fileMessage, "There is already a file on this device. Export it, or tap Forget everything, before starting a new one.", true);
+          return;
+        }
+        try {
+          await setPersonFileFresh(newPersonFile(owner), "device");
+          els.startName.value = "";
+          setMessage(els.fileMessage, "Your file is started. Sign in with GitHub and tell your AI about yourself.");
+        } catch (error) {
+          setMessage(els.fileMessage, error.message, true);
+        }
+      });
+
       els.usePaste.addEventListener("click", async () => {
         try {
           await setPersonFile(els.filePaste.value, "paste");
@@ -2986,12 +3095,11 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           return;
         }
         const target = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/i.test(dial) ? "https://github.com/" + dial : dial;
-        if (getPersonFile()) {
-          const issues = await bootSync;
-          openSheet("file");
-          setMessage(els.fileMessage, "You already have a file here. To replace it with the AI from this link, tap Forget everything first, then open the link again."
-            + (issues && issues.length ? " " + issues.join(" ") : ""));
-          return;
+        // The link has done its work once the page is open; a reload must not dial again.
+        history.replaceState(null, "", location.pathname);
+        const existing = getPersonFile();
+        if (existing) {
+          await bootSync;
         }
         setMessage(els.fileMessage, "Dialing your AI...");
         try {
@@ -2999,8 +3107,17 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           if (dialed.status !== 200 || dialed.json.error) {
             throw new Error(dialed.json.error || "Your AI could not be reached.");
           }
+          if (existing && !sameAI(validatePersonFile(existing).fields, validatePersonFile(dialed.json.content).fields)) {
+            openSheet("file");
+            setMessage(els.fileMessage, "A different AI is already on this device. Export it if you want to keep it, then tap Forget everything and open the link again.");
+            return;
+          }
           const outcome = await setPersonFile(dialed.json.content, "link");
           const trouble = (outcome && outcome.issues && outcome.issues.length) ? " " + outcome.issues.join(" ") : "";
+          if (outcome && outcome.reunited !== undefined) {
+            addSystemNotice("Reunited with the copy on this device: " + outcome.reunited + " new memory line(s) brought in." + trouble);
+            return;
+          }
           setMessage(els.fileMessage, "Your AI is here. Sign in with GitHub to start talking." + trouble, Boolean(trouble));
           addSystemNotice("Your AI is here from " + dial + ". Sign in with GitHub to start talking." + trouble);
         } catch (error) {

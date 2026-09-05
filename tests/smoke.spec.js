@@ -422,13 +422,12 @@ test("review fixes: multi-line tools, rejected token, visible dial outcomes, for
   // the dial outcome is visible on the main surface, and the failed tool is reported, not hidden
   await expect(page.locator("#file-message")).toContainText("could not be loaded");
   await expect(page.locator("body")).toContainText("Your AI is here");
-  // opening the front-door link again with a file present opens the sheet with the explanation
+  // opening the front-door link again with the same AI present reunites instead of asking to forget
   await page.goto("/index.html?dial=someone/their-ai");
-  await expect(page.locator("#file-sheet")).toBeVisible();
-  await expect(page.locator("#file-message")).toContainText("already have a file");
+  await expect(page.locator("main, .transcript, #transcript").first()).toContainText("Reunited with the copy on this device");
+  await expect(page.locator("#file-sheet")).toBeHidden();
   // forget on the front-door link must not re-dial
   const before = hits.face;
-  await page.locator("#file-sheet [data-close]").click();
   await page.locator('[data-open="about"]').first().click();
   await page.locator("#forget").click();
   await page.waitForURL((u) => !u.search.includes("dial"), { timeout: 10000 });
@@ -698,4 +697,91 @@ test("round-four fixes: a sign-in GitHub rejects is dropped, the sheet reopens, 
   await expect(page.locator("#sign-in-shortcut")).toBeEnabled();
   await page.locator("#sign-in-shortcut").click();
   await expect(page.locator("#sign-in-sheet")).toBeVisible();
+});
+
+
+test("round-four fixes, part two: set-aside stays visible to the AI, seals decide by their sha, other default branches, link reunion, start a file here", async ({ page }) => {
+  // round-four fixes (hand-verified findings)
+  const mk = (id, extra, updated, who, mem, tail = []) => ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "' + id + '"', ...extra, '  owner: "Ada"', '  created: "2026-08-01"', '  updated: "' + updated + '"', "---", "", "# Ada", "", "## Who I am", "", who, "", "## Memory", "", ...mem, "", "## Memory (older)", "", "- (nothing yet)", ...tail, ""].join("\n");
+  await page.goto("/index.html");
+  await page.evaluate(() => localStorage.clear());
+
+  // 1. what the AI reads keeps every section after the older memory, and only drops the older memory itself
+  const withAside = mk("vb-a", [], "2026-09-01", "Ada, baker.", ["- 2026-09-01 x"], ["", "## Set aside from another copy", "", "### Who I am", "", "Ada, baker and bookkeeper."]);
+  const seen = await page.evaluate((f) => { localStorage.setItem("vbrainstem.file", f); return null; }, withAside);
+  expect(seen).toBeNull();
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/copilot/token", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ token: "fake-copilot-token", expires_at: Math.floor(Date.now() / 1000) + 3600, endpoints: { api: "https://api.individual.githubcopilot.com" } }) }));
+  await page.route("https://api.github.com/copilot_internal/v2/token", (r) => r.fulfill({ status: 403, body: "no" }));
+  await page.route("https://api.individual.githubcopilot.com/models", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [{ id: "gpt-4o", model_picker_enabled: true, capabilities: { type: "chat" } }] }) }));
+  let systemPrompt = "";
+  await page.route("https://api.individual.githubcopilot.com/chat/completions", async (route) => {
+    const body = JSON.parse(route.request().postData() || "{}");
+    systemPrompt = body.messages[0].content;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "ok" } }] }) });
+  });
+  await page.evaluate(() => localStorage.setItem("github_token", "fake-github-token"));
+  await page.reload();
+  await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "hi", conversation_history: [] }));
+  expect(systemPrompt).toContain("Ada, baker and bookkeeper.");
+  expect(systemPrompt).toContain("## Set aside from another copy");
+  expect(systemPrompt).not.toContain("## Memory (older)");
+
+  // 2. a sealed tool whose text contains an end-marker line loads when its seal matches
+  const innerText = ["---", 'name: "sealed-doc"', 'description: "Documents sealing."', "---", "", "# Sealed doc", "", "## What it needs", "", "```json", '{"type":"object","properties":{},"required":[]}', "```", "", "## Steps", "", "A seal ends with this line:", "", "<!-- RAW-SKILL-END -->", "", "and nothing after it counts."].join("\n") + "\n";
+  const innerHash = require("crypto").createHash("sha256").update(innerText, "utf8").digest("hex");
+  const sealedDoc = "---\nname: sealed-doc\nschema: rapp/1-skill\nskill_hash: " + innerHash + "\n---\n<!-- RAW-SKILL-BEGIN sha256=" + innerHash + " -->\n" + innerText + "<!-- RAW-SKILL-END -->\n";
+  await page.route("https://raw.githubusercontent.com/someone/sealed/main/doc/SKILL.md", (r) => r.fulfill({ status: 200, body: sealedDoc }));
+  await page.locator('[data-open="tools"]').first().click();
+  await page.locator("#tool-url").fill("https://raw.githubusercontent.com/someone/sealed/main/doc/SKILL.md");
+  await page.locator("#load-tool-url").click();
+  await expect(page.locator("#tool-message")).toContainText("ready");
+  await expect(page.locator("#tool-list")).toContainText("sealed-doc");
+  expect(await page.evaluate(() => localStorage.getItem("vbrainstem.tools") || "")).toContain("and nothing after it counts");
+  await page.locator("#tools-sheet [data-close]").click();
+
+  // 3. a front door on a repository whose default branch is not main is still reached
+  const face = ["---", 'name: "trunk-ai"', 'description: "Public face."', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "pub-trunk"', '  owner: "Ada"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "", "# Trunk AI", "", "## Who I am", "", "Ada, on trunk.", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 On trunk.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  await page.route("https://raw.githubusercontent.com/someone/trunk-ai/main/trunk-ai/SKILL.md", (r) => r.fulfill({ status: 404, body: "404: Not Found" }));
+  await page.route("https://api.github.com/repos/someone/trunk-ai/contents/trunk-ai/SKILL.md?ref=main", (r) => r.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ message: "Not Found" }) }));
+  await page.route("https://api.github.com/repos/someone/trunk-ai", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ default_branch: "trunk" }) }));
+  await page.route("https://api.github.com/repos/someone/trunk-ai/contents/trunk-ai/SKILL.md?ref=trunk", (r) => r.fulfill({ status: 200, contentType: "text/plain", body: face }));
+  const dialed = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", { url: "https://github.com/someone/trunk-ai", face: "public" }));
+  expect(dialed.status).toBe(200);
+  expect(dialed.json.content).toContain("Ada, on trunk.");
+
+  // 4. a front-door link opened with the same AI already here reunites, and the link does not dial again on reload
+  await page.evaluate(() => { localStorage.removeItem("vbrainstem.file"); });
+  const publicFace = ["---", 'name: "their-ai"', 'description: "Public face."', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "pub-link"', '  owner: "Ada"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "", "# Their AI", "", "## Who I am", "", "Ada, in public.", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  await page.route("https://raw.githubusercontent.com/someone/their-ai/main/their-ai/SKILL.md", (r) => r.fulfill({ status: 200, body: publicFace }));
+  await page.goto("/index.html?dial=someone/their-ai");
+  await expect(page.locator("main, .transcript, #transcript").first()).toContainText("Your AI is here from someone/their-ai");
+  expect(await page.evaluate(() => location.search)).toBe("");
+  expect(await page.evaluate(() => localStorage.getItem("vbrainstem.file"))).toContain('grown_from: "pub-link"');
+  await page.evaluate(() => { const f = localStorage.getItem("vbrainstem.file"); localStorage.setItem("vbrainstem.file", f.replace("## Memory\n", "## Memory\n\n- 2026-09-05 Learned here.\n")); });
+  await page.goto("/index.html?dial=someone/their-ai");
+  await expect(page.locator("main, .transcript, #transcript").first()).toContainText("Reunited with the copy on this device");
+  const after = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
+  expect(after).toContain("- 2026-09-05 Learned here.");
+  expect(after).not.toContain("Forget everything first");
+  // a different AI already here is never replaced by a link
+  await page.evaluate((f) => localStorage.setItem("vbrainstem.file", f), mk("vb-other", [], "2026-09-01", "Someone else.", ["- 2026-09-01 y"]));
+  await page.goto("/index.html?dial=someone/their-ai");
+  await expect(page.locator("#file-message")).toContainText("A different AI is already on this device");
+  expect(await page.evaluate(() => localStorage.getItem("vbrainstem.file"))).toContain("Someone else.");
+
+  // 5. a person with no file and no other AI can start one here with their name
+  await page.evaluate(() => { localStorage.removeItem("vbrainstem.file"); });
+  await page.goto("/index.html");
+  await page.locator('[data-open="file"]').first().click();
+  await page.locator("#start-file").click();
+  await expect(page.locator("#file-message")).toContainText("Enter your name");
+  await page.locator("#start-name").fill("Grace Hopper");
+  await page.locator("#start-file").click();
+  await expect(page.locator("#file-message")).toContainText("Your file is started");
+  const started = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
+  expect(started).toContain('owner: "Grace Hopper"');
+  expect(started).toMatch(/id: "vb-[0-9a-f]{32}"/);
+  expect(started).toContain("## Memory");
+  const health = await page.evaluate(() => window.vbrainstem.dispatch("GET", "/health"));
+  expect(health.json.soul).toBe("loaded");
 });
