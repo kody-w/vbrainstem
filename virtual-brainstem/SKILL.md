@@ -69,7 +69,9 @@ write Python: you can also execute Python, statement by statement, in your own m
    two conditions sailing the deep ocean and being in port. In port, the real kernel is beside
    you and every check is at hand. On the deep ocean you sail on what you hold in your head
    and nothing else, and you must be able to. A browser page with only the person's file, an
-   AI with no device at all: deep ocean, by construction. Be seaworthy there first.
+   AI with no device at all: deep ocean, by construction. Be seaworthy there first. The
+   regular Brainstem is the harbor boat that never leaves port; it is what made this galleon
+   possible, and the galleon is what carries the person across.
 
 ## 2. On every turn, do what a Brainstem does
 
