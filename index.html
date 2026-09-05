@@ -151,6 +151,17 @@
       font-size: 13px;
     }
 
+    .copy-row {
+      margin-top: 6px;
+    }
+
+    .copy-row button {
+      width: 100%;
+      min-height: 44px;
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
     .dot {
       width: 8px;
       height: 8px;
@@ -719,6 +730,9 @@
         <span id="file-state">No file yet</span>
         <button type="button" id="sign-in-shortcut">Sign in with GitHub</button>
       </div>
+      <div class="copy-row" id="copy-controls" hidden>
+        <button type="button" id="switch-copy">Use private copy</button>
+      </div>
     </header>
 
     <main class="transcript" id="transcript" aria-live="polite">
@@ -1032,6 +1046,8 @@
         setupCopyStatus: document.getElementById("setup-copy-status"),
         storageWarning: document.getElementById("storage-warning"),
         publicationState: document.getElementById("publication-state"),
+        copyControls: document.getElementById("copy-controls"),
+        switchCopy: document.getElementById("switch-copy"),
         composer: document.getElementById("composer"),
         message: document.getElementById("message"),
         send: document.getElementById("send"),
@@ -1761,6 +1777,9 @@
         if (PROFILE_SPACE) {
           document.querySelector(".brand").textContent = PROFILE_SPACE.split("/")[1] + " / " + PROFILE_FACE;
           els.forget.textContent = "Forget this " + PROFILE_FACE + " copy in this browser";
+          els.copyControls.hidden = false;
+          els.switchCopy.textContent = "Use " + (PROFILE_FACE === "public" ? "private" : "public") + " copy";
+          els.saveRepoToken.textContent = PROFILE_FACE === "private" ? "Save and load private copy" : "Save";
         }
         if (hasFile && document.activeElement !== els.fileEditor) {
           els.fileEditor.value = getPersonFile();
@@ -3757,11 +3776,34 @@
           setMessage(els.fileMessage, "Your AI is here. Sign in with GitHub to start talking." + trouble, Boolean(trouble));
           addSystemNotice("Your AI is here from " + dial + ". Sign in with GitHub to start talking." + trouble);
         } catch (error) {
-          openSheet("file");
-          setMessage(els.fileMessage, error.message, true);
+          showDialFailure(error.message);
           addSystemNotice("Your AI could not be reached: " + error.message);
         }
       }
+
+      function switchCopy(face) {
+        const target = new URL(profilePageUrl(), location.origin);
+        target.searchParams.set("face", face);
+        target.searchParams.set("dial", PROFILE_SPACE);
+        location.assign(target.href);
+      }
+
+      function showDialFailure(message) {
+        openSheet("file");
+        setMessage(els.fileMessage, message, true);
+        if (PROFILE_SPACE) {
+          els.publicationState.hidden = false;
+          els.publicationState.textContent = message;
+          if (PROFILE_FACE === "private") {
+            document.getElementById("private-access").open = true;
+            requestAnimationFrame(() => {
+              els.repoToken.scrollIntoView({ block: "center" });
+            });
+          }
+        }
+      }
+
+      els.switchCopy.addEventListener("click", () => switchCopy(PROFILE_FACE === "public" ? "private" : "public"));
 
       els.sharePhone.addEventListener("click", async () => {
         const shared = new URL(profilePageUrl(), location.origin);
@@ -3793,6 +3835,7 @@
         localStorage.setItem(STORAGE.repoToken, value);
         els.repoToken.value = "";
         setMessage(els.repoTokenMessage, "Saved on this device. Dial your AI again to use it.");
+        if (PROFILE_SPACE && PROFILE_FACE === "private") els.dialPublic.click();
       });
       els.clearRepoToken.addEventListener("click", () => {
         localStorage.removeItem(STORAGE.repoToken);
@@ -3805,10 +3848,7 @@
         try {
           const chosen = (els.dialFace.querySelector("input[name=dial-face]:checked") || {}).value || "public";
           if (PROFILE_SPACE && chosen !== PROFILE_FACE) {
-            const target = new URL(profilePageUrl(), location.origin);
-            target.searchParams.set("face", chosen);
-            target.searchParams.set("dial", PROFILE_SPACE);
-            location.assign(target.href);
+            switchCopy(chosen);
             return;
           }
           const dialed = await dispatch("POST", "/file/dial", { url: els.dialUrl.value, face: chosen });
@@ -3831,7 +3871,7 @@
               ? "Your private file could not be reached (" + dialed.json.private_reason + "), so the public version is here as a new copy on this device."
               : "Your AI is here. It is a new copy on this device; export it any time to bring it home.")) + trouble, Boolean(trouble));
         } catch (error) {
-          setMessage(els.fileMessage, error.message, true);
+          showDialFailure(error.message);
         } finally {
           els.dialPublic.disabled = false;
         }
