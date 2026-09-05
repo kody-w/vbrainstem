@@ -23,10 +23,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
-      - name: The page's runner shim is the converter's shim
-        run: |
-          python3 tools/sync_shim.py --check
-          python3 -m unittest -v tests/test_shim_parity.py
       - name: The vendored kernel is whole and the skill's words match its code
         run: |
           python3 tools/vendor_kernel.py check

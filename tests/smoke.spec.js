@@ -6,6 +6,80 @@ const personFile = path.join(root, "samples", "ada", "SKILL.md");
 const toolFile = path.join(root, "samples", "tools", "hello-world", "SKILL.md");
 const greeting = "Hello, Ada! Welcome to the RAPP Agent ecosystem.";
 const memoryFact = "Ada wants her name used in greetings.";
+const fs = require("fs");
+const coreSkillText = fs.readFileSync(path.join(root, "virtual-brainstem", "SKILL.md"), "utf8");
+const CORE_SKILL_URL = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/virtual-brainstem/SKILL.md";
+async function serveCoreSkill(page) {
+  await page.route(CORE_SKILL_URL, (r) => r.fulfill({ status: 200, contentType: "text/plain", body: coreSkillText }));
+}
+function pageDate() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+function pageTime() {
+  return new Date().toLocaleTimeString("en-GB", { timeZone: "America/New_York", hour12: false });
+}
+const FACTORY_DESCRIPTIONS = { ContextMemory: "Recalls and provides context based on stored memories of past interactions with the user.", HackerNews: "Fetches the current top stories from Hacker News.", ManageMemory: "Saves information to persistent memory for future conversations.", LearnNew: "Creates, smoke-tests, saves, and hot-loads agents or swarms from natural-language descriptions." };
+const FACTORY_PARAMETERS = {
+  ContextMemory: { type: "object", properties: { user_guid: { type: "string" }, max_messages: { type: "integer" }, keywords: { type: "array", items: { type: "string" } }, full_recall: { type: "boolean" } }, required: [] },
+  HackerNews: { type: "object", properties: { count: { type: "integer" } }, required: [] },
+  ManageMemory: { type: "object", properties: { memory_type: { type: "string", enum: ["fact", "preference", "insight", "task"] }, content: { type: "string" }, importance: { type: "integer" }, tags: { type: "array", items: { type: "string" } }, user_guid: { type: "string" } }, required: ["memory_type", "content"] },
+  LearnNew: { type: "object", properties: { action: { type: "string" }, description: { type: "string" } }, required: [] }
+};
+const mindCounters = { describe: 0, vm: 0 };
+// The model's second role, mocked: describes agents from their code and runs one call "in its mind".
+// vmHandlers maps an agent name to (args, personFile) => result string or a full reply; memory tools are built in.
+function mindReply(body, vmHandlers = {}) {
+  const sys = String(body.messages?.[0]?.content || "");
+  const user = String(body.messages?.[1]?.content || "");
+  const reply = (content) => ({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content } }] }) });
+  if (sys.startsWith("Describe these agents' tools as JSON.")) {
+    mindCounters.describe += 1;
+    const defs = [];
+    for (const m of user.matchAll(/### (\S+)\n```python\n([\s\S]*?)\n```/g)) {
+      const name = [...m[2].matchAll(/self\.name\s*=\s*['"]([^'"\n]+)['"]/g)].map((x) => x[1]).find((x) => !/[{}]/.test(x)) || "?";
+      defs.push({ name, description: FACTORY_DESCRIPTIONS[name] || ("Tool " + name + "."), parameters: FACTORY_PARAMETERS[name] || { type: "object", properties: {}, required: [] } });
+    }
+    return reply(JSON.stringify(defs));
+  }
+  if (sys.startsWith("You are the Python virtual machine of a person's Brainstem.")) {
+    mindCounters.vm += 1;
+    const name = (user.match(/^Agent: (\S+)/m) || [])[1] || "?";
+    const args = JSON.parse((user.match(/Call: perform\(\*\*(\{[\s\S]*?\})\)\n/) || [, "{}"])[1]);
+    const file = (user.match(/The person's file:\n```markdown\n([\s\S]*?)\n```\s*$/) || [, ""])[1];
+    if (vmHandlers[name] === "not-json") {
+      return reply("I cannot do that.");
+    }
+    if (name === "ManageMemory") {
+      const type = args.memory_type || "fact";
+      if (!args.content) { return reply(JSON.stringify({ result: "Error: No content provided for memory storage.", memory_lines_added: [], storage: {} })); }
+      const extras = [];
+      if (type !== "fact" || (args.importance && args.importance !== 3) || (args.tags && args.tags.length)) {
+        extras.push(type);
+        if (args.importance && args.importance !== 3) { extras.push("importance " + args.importance); }
+        if (args.tags && args.tags.length) { extras.push("tags: " + args.tags.join(", ")); }
+      }
+      const line = "- " + pageDate() + " " + pageTime() + " " + args.content + (extras.length ? " (" + extras.join(", ") + ")" : "");
+      return reply(JSON.stringify({ result: 'Successfully stored ' + type + ' memory in shared memory: "' + args.content + '"', memory_lines_added: [line], storage: {} }));
+    }
+    if (name === "ContextMemory") {
+      const section = (file.match(/^## Memory[ \t]*\n([\s\S]*?)(?=\n## |$)/m) || [, ""])[1];
+      const lines = [];
+      for (const raw of section.split("\n")) {
+        const m = raw.trim().match(/^- (\d{4}-\d{2}-\d{2})(?: (\d{2}:\d{2}:\d{2}))? (.*?)(?: \((fact|preference|insight|task)(?:, importance (\d))?(?:, tags: ([^)]*))?\))?$/);
+        if (!m || m[3] === "(nothing yet)") { continue; }
+        lines.push('- Memory content (verbatim): ' + JSON.stringify(m[3]) + ' (Theme: ' + (m[4] || "fact") + ', Recorded: ' + m[1] + ' ' + (m[2] || "00:00:00") + ')');
+      }
+      return reply(JSON.stringify({ result: lines.length ? "All memories from shared memory:\n" + lines.join("\n") : "I don't have any memories stored in the shared memory yet.", memory_lines_added: [], storage: {} }));
+    }
+    const handler = vmHandlers[name];
+    if (typeof handler === "function") {
+      const out = handler(args, file);
+      return reply(JSON.stringify(typeof out === "string" ? { result: out, memory_lines_added: [], storage: {} } : out));
+    }
+    return reply(JSON.stringify({ result: "ERROR: NameError: no agent named " + name, memory_lines_added: [], storage: {} }));
+  }
+  return null;
+}
 
 function answer(message, finishReason = "stop") {
   return {
@@ -82,8 +156,11 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
     }
   );
 
+  await serveCoreSkill(page);
   await page.route("https://api.individual.githubcopilot.com/chat/completions", async (route) => {
     const body = route.request().postDataJSON();
+    const mind = mindReply(body, { HelloWorldAgent: (args) => "Hello, " + args.name + "! Welcome to the RAPP Agent ecosystem." });
+    if (mind) { await route.fulfill(mind); return; }
     const user = [...body.messages].reverse().find((item) => item.role === "user")?.content || "";
     const count = calls.get(user) || 0;
     calls.set(user, count + 1);
@@ -130,8 +207,8 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
             id: "memory-1",
             type: "function",
             function: {
-              name: "remember",
-              arguments: JSON.stringify({ fact: memoryFact })
+              name: "ManageMemory",
+              arguments: JSON.stringify({ memory_type: "preference", content: memoryFact })
             }
           }]
         }, "tool_calls"))
@@ -141,8 +218,8 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
 
     if (user === "remember that I like personal greetings") {
       const result = body.messages.find((item) =>
-        item.role === "tool" && item.name === "remember");
-      expect(result.content).toContain(memoryFact);
+        item.role === "tool" && item.name === "ManageMemory");
+      expect(result.content).toBe('Successfully stored preference memory in shared memory: "' + memoryFact + '"');
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify(answer({
@@ -301,15 +378,15 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
       String(now.getMonth() + 1).padStart(2, "0"),
       String(now.getDate()).padStart(2, "0")
     ].join("-");
-    const line = `- ${date} ${fact}`;
     const memory = file.match(/^## Memory\s*\n([\s\S]*?)(?=^## )/m)?.[1] || "";
     return {
       file,
-      line,
+      date,
       firstLine: memory.split("\n").find((value) => value.startsWith("- "))
     };
   }, memoryFact);
-  expect(datedMemory.firstLine).toBe(datedMemory.line);
+  // the record form of section 2h: date, time, the fact, and its type when not the default
+  expect(datedMemory.firstLine).toMatch(new RegExp("^- " + datedMemory.date + " \\d{2}:\\d{2}:\\d{2} " + memoryFact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " \\(preference\\)$"));
 
   await page.getByRole("button", { name: "Open your file" }).click();
   const editorText = await page.locator("#file-editor").inputValue();
@@ -324,7 +401,7 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   }
   const exported = Buffer.concat(chunks).toString("utf8");
   expect(exported).toBe(editorText);
-  expect(exported).toContain(datedMemory.line);
+  expect(exported).toContain(datedMemory.firstLine);
   await page.getByRole("button", { name: "Close your file" }).click();
 
   const routeChecks = await page.evaluate(async () => {
@@ -384,7 +461,9 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
     json: { status: "ok" }
   });
   expect(routeChecks.agents.status).toBe(200);
-  expect(routeChecks.agents.json.files[0].agents).toContain("HelloWorldAgent");
+  // the factory tools come first, as in the kernel; the listed tool follows
+  expect(routeChecks.agents.json.files[0].agents).toEqual(["ContextMemory"]);
+  expect(routeChecks.agents.json.files.map((f) => f.agents).flat()).toContain("HelloWorldAgent");
   expect(routeChecks.history.json.response).toBe("Direct dispatch works.");
   expect(routeChecks.exhausted.json.response).toBe(
     "I could not finish that in the available steps. Try breaking it into a smaller request."
@@ -406,6 +485,7 @@ test("review fixes: multi-line tools, rejected token, visible dial outcomes, for
   const face = ["---", 'name: "their-ai"', 'description: "Their AI, the public face of Someone."', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "rappid:@someone/their-ai-public:' + "c".repeat(64) + '"', '  owner: "Someone"', '  face: "public"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "",
     "# Their AI, public face", "", "## My tools", "", "Callable tools, by link. Load what is listed; offer nothing that is not.", "", "- The first: https://raw.githubusercontent.com/someone/tools/main/t1/SKILL.md", "- The second: https://raw.githubusercontent.com/someone/tools/main/t2/SKILL.md", "- A broken one: https://raw.githubusercontent.com/someone/tools/main/missing/SKILL.md", "",
     "## My sources", "", "Not tools. https://raw.githubusercontent.com/someone/tools/main/never/SKILL.md", "", "## Memory", "", "- 2026-09-04 Public memory.", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  await serveCoreSkill(page);
   await page.route("https://raw.githubusercontent.com/someone/their-ai/main/their-ai/SKILL.md", async (route) => { hits.face++; await route.fulfill({ status: 200, contentType: "text/plain", body: face }); });
   await page.route("https://raw.githubusercontent.com/someone/tools/main/missing/SKILL.md", (route) => route.fulfill({ status: 404, body: "no" }));
   await page.route("https://raw.githubusercontent.com/someone/tools/main/never/SKILL.md", (route) => route.fulfill({ status: 200, body: tool("never") }));
@@ -418,7 +498,7 @@ test("review fixes: multi-line tools, rejected token, visible dial outcomes, for
   await page.goto("/index.html?dial=someone/their-ai");
   await expect.poll(() => page.evaluate(() => (localStorage.getItem("vbrainstem.file") || "").length), { timeout: 15000 }).toBeGreaterThan(0);
   await expect.poll(() => hits.t1 + hits.t2, { timeout: 15000 }).toBe(2);
-  expect((await page.evaluate(() => window.vbrainstem.dispatch("GET", "/agents"))).json.files.map((f) => f.agents).flat().sort()).toEqual(["tool_one", "tool_two"]);
+  expect((await page.evaluate(() => window.vbrainstem.dispatch("GET", "/agents"))).json.files.map((f) => f.agents).flat().sort()).toEqual(["ContextMemory", "HackerNews", "LearnNew", "ManageMemory", "tool_one", "tool_two"]);
   // the dial outcome is visible on the main surface, and the failed tool is reported, not hidden
   await expect(page.locator("#file-message")).toContainText("could not be loaded");
   await expect(page.locator("body")).toContainText("Your AI is here");
@@ -457,8 +537,11 @@ test("round-two fixes: tool selection by name, reunion keeps identity and differ
   await page.route("https://api.github.com/copilot_internal/v2/token", (r) => r.fulfill({ status: 403, body: "no" }));
   await page.route("https://api.individual.githubcopilot.com/models", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [{ id: "gpt-4o", model_picker_enabled: true, capabilities: { type: "chat" } }] }) }));
   let turn = 0; let wanted = "FirstAgent"; const toolMessages = [];
+  await serveCoreSkill(page);
   await page.route("https://api.individual.githubcopilot.com/chat/completions", async (route) => {
     const body = JSON.parse(route.request().postData() || "{}");
+    const mind = mindReply(body, { FirstAgent: () => "RESULT-FROM-FIRST", SecondAgent: () => "RESULT-FROM-SECOND" });
+    if (mind) { await route.fulfill(mind); return; }
     const tm = body.messages.filter((m) => m.role === "tool"); toolMessages.push(...tm);
     turn += 1;
     if (tm.length === 0) {
@@ -470,6 +553,7 @@ test("round-two fixes: tool selection by name, reunion keeps identity and differ
   const person = ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "vb-pair"', '  owner: "Ada"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "", "# Ada", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 x", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
   await page.goto("/index.html");
   await page.evaluate((p) => { localStorage.clear(); localStorage.setItem("github_token", "fake-github-token"); localStorage.setItem("vbrainstem.file", p); }, person);
+  await page.reload();
   await page.reload();
   expect((await page.evaluate(() => window.vbrainstem.dispatch("POST", "/tools/load", { url: "https://raw.githubusercontent.com/someone/pair/main/first/SKILL.md" }))).status).toBe(200);
   await page.locator('[data-open="tools"]').first().click();
@@ -586,11 +670,15 @@ test("round-three fixes: reunion authority by identity, idempotent set-aside, wr
   await page.route("https://api.github.com/copilot_internal/v2/token", (r) => r.fulfill({ status: 403, body: "no" }));
   await page.route("https://api.individual.githubcopilot.com/models", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [{ id: "gpt-4o", model_picker_enabled: true, capabilities: { type: "chat" } }] }) }));
   let rememberOnce = true;
+  await serveCoreSkill(page);
+  const vmHandlers = { RetryAgent: "not-json" };
   await page.route("https://api.individual.githubcopilot.com/chat/completions", async (route) => {
     const body = JSON.parse(route.request().postData() || "{}");
+    const mind = mindReply(body, vmHandlers);
+    if (mind) { await route.fulfill(mind); return; }
     const tm = body.messages.filter((m) => m.role === "tool");
     if (rememberOnce && tm.length === 0) {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "tool_calls", message: { role: "assistant", content: null, tool_calls: [{ id: "r1", type: "function", function: { name: "remember", arguments: JSON.stringify({ fact: "Ada likes short lines." }) } }] } }] }) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "tool_calls", message: { role: "assistant", content: null, tool_calls: [{ id: "r1", type: "function", function: { name: "ManageMemory", arguments: JSON.stringify({ memory_type: "fact", content: "Ada likes short lines." }) } }] } }] }) });
       return;
     }
     if (rememberOnce) {
@@ -602,14 +690,16 @@ test("round-three fixes: reunion authority by identity, idempotent set-aside, wr
   });
   await page.reload();
   const remembered = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "remember this", conversation_history: [] }));
-  expect(remembered.json.agent_logs).toContain("[remember]");
+  expect(remembered.json.agent_logs).toBe('[ManageMemory] Successfully stored fact memory in shared memory: "Ada likes short lines."');
   const afterAppend = await page.evaluate(() => localStorage.getItem("vbrainstem.file"));
   expect(afterAppend).toContain("- 2026-09-02 A long memory that wraps onto a second line.");
   expect(afterAppend).not.toMatch(/\n  wraps onto/);
-  expect(afterAppend).toMatch(/- \d{4}-\d{2}-\d{2} Ada likes short lines\./);
+  expect(afterAppend).toMatch(/- \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} Ada likes short lines\./);
   await page.unroute("https://api.individual.githubcopilot.com/chat/completions");
   await page.route("https://api.individual.githubcopilot.com/chat/completions", async (route) => {
     const body = JSON.parse(route.request().postData() || "{}");
+    const mind = mindReply(body, vmHandlers);
+    if (mind) { await route.fulfill(mind); return; }
     const tm = body.messages.filter((m) => m.role === "tool");
     if (tm.length === 0) {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "tool_calls", message: { role: "assistant", content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "RetryAgent", arguments: "{}" } }] } }] }) });
@@ -617,12 +707,9 @@ test("round-three fixes: reunion authority by identity, idempotent set-aside, wr
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "done: " + tm[tm.length - 1].content } }] }) });
     }
   });
-  let pyodideLoads = 0;
-  await page.route("https://cdn.jsdelivr.net/pyodide/**/pyodide.js", async (route) => {
-    pyodideLoads += 1;
-    if (pyodideLoads === 1) { await route.abort("failed"); return; }
-    await route.continue();
-  });
+  // 4. the page has no Python: a tool runs in the model's mind, and a reply that is not a result is an error, not a lockup
+  let sandboxRequests = 0;
+  await page.route("https://cdn.jsdelivr.net/**", async (route) => { sandboxRequests += 1; await route.abort("failed"); });
   await page.evaluate(() => { localStorage.setItem("github_token", "fake-github-token"); });
   await page.reload();
   await page.locator('[data-open="tools"]').first().click();
@@ -631,10 +718,11 @@ test("round-three fixes: reunion authority by identity, idempotent set-aside, wr
   await expect(page.locator("#tool-message")).toContainText("ready");
   await page.locator("#tools-sheet [data-close]").click();
   const first = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "run", conversation_history: [] }));
-  expect(first.json.agent_logs).toMatch(/^\[RetryAgent\] ERROR:/);
+  expect(first.json.agent_logs).toMatch(/^\[RetryAgent\] ERROR: the virtual machine returned no result/);
+  vmHandlers.RetryAgent = () => "RESULT-AFTER-RETRY";
   const second = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "run", conversation_history: [] }));
   expect(second.json.agent_logs).toBe("[RetryAgent] RESULT-AFTER-RETRY");
-  expect(pyodideLoads).toBe(2);
+  expect(sandboxRequests).toBe(0);
 
   // 5. a refused sign-in offers a new code, and reopening the sheet never shows a dead end
   await page.evaluate(() => { localStorage.removeItem("github_token"); });
@@ -714,8 +802,11 @@ test("round-four fixes, part two: set-aside stays visible to the AI, seals decid
   await page.route("https://api.github.com/copilot_internal/v2/token", (r) => r.fulfill({ status: 403, body: "no" }));
   await page.route("https://api.individual.githubcopilot.com/models", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [{ id: "gpt-4o", model_picker_enabled: true, capabilities: { type: "chat" } }] }) }));
   let systemPrompt = "";
+  await serveCoreSkill(page);
   await page.route("https://api.individual.githubcopilot.com/chat/completions", async (route) => {
     const body = JSON.parse(route.request().postData() || "{}");
+    const mind = mindReply(body);
+    if (mind) { await route.fulfill(mind); return; }
     systemPrompt = body.messages[0].content;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "ok" } }] }) });
   });

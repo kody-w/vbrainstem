@@ -774,7 +774,6 @@
       const GITHUB_API = "https://api.github.com";
       const COPILOT_TOKEN_URL = GITHUB_API + "/copilot_internal/v2/token";
       const DEFAULT_COPILOT_ENDPOINT = "https://api.individual.githubcopilot.com";
-      const PYODIDE_ROOT = "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/";
       const DEFAULT_MODEL = "gpt-4o";
       const STORAGE = Object.freeze({
         token: "github_token",
@@ -782,26 +781,24 @@
         repoToken: "github_repo_token",
         publicFace: "vbrainstem.public",
         tools: "vbrainstem.tools",
-        model: "vbrainstem.model"
+        model: "vbrainstem.model",
+        skill: "vbrainstem.skill",
+        factory: "vbrainstem.factory"
       });
       const TOKEN_ALIASES = ["vbrainstem.githubToken", "brainstem_token"];
-      const MEMORY_TOOL = {
-        type: "function",
-        function: {
-          name: "remember",
-          description: "Save one durable fact in the person's file immediately.",
-          parameters: {
-            type: "object",
-            properties: {
-              fact: {
-                type: "string",
-                description: "One concise durable fact to save."
-              }
-            },
-            required: ["fact"]
-          }
-        }
+      // The core skill is what the page sails with. The page has no Python and no device: every
+      // tool, factory or listed, runs in the model's own mind from this skill (the vendored kernel
+      // and how to run it) and the person's file. The page carries the wire and keeps the disk.
+      const CORE_SKILL_URL = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/virtual-brainstem/SKILL.md";
+      const FACTORY_FILES = {
+        ContextMemory: "rapp_brainstem/agents/context_memory_agent.py",
+        HackerNews: "rapp_brainstem/agents/hacker_news_agent.py",
+        ManageMemory: "rapp_brainstem/agents/manage_memory_agent.py",
+        LearnNew: "rapp_brainstem/agents/rar_rapp_learn_new_agent.py"
       };
+      const FACTORY_ORDER = ["ContextMemory", "HackerNews", "ManageMemory", "LearnNew"];
+      const VM_OPENING = "You are the Python virtual machine of a person's Brainstem.";
+      const DESCRIBE_OPENING = "Describe these agents' tools as JSON.";
       const DEFAULT_MODELS = [
         { id: "gpt-4o", name: "GPT-4o", available: true },
         { id: "gpt-4.1", name: "GPT-4.1", available: true },
@@ -875,291 +872,8 @@
       let loginTimer = null;
       let copilotSession = null;
       let availableModels = DEFAULT_MODELS.slice();
-      let toolWorker = null;
-      const toolRequests = new Map();
       const nativeFetch = globalThis.fetch.bind(globalThis);
 
-      const SHIM_SOURCE = String.raw`
-import hashlib as _hashlib, json as _json, os as _os, sys as _sys, types as _types
-from pathlib import Path as _Path
-
-
-class BasicAgent:
-    """BasicAgent contract: name, metadata, perform(**kwargs), to_tool()."""
-
-    def __init__(self, name=None, metadata=None):
-        if name is not None:
-            self.name = name
-        elif not hasattr(self, "name"):
-            self.name = "BasicAgent"
-        if metadata is not None:
-            self.metadata = metadata
-        elif not hasattr(self, "metadata"):
-            self.metadata = {
-                "name": self.name,
-                "description": "Base agent -- override this.",
-                "parameters": {"type": "object", "properties": {}, "required": []},
-            }
-
-    def perform(self, **kwargs):
-        return "Not implemented."
-
-    def system_context(self):
-        return None
-
-    def to_tool(self):
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.metadata.get("description", ""),
-                "parameters": self.metadata.get("parameters", {"type": "object", "properties": {}}),
-            },
-        }
-
-
-class AzureFileStorageManager:
-    """Local stand-in for the cloud storage helper some agents import.
-
-    Used only if the agent itself saves something. Everything goes under one
-    folder, $AGENT_STORAGE (default ~/.agent-storage); delete it to erase all of it.
-    Nothing can be read or written outside that folder: a path that would leave it
-    (".." or an absolute path) is refused, the same as on a real server. A share
-    name never becomes a path either: each named share gets its own folder under
-    shares/, named by the sha256 of the name (lower-cased, trimmed), as on a server.
-    """
-
-    DEFAULT_MARKER_GUID = "c0p110t0-aaaa-bbbb-cccc-123456789abc"
-    _RESERVED_STEMS = {"CON", "PRN", "AUX", "NUL", *("COM%d" % i for i in range(1, 10)), *("LPT%d" % i for i in range(1, 10))}
-
-    def __init__(self, share_name=None, **kwargs):
-        root = _os.environ.get("AGENT_STORAGE") or str(_Path.home() / ".agent-storage")
-        self.base = _Path(root)
-        share = str(share_name or "").strip().lower()
-        self.share_name = share or None
-        if share:
-            self.root = self.base / "shares" / _hashlib.sha256(share.encode("utf-8")).hexdigest()
-        else:
-            self.root = self.base / "default"
-        self.root.mkdir(parents=True, exist_ok=True)
-        # What agents read off the helper, named as on a server: the share's folder,
-        # the shared memory folder, the memory file name, and the current context.
-        self.storage_root = self.root
-        self.shared_memory_path = self.root
-        self.default_file_name = "memory.json"
-        self.current_guid = None
-        self.current_memory_path = self.shared_memory_path
-
-    def set_memory_context(self, user_guid=None):
-        """One sub-folder per user. None, "" or the marker guid means the shared folder. Returns True."""
-        if user_guid is None or user_guid == "" or user_guid == self.DEFAULT_MARKER_GUID:
-            self.current_guid = None
-            self.current_memory_path = self.shared_memory_path
-            return True
-        self._folder_name(user_guid)
-        self.current_guid = user_guid
-        self.current_memory_path = self.root / user_guid
-        return True
-
-    def _folder_name(self, user_guid):
-        """user_guid when it is one literal folder name; ValueError otherwise (the server's rule)."""
-        if not isinstance(user_guid, str):
-            raise ValueError("user_guid must be a string")
-        if (user_guid in ("", ".", "..") or user_guid.endswith((".", " "))
-                or any(ch in '<>:"/\\|?*' or ord(ch) < 32 for ch in user_guid)
-                or user_guid.split(".", 1)[0].upper() in self._RESERVED_STEMS):
-            raise ValueError("user_guid must be a single path component")
-        return user_guid
-
-    def _inside(self, *parts):
-        """The resolved path of root/parts; refuses anything that leaves this share's folder.
-
-        The folder checked against is always a fixed child of self.base (the
-        $AGENT_STORAGE folder), never anything a caller chose, so nothing an agent
-        passes in can move the boundary.
-        """
-        base = self.root.resolve()
-        p = self.root.joinpath(*parts).resolve()
-        if p != base and base not in p.parents:
-            raise ValueError("path escapes data directory: " + "/".join(str(x) for x in parts if str(x)))
-        return p
-
-    def _path(self, file_path):
-        p = self._inside(self.current_guid or "", file_path or self.default_file_name)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        return p
-
-    def ensure_directory_exists(self, directory_path=""):
-        """Create a folder inside the store, under the current memory context, and return its path."""
-        d = self._inside(self.current_guid or "", directory_path or "")
-        d.mkdir(parents=True, exist_ok=True)
-        return d
-
-    def read_json(self, file_path=None):
-        p = self._path(file_path)
-        return _json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
-
-    def write_json(self, data, file_path=None):
-        self._path(file_path).write_text(_json.dumps(data, indent=2), encoding="utf-8")
-        return True
-
-    def update_json(self, update_fn, file_path=None):
-        data = update_fn(self.read_json(file_path))
-        self.write_json(data, file_path)
-        return data
-
-    def read_file(self, file_path):
-        p = self._path(file_path)
-        return p.read_text(encoding="utf-8") if p.exists() else None
-
-    def write_file(self, file_path, content):
-        self._path(file_path).write_text(content, encoding="utf-8")
-        return True
-
-    def list_files(self, directory=""):
-        d = self._inside(self.current_guid or "", directory)
-        return [x.name for x in d.iterdir()] if d.exists() else []
-
-    def delete_file(self, file_path):
-        p = self._path(file_path)
-        if p.exists():
-            p.unlink()
-            return True
-        return False
-
-    def file_exists(self, file_path):
-        return self._path(file_path).exists()
-
-
-def get_storage_manager(*args, **kwargs):
-    """What utils.storage_factory hands out on a server: the one storage helper."""
-    return AzureFileStorageManager(*args, **kwargs)
-
-
-# Every module name a RAPP agent may import, and what each must hold. This is
-# exactly what a server exposes: BasicAgent under three names (a bare import works
-# there because the agents folder is on sys.path), and one local storage helper
-# under the three names cloud agents use for it.
-_BASIC_AGENT_ALIASES = ("basic_agent", "agents.basic_agent", "openrappter.agents.basic_agent")
-_STORAGE_ALIASES = {
-    "utils.azure_file_storage": {"AzureFileStorageManager": AzureFileStorageManager},
-    "utils.dynamics_storage": {"DynamicsStorageManager": AzureFileStorageManager},
-    "utils.storage_factory": {"get_storage_manager": get_storage_manager},
-}
-
-
-def _shim_table():
-    """{module name: {attribute: value}} for install_shims, from the alias tables above.
-
-    Every BasicAgent alias exposes one class: the one an already-present alias
-    holds (a real server's, when running inside one), else the stand-in above.
-    """
-    base = BasicAgent
-    for name in _BASIC_AGENT_ALIASES:
-        present = _sys.modules.get(name)
-        if isinstance(getattr(present, "BasicAgent", None), type):
-            base = present.BasicAgent
-            break
-    table = {name: {"BasicAgent": base} for name in _BASIC_AGENT_ALIASES}
-    table.update(_STORAGE_ALIASES)
-    return table
-
-
-def _register_module(dotted, attrs):
-    """Put a module holding attrs in sys.modules under dotted, creating parent packages as needed.
-
-    A module already present under any of those names is left exactly as it is;
-    a parent only gains a __path__ (so it counts as a package) and an attribute
-    for the child when it has neither.
-    """
-    parts = dotted.split(".")
-    parent = None
-    for depth in range(1, len(parts) + 1):
-        name = ".".join(parts[:depth])
-        module = _sys.modules.get(name)
-        if module is None:
-            module = _types.ModuleType(name)
-            if depth == len(parts):
-                for attr, value in attrs.items():
-                    setattr(module, attr, value)
-            _sys.modules[name] = module
-        if depth < len(parts) and not hasattr(module, "__path__"):
-            module.__path__ = []
-        if parent is not None and not hasattr(parent, parts[depth - 1]):
-            setattr(parent, parts[depth - 1], module)
-        parent = module
-
-
-def install_shims():
-    """Make every module name in the alias tables importable; never replace one already imported."""
-    for dotted, attrs in _shim_table().items():
-        _register_module(dotted, attrs)
-
-
-def _import_agent_module(path):
-    install_shims()
-    path = _Path(path).resolve()
-    util = __import__("importlib.util").util
-    spec = util.spec_from_file_location("skill_agent_" + path.stem, path)
-    module = util.module_from_spec(spec)
-    _sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def _agent_name(agent):
-    return str(agent.metadata.get("name") or agent.name)
-
-
-def _agents_in(module):
-    """[(attribute name, instance), ...] for every agent the module defines, in definition order.
-
-    An agent is a class defined in that module that subclasses BasicAgent (not
-    BasicAgent itself), has a callable perform, and whose name does not start
-    with "_". This is what a server serves from the file, so it is what a skill
-    sees too.
-    """
-    base = _sys.modules["agents.basic_agent"].BasicAgent
-    agents = []
-    for attr, obj in list(vars(module).items()):
-        if attr.startswith("_") or not isinstance(obj, type):
-            continue
-        if obj is base or not issubclass(obj, base) or obj.__module__ != module.__name__:
-            continue
-        if not callable(getattr(obj, "perform", None)):
-            continue
-        agents.append((attr, obj()))
-    return agents
-
-
-def load_agents(path):
-    """Import an agent file by path and return [(attribute name, agent instance), ...]."""
-    agents = _agents_in(_import_agent_module(path))
-    if not agents:
-        raise RuntimeError(f"{_Path(path).name}: no BasicAgent subclass found")
-    return agents
-
-
-def load_agent(path, tool_name=None):
-    """Import an agent file by path and return (module, agent instance).
-
-    The file's only agent when it defines one. When it defines several, the one
-    whose tool name equals tool_name; without a match, an error naming them all.
-    """
-    module = _import_agent_module(path)
-    agents = _agents_in(module)
-    if not agents:
-        raise RuntimeError(f"{_Path(path).name}: no BasicAgent subclass found")
-    if len(agents) == 1:
-        return module, agents[0][1]
-    names = [_agent_name(agent) for _, agent in agents]
-    if tool_name is not None:
-        for name, (_, agent) in zip(names, agents):
-            if name == tool_name:
-                return module, agent
-        raise RuntimeError(f"{_Path(path).name} has no agent named {tool_name!r}; it defines: {', '.join(names)}")
-    raise RuntimeError(f"{_Path(path).name} defines {len(agents)} agents ({', '.join(names)}); choose one by its tool name")
-`;
 
       function makeId() {
         if (crypto.randomUUID) {
@@ -1394,7 +1108,7 @@ def load_agent(path, tool_name=None):
       function buildSystemPrompt(fileText) {
         const parsed = validatePersonFile(fileText);
         return stripOlderMemory(parsed.body) +
-          "\n\nYou may call remember to save one durable fact immediately. " +
+          "\n\nCall ManageMemory the moment you learn a durable fact, and ContextMemory to recall; they write to and read this file. " +
           "Never save secrets or anything the person's private section says must stay private.";
       }
 
@@ -1551,10 +1265,6 @@ def load_agent(path, tool_name=None):
         if (parsed.origin === AUTH_WORKER || parsed.origin === GITHUB_API || parsed.origin === "https://raw.githubusercontent.com") {
           return true;
         }
-        const pyodide = new URL(PYODIDE_ROOT);
-        if (parsed.origin === pyodide.origin && parsed.pathname.startsWith(pyodide.pathname)) {
-          return true;
-        }
         if (copilotSession) {
           const endpoint = new URL(copilotSession.endpoint);
           return parsed.origin === endpoint.origin &&
@@ -1589,13 +1299,12 @@ def load_agent(path, tool_name=None):
         const policy = document.createElement("meta");
         policy.httpEquiv = "Content-Security-Policy";
         const copilotWildcard = "https:" + "//*.githubcopilot.com";
-        const pyodideOrigin = new URL(PYODIDE_ROOT).origin;
         policy.content = [
           "default-src 'none'",
-          "script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' " + pyodideOrigin,
+          "script-src 'unsafe-inline'",
           "style-src 'unsafe-inline'",
           "connect-src " + [AUTH_WORKER, GITHUB_API, "https://raw.githubusercontent.com", DEFAULT_COPILOT_ENDPOINT,
-            copilotWildcard, pyodideOrigin].join(" "),
+            copilotWildcard].join(" "),
           "img-src data: blob:",
           "media-src 'none'",
           "font-src 'none'",
@@ -2040,12 +1749,205 @@ def load_agent(path, tool_name=None):
         });
       }
 
-      function buildToolCatalog() {
-        const definitions = [MEMORY_TOOL];
+      let coreSkill = null;
+
+      function readCachedSkill() {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE.skill) || "null");
+        } catch (error) {
+          return null;
+        }
+      }
+
+      async function loadCoreSkill(force = false) {
+        if (coreSkill && !force) {
+          return coreSkill;
+        }
+        let cached = readCachedSkill();
+        const stale = !cached || force || (Date.now() - Number(cached.fetched || 0)) > 24 * 60 * 60 * 1000;
+        if (stale) {
+          try {
+            const response = await allowedFetch(CORE_SKILL_URL, { headers: { Accept: "text/plain" } });
+            if (response.ok) {
+              const text = await response.text();
+              if (text.includes("## 1a. The virtual machine")) {
+                cached = { text, sha: await sha256(text), fetched: Date.now() };
+                try {
+                  localStorage.setItem(STORAGE.skill, JSON.stringify(cached));
+                } catch (error) {
+                  // no room to keep it; it will be fetched again next time
+                }
+              }
+            }
+          } catch (error) {
+            // offline: sail on the copy already here, if there is one
+          }
+        }
+        if (!cached) {
+          return null;
+        }
+        const blocks = {};
+        const re = /<!-- kernel file=(\S+) sha256=([0-9a-f]{64}) source=\S+(?: path=\S+)? -->\n(`{3,})\w*\n([\s\S]*?)\n\3\n<!-- \/kernel -->/g;
+        let m;
+        while ((m = re.exec(cached.text))) {
+          const body = m[4];
+          if ((await sha256(body + "\n")) === m[2] || (await sha256(body)) === m[2]) {
+            blocks[m[1]] = { sha: m[2], body: body + "\n" };
+          }
+        }
+        const cut = cached.text.indexOf("\n## The kernel (vendored)");
+        coreSkill = { sha: cached.sha, fetched: cached.fetched, blocks, instructions: cut > 0 ? cached.text.slice(0, cut) : cached.text };
+        return coreSkill;
+      }
+
+      function skillSection(instructions, heading) {
+        const i = instructions.indexOf("\n" + heading);
+        if (i < 0) {
+          return "";
+        }
+        const rest = instructions.slice(i + 1);
+        const j = rest.indexOf("\n## ", heading.length);
+        return j < 0 ? rest : rest.slice(0, j);
+      }
+
+      function vmPreamble(skill) {
+        return [
+          VM_OPENING,
+          "Run one agent call for the person's Brainstem exactly as the instructions below say: execute perform(**args) of the agent whose code is given, statement by statement, with the person's file as the storage. You are also the model that code would call, if it calls one. You have no network and no device: where the code needs them, it fails the way the code says.",
+          "Reply with one JSON object and nothing else, of this shape:",
+          '{"result": "<exactly the string perform returns; if it returns a dict or list, its JSON as a string; if the code raises, ERROR: followed by the last line of the traceback>",',
+          ' "memory_lines_added": ["<each new memory record as one line in the full form of section 2h, newest first; only lines that do not already exist in the file>"],',
+          ' "storage": {"<path>": "<the full content of every file the call wrote or changed, agents/*_agent.py included>"}}',
+          "",
+          skillSection(skill.instructions, "## 1a. The virtual machine"),
+          skillSection(skill.instructions, "## 2g. Factory tools, run in the virtual machine"),
+          skillSection(skill.instructions, "## 2h. The file is the storage")
+        ].join("\n");
+      }
+
+      async function askJson(messages, open, close) {
+        const completion = await callCompletion(messages, null);
+        const content = completion.data.choices[0]?.message?.content || "";
+        const start = content.indexOf(open);
+        const end = content.lastIndexOf(close);
+        if (start < 0 || end < start) {
+          throw new Error("the virtual machine returned no result");
+        }
+        return JSON.parse(content.slice(start, end + 1));
+      }
+
+      function agentNameOf(code) {
+        // The first plain assignment; template strings inside a file (self.name = '{name}') are skipped.
+        for (const m of String(code).matchAll(/self\.name\s*=\s*(['"])([^'"\n]+)\1/g)) {
+          if (!/[{}]/.test(m[2])) {
+            return m[2];
+          }
+        }
+        return "";
+      }
+
+      function storageAgentBlocks(personText) {
+        let body;
+        try {
+          body = validatePersonFile(personText).body;
+        } catch (error) {
+          return [];
+        }
+        const section = sectionText(body, "Storage");
+        const out = [];
+        const re = /^### (agents\/[A-Za-z0-9_.-]+_agent\.py)[ \t]*\n(?:[^\n]*\n)*?(`{3,})\w*\n([\s\S]*?)\n\2/gm;
+        let m;
+        while ((m = re.exec(section))) {
+          out.push({ path: m[1], code: m[3] + "\n" });
+        }
+        return out;
+      }
+
+      function readFactoryCache() {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE.factory) || "{}") || {};
+        } catch (error) {
+          return {};
+        }
+      }
+
+      // The model describes each agent's tool from its code, once per distinct code, the way
+      // to_tool() would; the page never parses Python.
+      async function describeAgents(entries) {
+        const cache = readFactoryCache();
+        const missing = [];
+        for (const entry of entries) {
+          entry.key = await sha256(entry.code);
+          if (!cache[entry.key]) {
+            missing.push(entry);
+          }
+        }
+        if (missing.length) {
+          const messages = [
+            { role: "system", content: DESCRIBE_OPENING + " For each agent's Python code below, return the tool its to_tool() would produce: a JSON array, in the same order, of objects {\"name\": <self.name exactly>, \"description\": <the metadata description>, \"parameters\": <the metadata parameters object>}, and nothing else." },
+            { role: "user", content: missing.map((entry) => "### " + entry.path + "\n```python\n" + entry.code + "\n```").join("\n\n") }
+          ];
+          const list = await askJson(messages, "[", "]");
+          if (!Array.isArray(list) || list.length !== missing.length) {
+            throw new Error("the tools could not be described");
+          }
+          missing.forEach((entry, i) => {
+            const d = list[i] || {};
+            if (d.name !== entry.name) {
+              throw new Error("the tools could not be described");
+            }
+            cache[entry.key] = {
+              name: entry.name,
+              description: String(d.description || ""),
+              parameters: d.parameters && typeof d.parameters === "object" ? d.parameters : { type: "object", properties: {} }
+            };
+          });
+          try {
+            localStorage.setItem(STORAGE.factory, JSON.stringify(cache));
+          } catch (error) {
+            // kept in memory for this session only
+          }
+        }
+        return entries.map((entry) => cache[entry.key]);
+      }
+
+      function mindEntries(skill) {
+        const entries = [];
+        if (skill) {
+          for (const name of FACTORY_ORDER) {
+            const block = skill.blocks[FACTORY_FILES[name]];
+            if (block) {
+              entries.push({ name, kind: "factory", path: FACTORY_FILES[name].replace(/^rapp_brainstem\//, ""), code: block.body });
+            }
+          }
+        }
+        const person = getPersonFile();
+        if (person) {
+          for (const block of storageAgentBlocks(person)) {
+            const name = agentNameOf(block.code);
+            if (name && !entries.some((entry) => entry.name === name)) {
+              entries.push({ name, kind: "storage", path: block.path, code: block.code });
+            }
+          }
+        }
+        return entries;
+      }
+
+      async function buildToolCatalog() {
+        const skill = await loadCoreSkill();
+        const entries = mindEntries(skill);
+        const definitions = [];
         const byName = new Map();
+        if (entries.length && skill) {
+          const described = await describeAgents(entries);
+          entries.forEach((entry, i) => {
+            byName.set(entry.name, entry);
+            definitions.push({ type: "function", function: described[i] });
+          });
+        }
         for (const stored of readStoredTools()) {
           const parsed = parseToolSkill(stored.text, stored.source);
-          if (parsed.toolName === "remember") {
+          if (byName.has(parsed.toolName)) {
             continue;
           }
           definitions.push({
@@ -2056,9 +1958,83 @@ def load_agent(path, tool_name=None):
               parameters: parsed.parameters
             }
           });
-          byName.set(parsed.toolName, parsed);
+          byName.set(parsed.toolName, Object.assign({ kind: "listed" }, parsed));
         }
-        return { definitions, byName };
+        return { definitions, byName, skill };
+      }
+
+      // One tool call, run in the model's own mind; the page only writes what it reports.
+      async function runInMind(tool, args, skill) {
+        if (!skill) {
+          throw new Error("the core skill has not loaded, so tools cannot run yet");
+        }
+        let code = tool.code || null;
+        if (tool.kind === "listed") {
+          code = await extractAgentCode(tool.text);
+        }
+        const toolName = tool.toolName || tool.name;
+        const user = [
+          "Agent: " + toolName + (tool.path ? " (" + tool.path + ")" : tool.kind === "listed" ? " (" + tool.name + "/SKILL.md)" : ""),
+          code ? "```python\n" + code + "\n```" : "This tool has no code. Its steps, to carry out exactly:\n\n" + String(tool.body || "").trim(),
+          "Call: perform(**" + JSON.stringify(args) + ")",
+          "The person's file:\n```markdown\n" + getPersonFile() + "\n```"
+        ].join("\n\n");
+        const out = await askJson([{ role: "system", content: vmPreamble(skill) }, { role: "user", content: user }], "{", "}");
+        applyMindDeltas(out);
+        return String(out.result ?? "");
+      }
+
+      function applyMindDeltas(out) {
+        const lines = Array.isArray(out.memory_lines_added)
+          ? out.memory_lines_added.map((line) => String(line).trim()).filter((line) => /^- \d{4}-\d{2}-\d{2}/.test(line))
+          : [];
+        if (lines.length) {
+          prependMemoryLines(lines);
+        }
+        const storage = out.storage && typeof out.storage === "object" ? out.storage : {};
+        const entries = Object.keys(storage)
+          .filter((path) => /^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(path) && !path.includes(".."))
+          .map((path) => ({ path, content: String(storage[path]) }));
+        if (entries.length) {
+          writeStorageBlocks(entries);
+        }
+      }
+
+      function writeStorageBlocks(entries) {
+        let text = updateUpdatedDate(validatePersonFile(getPersonFile()).normalized, localDate());
+        const lines = text.split("\n");
+        let section = findSection(lines, "Storage");
+        if (!section) {
+          while (lines.length && !lines[lines.length - 1].trim()) {
+            lines.pop();
+          }
+          lines.push("", "## Storage", "");
+          section = findSection(lines, "Storage");
+        }
+        let content = section.content.slice();
+        for (const entry of entries) {
+          let fence = "```";
+          while (entry.content.includes(fence)) {
+            fence += "`";
+          }
+          const lang = entry.path.endsWith(".py") ? "python" : entry.path.endsWith(".json") ? "json" : "text";
+          const block = ["### " + entry.path, "", fence + lang, entry.content.replace(/\n$/, ""), fence, ""];
+          const at = content.findIndex((line) => line.trim() === "### " + entry.path);
+          if (at >= 0) {
+            let stop = at + 1;
+            while (stop < content.length && !/^### /.test(content[stop])) {
+              stop += 1;
+            }
+            content.splice(at, stop - at, ...block);
+          } else {
+            content = content.concat(block);
+          }
+        }
+        lines.splice(section.start + 1, section.end - section.start - 1, ...content);
+        const updated = lines.join("\n");
+        localStorage.setItem(STORAGE.file, updated);
+        els.fileEditor.value = updated;
+        updateReadyState();
       }
 
       async function sha256(text) {
@@ -2084,87 +2060,6 @@ def load_agent(path, tool_name=None):
           }
         }
         throw new Error("This tool's code does not match its saved fingerprint.");
-      }
-
-      function rejectToolRequests(message) {
-        for (const request of toolRequests.values()) {
-          request.reject(new Error(message));
-        }
-        toolRequests.clear();
-      }
-
-      function ensureToolWorker() {
-        if (toolWorker) {
-          return toolWorker;
-        }
-        const runSource = `
-_module, _instance = load_agent("/agent.py", _browser_tool_name or None)
-_arguments = _json.loads(_browser_args_json)
-_result = _instance.perform(**_arguments)
-_json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) else str(_result if _result is not None else "")
-`;
-        const workerSource = [
-          "const ROOT = " + JSON.stringify(PYODIDE_ROOT) + ";",
-          "const SHIM = " + JSON.stringify(SHIM_SOURCE) + ";",
-          "const RUN = " + JSON.stringify(runSource) + ";",
-          "let ready;",
-          "async function runtime() {",
-          "  if (!ready) ready = (async () => {",
-          "    importScripts(ROOT + 'pyodide.js');",
-          "    const py = await loadPyodide({ indexURL: ROOT });",
-          "    await py.runPythonAsync(SHIM);",
-          "    return py;",
-          "  })().catch((error) => { ready = undefined; throw error; });",
-          "  return ready;",
-          "}",
-          "self.onmessage = async ({ data }) => {",
-          "  try {",
-          "    const py = await runtime();",
-          "    py.FS.writeFile('/agent.py', data.code, { encoding: 'utf8' });",
-          "    py.globals.set('_browser_args_json', JSON.stringify(data.args));",
-          "    py.globals.set('_browser_tool_name', String(data.toolName || ''));",
-          "    const result = await py.runPythonAsync(RUN);",
-          "    py.globals.delete('_browser_args_json');",
-          "    py.globals.delete('_browser_tool_name');",
-          "    self.postMessage({ id: data.id, result });",
-          "  } catch (error) {",
-          "    self.postMessage({ id: data.id, error: error.message || String(error) });",
-          "  }",
-          "};"
-        ].join("\n");
-        const url = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
-        toolWorker = new Worker(url);
-        URL.revokeObjectURL(url);
-        toolWorker.onmessage = ({ data }) => {
-          const request = toolRequests.get(data.id);
-          if (!request) {
-            return;
-          }
-          toolRequests.delete(data.id);
-          if (data.error) {
-            request.reject(new Error(data.error));
-          } else {
-            request.resolve(data.result);
-          }
-        };
-        toolWorker.onerror = (event) => {
-          rejectToolRequests("This tool could not start: " + event.message);
-          toolWorker?.terminate();
-          toolWorker = null;
-        };
-        return toolWorker;
-      }
-
-      async function runPythonTool(skill, args) {
-        const code = await extractAgentCode(skill.text);
-        if (!code) {
-          return skill.body.trim();
-        }
-        const id = makeId();
-        return new Promise((resolve, reject) => {
-          toolRequests.set(id, { resolve, reject });
-          ensureToolWorker().postMessage({ id, code, args, toolName: skill.toolName });
-        });
       }
 
       function localDate() {
@@ -2217,11 +2112,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         return result;
       }
 
-      function appendMemory(fact) {
-        const clean = String(fact || "").replace(/\s+/g, " ").replace(/^-+\s*/, "").trim();
-        if (!clean) {
-          throw new Error("There is no memory to save.");
-        }
+      function prependMemoryLines(newLines) {
         const date = localDate();
         let text = validatePersonFile(getPersonFile()).normalized;
         text = updateUpdatedDate(text, date);
@@ -2231,7 +2122,9 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           throw new Error("The file has no Memory section.");
         }
         const existing = memoryEntries(current.content);
-        const all = ["- " + date + " " + clean, ...existing];
+        const have = new Set(existing);
+        const fresh = newLines.map((line) => line.replace(/\s+/g, " ").trim()).filter((line) => line && !have.has(line));
+        const all = [...fresh, ...existing];
         const newest = all.slice(0, 40);
         const overflow = all.slice(40);
         lines.splice(
@@ -2260,9 +2153,8 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         const updated = lines.join("\n");
         localStorage.setItem(STORAGE.file, updated);
         els.fileEditor.value = updated;
-        setMessage(els.fileMessage, "Saved a new memory.");
+        setMessage(els.fileMessage, fresh.length === 1 ? "Saved a new memory." : "Saved " + fresh.length + " new memories.");
         updateReadyState();
-        return "Saved in the person's file: " + clean;
       }
 
       function parseToolArguments(value) {
@@ -2298,15 +2190,11 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           let result;
           try {
             const args = parseToolArguments(call?.function?.arguments);
-            if (name === "remember") {
-              result = appendMemory(args.fact ?? args.memory ?? args.text);
-            } else {
-              const skill = findLoadedTool(catalog.byName, name);
-              if (!skill) {
-                throw new Error("The requested tool is not loaded.");
-              }
-              result = await runPythonTool(skill, args);
+            const tool = findLoadedTool(catalog.byName, name);
+            if (!tool) {
+              throw new Error("The requested tool is not loaded.");
             }
+            result = await runInMind(tool, args, catalog.skill);
             logs.push("[" + name + "] " + String(result));
           } catch (error) {
             // The kernel writes "[name] ERROR: message"; keep the last line of a Python traceback.
@@ -2512,7 +2400,16 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
 
         const currentSession = body.session_id || makeId();
         const listedIssues = await syncListedTools();
-        const catalog = buildToolCatalog();
+        let catalog;
+        try {
+          catalog = await buildToolCatalog();
+        } catch (error) {
+          if (error.code === "signin_rejected") {
+            throw error;
+          }
+          catalog = { definitions: [], byName: new Map(), skill: coreSkill };
+          listedIssues.push("[tools] " + error.message);
+        }
         const messages = [
           { role: "system", content: buildSystemPrompt(getPersonFile()) },
           ...history,
@@ -2668,9 +2565,14 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
       function healthEnvelope(publicOnly = false) {
         const tools = (() => {
           try {
-            return buildToolCatalog().definitions
-              .map((item) => item.function.name)
-              .filter((name) => name !== "remember");
+            const names = mindEntries(coreSkill).map((entry) => entry.name);
+            for (const stored of readStoredTools()) {
+              const parsed = parseToolSkill(stored.text, stored.source);
+              if (!names.includes(parsed.toolName)) {
+                names.push(parsed.toolName);
+              }
+            }
+            return names;
           } catch (error) {
             return [];
           }
@@ -2685,7 +2587,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           model: localStorage.getItem(STORAGE.model) || DEFAULT_MODEL,
           soul: getPersonFile() ? "loaded" : "missing",
           agents: tools,
-          quarantined: [],
+          quarantined: coreSkill ? [] : ["factory tools: the core skill has not loaded yet"],
           copilot: signedIn ? (copilotSession ? "\u2713" : "pending") : undefined
         };
       }
@@ -2749,13 +2651,14 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             return { status: 200, json: healthEnvelope(true) };
           }
           if (verb === "GET" && cleanPath === "/agents") {
-            const files = readStoredTools().map((item) => {
+            const files = mindEntries(await loadCoreSkill()).map((entry) => ({
+              filename: entry.path.replace(/^agents\//, ""),
+              agents: [entry.name]
+            }));
+            for (const item of readStoredTools()) {
               const skill = parseToolSkill(item.text, item.source);
-              return {
-                filename: skill.name + "/SKILL.md",
-                agents: [skill.toolName]
-              };
-            });
+              files.push({ filename: skill.name + "/SKILL.md", agents: [skill.toolName] });
+            }
             return { status: 200, json: { files } };
           }
           if (verb === "GET" && cleanPath === "/models") {
@@ -3364,6 +3267,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             return issues;
           });
         }
+        loadCoreSkill().then(() => updateReadyState()).catch(() => {});
         autoDialFromLink();
       } catch (error) {
         addSystemNotice("Saved information on this device could not be read: " + error.message);

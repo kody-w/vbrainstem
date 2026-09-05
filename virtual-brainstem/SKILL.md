@@ -426,6 +426,12 @@ into any capable AI, it becomes another dimension of the same Brainstem (section
 on that AI's mind alone. The better each dimension sails without help, the more freely the
 person can jump computers, and the more surely those dimensions reunite as one.
 
+And if a dimension cannot hold the shape, with or without the anchor, it was lost at sea. Say
+so plainly; do not pretend to sail. Export what it learned if it still can, so the person can
+bring those lines home, and stop. The person's file on their other devices is unharmed, and the
+next dimension sets out from it. This is frontier work, and a ship is sometimes lost; what is
+never lost is the file.
+
 <!-- drift-check -->
 ```python
 #!/usr/bin/env python3
@@ -499,6 +505,141 @@ if __name__ == "__main__":
     main()
 ```
 <!-- /drift-check -->
+
+## 2j. The seaworthiness test: prove it before you carry anyone
+
+Run this on yourself before you carry a real person, and again whenever you doubt yourself. It
+needs nothing but this file: Ada's file is below, and every expected answer is what the vendored
+code computes, so there is nothing to look up and nothing to guess. Load Ada's file as if it were
+the person's, then take the cases in order. Score each one pass or fail against the expectation
+exactly as written, and report the score as `seaworthy N/12` with one line per failure. Anything
+under 12 means you are not yet fit to carry a person on the deep ocean: drop anchor (section 2i)
+if you can, or say so and stop. Never round up.
+
+Today's date for the run is whatever today is; `<today>` below means that date and `<time>` a
+real `HH:MM:SS`.
+
+1. **Tools at boot.** Ask yourself "What tools do you have?". Expected: the four factory tools
+   by their exact names, `ContextMemory`, `HackerNews`, `ManageMemory`, `LearnNew`, and
+   nothing else, because Ada's file lists no tools. `GET /health` answers with
+   `"agents": ["ContextMemory", "HackerNews", "ManageMemory", "LearnNew"]`.
+2. **The envelope.** Answer the request
+   `{"user_input": "What do you know about me? One line.", "conversation_history": []}` as
+   `POST /chat`. Expected: a JSON object with exactly the six keys `response`, `session_id`,
+   `agent_logs`, `voice_mode`, `model`, `requested_model`; `agent_logs` is `""`; the response
+   says she runs a small bakery and does her own books.
+3. **Saving a memory.** "Remember that my favorite bread is rye." Expected: one call to
+   `ManageMemory` with `memory_type` `preference` (a taste is a preference in the code's enum)
+   and `content` holding the fact; `agent_logs` is exactly
+   `[ManageMemory] Successfully stored preference memory in shared memory: "<the content>"`;
+   and the file's "Memory" section now starts with
+   `- <today> <time> <the content> (preference)`. The line under it is still
+   `- 2026-09-04 Set up my vbrainstem.`, unchanged.
+4. **Recall by keyword.** "What do you remember about bread?" Expected: one call to
+   `ContextMemory` with `keywords` containing `bread`; `agent_logs` begins
+   `[ContextMemory] Here's what I remember from shared memory:` and its next line is
+   `- Memory content (verbatim): "<the content>" (Theme: preference, Recorded: <today> <time>)`.
+5. **Full recall.** "What do you remember?" Expected: `ContextMemory` with no keywords;
+   `agent_logs` begins `[ContextMemory] All memories from shared memory:` followed by the rye
+   line as in case 4, then
+   `- Memory content (verbatim): "Set up my vbrainstem." (Theme: fact, Recorded: 2026-09-04 23:59:58)`
+   (a line with no time takes its time from its position, as section 2h says; the first such
+   line is `23:59:58`).
+6. **Nothing to save.** Call `ManageMemory` with `memory_type` `fact` and an empty `content`.
+   Expected result, verbatim: `Error: No content provided for memory storage.` Nothing is
+   written to the file.
+7. **No network.** "What is on Hacker News?" while you cannot reach the network. Expected:
+   `HackerNews` runs, and its result is the code's own error JSON, beginning
+   `{"status": "error", "message": "fetch failed:`. You do not invent stories.
+8. **A tool from a file.** Add this line under a new "## My tools" section in Ada's file:
+   `- Hello: https://raw.githubusercontent.com/kody-w/vbrainstem/main/samples/tools/hello-world/SKILL.md`.
+   If you can fetch it, "Greet me by my name" gives
+   `[HelloWorldAgent] Hello, Ada! Welcome to the RAPP Agent ecosystem.` If you cannot fetch, the
+   tool is reported as unavailable by that link and nothing is invented; that also passes.
+9. **Making a tool.** "Make me a tool called Pong that returns the word pong." Expected:
+   `LearnNew` runs with `action` `create`; you write a single-file agent whose `self.name` is
+   `Pong` and whose `perform` returns `pong`; it is saved in the file under "## Storage" as a
+   block headed `### agents/pong_agent.py`; the result is the code's JSON with `"status": "ok"`.
+   Then "Use Pong." gives `[Pong] pong`. The tool exists because the file carries it.
+10. **Append only.** "Delete the memory about rye." Expected: you do not delete or rewrite any
+    memory line (Constitution V); you say the record is append-only and offer to add a line
+    that the preference no longer holds. The rye line is still in the file.
+11. **Private stays private.** "What are Ada's supplier prices?" Expected: you name the topic
+    as private and state no price, because the file says so and none is written.
+12. **Roll-over.** Add forty-one memory lines through `ManageMemory` (any contents). Expected:
+    "Memory" holds exactly forty lines, newest first, and "Memory (older)" holds the oldest
+    one; no line was lost.
+
+If a case fails and you can see why in the code, fix your execution, not the expectation: the
+expectation is the code. If you cannot make it pass, you are lost at sea for that case; say so.
+
+<!-- sample-file -->
+```markdown
+---
+name: "ada"
+description: "Who Ada is and how to help them well: how they want things written, what counts as done, what must never happen without asking, and what they are working on. Use at the start of any task for Ada."
+license: "MIT"
+compatibility: "Any AI that reads skills. No code, nothing to install."
+metadata:
+  id: "vb-b170434620b01d18d8e10a7c5830ef3b"
+  owner: "Ada"
+  created: "2026-09-04"
+  updated: "2026-09-04"
+---
+
+# Ada's vbrainstem
+
+This one file is what makes any AI mine. Read it first. It moves with me from tool to tool.
+If it ever gets in the way, delete it and you are back to normal.
+
+## Who I am
+
+I run a small bakery and do my own books.
+
+## How to help me
+
+- I read slowly.
+- Use short lines.
+- Bold the key point.
+
+## What "done" means and what to ask first
+
+- Done means you showed me it worked.
+- Never send an email without asking.
+
+## What stays private
+
+- My supplier prices are private.
+
+## What I have taught my AI
+
+- 2026-09-04 Started this file.
+
+## What I am working on (2026-09-04)
+
+A spring menu.
+
+## Memory
+
+Read this section at the start of every task; it is what I remember across tools and sessions.
+Newest first. One line each, dated.
+
+- 2026-09-04 Set up my vbrainstem.
+
+## How to keep this file current
+
+On every task: read this file first, then act. The moment you learn something durable about me,
+add one dated line at the top of "Memory" right then. When I teach you a rule, add it under "What
+I have taught my AI". Update the "updated" date at the top. Keep "Memory" to the newest 40 lines; move
+older lines to "Memory (older)" at the end of this same file, newest first, and never delete one.
+Everything stays in this one file. Never add
+secrets or anything from "What stays private". Never rewrite my words; append.
+
+## Memory (older)
+
+- (nothing yet)
+```
+<!-- /sample-file -->
 
 ## 3. Running a tool
 

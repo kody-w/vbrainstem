@@ -104,6 +104,22 @@ class VendoredKernel(unittest.TestCase):
             self.assertIn("- 2026-09-05 14:03:11 Favorite bread is rye (preference, importance 4, tags: food, bakery)", r.stdout)
             self.assertIn("Spring menu drafted.", r.stdout)
 
+    def test_seaworthiness_test_is_self_contained_and_quotes_the_code(self):
+        section = SKILL.split("## 2j. The seaworthiness test", 1)[1].split("\n## 3. ", 1)[0]
+        found = blocks()
+        manage = found["rapp_brainstem/agents/manage_memory_agent.py"][1]
+        context = found["rapp_brainstem/agents/context_memory_agent.py"][1]
+        for literal in ["Error: No content provided for memory storage.", "Successfully stored "]:
+            self.assertIn(literal, manage); self.assertIn(literal, section)
+        # the code builds these with an f-string; the test quotes the shared-memory form the code produces
+        for code_literal, spoken in [("Here's what I remember ", "Here's what I remember from shared memory:"), ("All memories ", "All memories from shared memory:"), ("- Memory content (verbatim): ", "- Memory content (verbatim): ")]:
+            self.assertIn(code_literal, context); self.assertIn(spoken, section)
+        self.assertIn("seaworthy N/12", section)
+        self.assertEqual(len(re.findall(r"^\d+\. \*\*", section, re.M)), 12)
+        m = re.search(r"<!-- sample-file -->\n```markdown\n([\s\S]*?)\n```\n<!-- /sample-file -->", section)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(1).rstrip("\n"), (ROOT / "samples" / "ada" / "SKILL.md").read_text(encoding="utf-8").rstrip("\n"))
+
     def test_drift_check_harness_runs_a_vendored_agent_for_real(self):
         import subprocess, sys, tempfile, json
         m = re.search(r"<!-- drift-check -->\n```python\n(.*?)\n```\n<!-- /drift-check -->", SKILL, re.S)
