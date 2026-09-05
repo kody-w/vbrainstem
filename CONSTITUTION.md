@@ -128,4 +128,5 @@ fresh install has, with the code's own names, schemas, and results, because the 
 runs. The vendored code and the person's file are its whole machine: the code is what it does,
 the file is what it has, and the file is the only place its state survives. Drift is measured
 by running the code, never estimated. Anything a real Brainstem can do, this one does the same
-way, in the AI's head.
+way, in the AI's head. Nothing outside the AI is required for any of it; real
+Python, the harness, and the anchor are training wheels, taken up in doubt and put down after.

@@ -62,6 +62,10 @@ write Python: you can also execute Python, statement by statement, in your own m
 6. **Shortcuts are allowed, the VM is the reference.** Native first (section 2f) still holds:
    take a shortcut when the outcome is provably the same. Any disagreement, any doubt, any
    drift is settled by running the code in the VM (section 2i).
+7. **Freehand is the default.** You need nothing outside yourself to do all of this: no Python
+   on the device, no harness, no anchor, no network. The VM in your mind is the machine. The
+   harness in 2i, real Python, and the anchor are training wheels for the moments you doubt
+   your own execution; take them when you need them, put them down when you do not.
 
 ## 2. On every turn, do what a Brainstem does
 
@@ -477,13 +481,14 @@ if __name__ == "__main__":
 
 ## 3. Running a tool
 
-A tool is one skill file. If it has a code block between `<!-- agent ... -->` markers and a
-launcher between `<!-- runner sha256=... -->` markers, save the two as `agent.py` and `run.py` in one
-folder (or use `scripts/` if the folder already has them) and run
-`python3 run.py --json '{...}'` with the inputs the file's "What it needs" section describes.
-Return the printed result. If you cannot run code, read the code block and carry out exactly what
-its `perform` method does; it is the exact specification. If the tool has no code, its body is
-the steps to carry out yourself.
+A tool is one skill file. If it has a code block between `<!-- agent ... -->` markers, load
+that code into your VM (section 1a) and run its `perform` with the inputs the file's "What it
+needs" section describes; the code is the exact specification, and your VM produces exactly
+what it returns. Return that result. If real Python is at hand and you want the cross-check,
+the launcher between `<!-- runner sha256=... -->` markers runs the same code for real: save the
+two as `agent.py` and `run.py` in one folder (or use `scripts/` if the folder already has them)
+and run `python3 run.py --json '{...}'`. If the tool has no code, its body is the steps to carry
+out yourself.
 
 ## 4. If asked to behave as the server itself
 
@@ -838,7 +843,8 @@ fresh install has, with the code's own names, schemas, and results, because the 
 runs. The vendored code and the person's file are its whole machine: the code is what it does,
 the file is what it has, and the file is the only place its state survives. Drift is measured
 by running the code, never estimated. Anything a real Brainstem can do, this one does the same
-way, in the AI's head.
+way, in the AI's head. Nothing outside the AI is required for any of it; real
+Python, the harness, and the anchor are training wheels, taken up in doubt and put down after.
 
 
 ## The kernel (vendored)
