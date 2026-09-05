@@ -39,7 +39,8 @@ function fixture() {
       { type: "spki", rappid: owner, spki_der_b64: spki.toString("base64"), deprecated: false },
       { type: "protocol", name: "rapp/1", spec_repo: "https://github.com/kody-w/rapp-1", spec_path: "SPEC.md", spec_hash: "348e7d5baa94aaf2ce4c5354f3cb261f389298a04af65e271a686d3b62f7c384", deprecated: false },
       { type: "kind", kind: "body.pulse", family: "body", deprecated: false },
-      { type: "genesis", stream_id: stream, frame_hash: frame.frame_hash, deprecated: false }
+      { type: "genesis", stream_id: stream, frame_hash: frame.frame_hash, deprecated: false },
+      ...["invalid-request", "unknown-session", "refused"].map((code) => ({ type: "error-code", code }))
     ]
   };
   registry.sig = sign(registry);
@@ -55,12 +56,18 @@ test("browser verifies a signed registry, its declared stream and detached signe
     const verified = await window.VBDialIntegrity.verifyRegistry(registry, owner);
     const chain = await window.VBDialIntegrity.verifyFrameChain(frames, verified, stream, head);
     const signed = await window.VBDialIntegrity.verifySignedDocument(document, verified);
-    return { owner: verified.owner, head: chain.head.frame_hash, count: chain.count, id: signed.public_id };
+    return {
+      owner: verified.owner, head: chain.head.frame_hash, count: chain.count,
+      id: signed.public_id, errorCodes: [...verified.errorCodes]
+    };
   }, {
     owner: data.owner, stream: data.stream, registry: canonical(data.registry),
     frames: canonical(data.frame) + "\n", document: canonical(data.document), head: data.frame.frame_hash
   });
-  expect(actual).toEqual({ owner: data.owner, head: data.frame.frame_hash, count: 1, id: data.stream });
+  expect(actual).toEqual({
+    owner: data.owner, head: data.frame.frame_hash, count: 1, id: data.stream,
+    errorCodes: ["invalid-request", "unknown-session", "refused"]
+  });
 });
 
 test("changed signatures, substituted anchors, duplicate keys and empty chains fail closed", async ({ page }) => {

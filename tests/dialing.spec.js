@@ -66,28 +66,41 @@ test("four browser spaces preserve distinct files across switching and scoped de
 test("public dialing never borrows private credentials without an explicit private choice", async ({ page }) => {
   const publicFile = person("Atlas", "a").replace(
     '  owner: "Atlas"',
-    '  owner: "Atlas"\n  private-repo: "kody-w/vb-atlas-private"\n  private-path: "vbrainstem/SKILL.md"'
+    '  owner: "Atlas"\n  private-repo: "fixture/vb-atlas-private"\n  private-path: "vbrainstem/SKILL.md"'
   );
   let privateRequests = 0;
   await page.addInitScript(() => {
     localStorage.setItem("github_token", "fake-public-test-token");
     localStorage.setItem("github_repo_token", "fake-private-test-token");
   });
-  await page.route("https://raw.githubusercontent.com/kody-w/vb-atlas/main/vb-atlas/SKILL.md", (route) =>
+  await page.route("https://raw.githubusercontent.com/fixture/vb-atlas/main/vb-atlas/SKILL.md", (route) =>
     route.fulfill({ status: 200, contentType: "text/plain", body: publicFile }));
-  await page.route("https://api.github.com/repos/kody-w/vb-atlas/contents/vb-atlas/SKILL.md**", (route) =>
+  await page.route("https://api.github.com/repos/fixture/vb-atlas/contents/vb-atlas/SKILL.md**", (route) =>
     route.fulfill({ status: 200, contentType: "text/plain", body: publicFile }));
-  await page.route("https://api.github.com/repos/kody-w/vb-atlas-private/**", (route) => {
+  await page.route("https://api.github.com/repos/fixture/vb-atlas-private/**", (route) => {
     privateRequests += 1;
     return route.fulfill({ status: 404 });
   });
-  await page.goto("/index.html?space=kody-w/vb-atlas");
+  await page.goto("/index.html?space=fixture/vb-atlas");
   const result = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/file/dial", {
-    url: "https://github.com/kody-w/vb-atlas"
+    url: "https://github.com/fixture/vb-atlas"
   }));
   expect(result.status).toBe(200);
   expect(result.json.face).toBe("public");
   expect(privateRequests).toBe(0);
+});
+
+test("public and private copies of one AI have separate browser state", async ({ page }) => {
+  await page.route("https://**", (route) => route.abort());
+  await page.goto("/index.html?space=kody-w/vb-atlas&face=private");
+  await importPerson(page, person("Atlas", "b", "PRIVATE_LOCAL_CANARY"));
+  await page.goto("/index.html?space=kody-w/vb-atlas&face=public");
+  await expect(page.locator("#file-state")).toHaveText("No file yet");
+  await importPerson(page, person("Atlas", "a", "Public role only."));
+  expect(await page.locator("#file-editor").inputValue()).not.toContain("PRIVATE_LOCAL_CANARY");
+  await page.goto("/index.html?space=kody-w/vb-atlas&face=private");
+  await page.getByRole("button", { name: "Open your file", exact: true }).click();
+  await expect(page.locator("#file-editor")).toHaveValue(person("Atlas", "b", "PRIVATE_LOCAL_CANARY"));
 });
 
 test("exported persona imports into a fresh device without other AI state", async ({ page, browser, baseURL }) => {

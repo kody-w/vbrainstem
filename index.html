@@ -783,6 +783,7 @@
         <button type="button" data-close aria-label="Close your file">&times;</button>
       </div>
       <div class="sheet-body">
+        <p class="hint" id="publication-state" role="status" hidden></p>
         <h3>Bring it in</h3>
         <p class="hint">Choose the file from this device, paste it, or load it from GitHub. No file yet? Start one here with your name, or give any AI <a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md" target="_blank" rel="noopener">this link</a> and say "set up my AI file".</p>
         <label class="field">
@@ -936,6 +937,7 @@
   </div>
 
   <script src="dial-integrity.js"></script>
+  <script src="rapp-chat.js"></script>
   <script>
     (() => {
       "use strict";
@@ -950,11 +952,20 @@
       const COPILOT_TOKEN_URL = GITHUB_API + "/copilot_internal/v2/token";
       const DEFAULT_COPILOT_ENDPOINT = "https://api.individual.githubcopilot.com";
       const DEFAULT_MODEL = "gpt-4o";
+      const DEMO_TRUST = Object.freeze({
+        "kody-w/vb-atlas": "rappid:@kody-w/vb-atlas-estate:9ad6dba3fa7f6933e09a3c7dfed059c13d669e93c9e1a34fdf02433a8dda3102",
+        "kody-w/vb-forge": "rappid:@kody-w/vb-forge-estate:b57f68c27fb05f8a03c4f5cc412c0de23fa1e7d9151520cc36e221c86b22ea1b",
+        "kody-w/vb-quill": "rappid:@kody-w/vb-quill-estate:2138096745d4ef804cc5cfd5b798d08a01ab14e699824c838af3b0068826586c",
+        "kody-w/vb-harbor": "rappid:@kody-w/vb-harbor-estate:3c3975382c06b7d5d69e139c648dd31994bc08e66b97f1ed9e837182d0f7eaa0"
+      });
       const PAGE_PARAMETERS = new URLSearchParams(location.search);
-      const PROFILE_SPACE = (PAGE_PARAMETERS.get("space") || "").toLowerCase();
+      const dialRepository = frontRepository(PAGE_PARAMETERS.get("dial") || "");
+      const PROFILE_SPACE = (PAGE_PARAMETERS.get("space") || (Object.hasOwn(DEMO_TRUST, dialRepository) ? dialRepository : "")).toLowerCase();
+      const PROFILE_FACE = PAGE_PARAMETERS.get("face") === "private" ? "private" : "public";
       const VALID_SPACE = !PROFILE_SPACE || /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9][a-z0-9._-]{0,99}$/.test(PROFILE_SPACE);
       // A browser namespace keeps separate AIs apart; it is not identity or authorization.
-      const profileKey = (name) => PROFILE_SPACE ? "vbrainstem:" + PROFILE_SPACE + ":" + name : "vbrainstem." + name;
+      const profileKey = (name) => PROFILE_SPACE ?
+        "vbrainstem:" + PROFILE_SPACE + ":" + PROFILE_FACE + ":" + name : "vbrainstem." + name;
       const STORAGE = Object.freeze({
         token: "github_token",
         file: profileKey("file"),
@@ -963,7 +974,8 @@
         tools: profileKey("tools"),
         model: profileKey("model"),
         skill: profileKey("skill"),
-        factory: profileKey("factory")
+        factory: profileKey("factory"),
+        publication: profileKey("publication")
       });
       const TOKEN_ALIASES = ["vbrainstem.githubToken", "brainstem_token"];
       // The core skill is what the page sails with. The page has no Python and no device: every
@@ -1018,6 +1030,7 @@
         copySetupPrompt: document.getElementById("copy-setup-prompt"),
         setupCopyStatus: document.getElementById("setup-copy-status"),
         storageWarning: document.getElementById("storage-warning"),
+        publicationState: document.getElementById("publication-state"),
         composer: document.getElementById("composer"),
         message: document.getElementById("message"),
         send: document.getElementById("send"),
@@ -1081,6 +1094,7 @@
       let loginTimer = null;
       let copilotSession = null;
       let availableModels = DEFAULT_MODELS.slice();
+      let publicationStatusVersion = 0;
       const nativeFetch = globalThis.fetch.bind(globalThis);
 
 
@@ -1244,6 +1258,152 @@
           return "https://raw.githubusercontent.com/" + repo[1] + "/" + name + "/main/" + name + "/SKILL.md";
         }
         return trimmed;
+      }
+
+      function frontRepository(value) {
+        const text = String(value || "").trim();
+        if (/^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(text)) return text.toLowerCase();
+        let url;
+        try { url = new URL(text); } catch { return ""; }
+        if (url.protocol !== "https:" || url.username || url.password) return "";
+        const parts = url.pathname.split("/").filter(Boolean);
+        let repo = "";
+        if (url.hostname === "github.com" || url.hostname === "raw.githubusercontent.com") repo = parts.slice(0, 2).join("/");
+        if (url.hostname.endsWith(".github.io") && parts.length) repo = url.hostname.split(".")[0] + "/" + parts[0];
+        return /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(repo) ? repo.toLowerCase() : "";
+      }
+
+      async function fetchPublicationText(repo, path, privateAccess = false) {
+        const headers = { Accept: privateAccess ? "application/vnd.github.raw+json" : "text/plain" };
+        if (privateAccess) {
+          const token = localStorage.getItem(STORAGE.repoToken) || getGithubToken();
+          if (!token) throw new Error("Private access is required. Add a repository-limited read token before loading this private copy.");
+          headers.Authorization = "Bearer " + token;
+        }
+        const url = privateAccess ?
+          GITHUB_API + "/repos/" + repo + "/contents/" + path + "?ref=main" :
+          "https://raw.githubusercontent.com/" + repo + "/main/" + path;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000);
+        try {
+          const response = await allowedFetch(url, {
+            headers, credentials: "omit", redirect: "error", cache: "no-store", signal: controller.signal
+          });
+          if (!response.ok) throw new Error((privateAccess ? "Private" : "Public") + " publication could not be read from GitHub (" + response.status + ").");
+          const reader = response.body.getReader();
+          const chunks = [];
+          let total = 0;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            total += value.length;
+            if (total > 1024 * 1024) {
+              await reader.cancel();
+              throw new Error("Publication file exceeds the 1 MiB limit.");
+            }
+            chunks.push(value);
+          }
+          const bytes = new Uint8Array(total);
+          let offset = 0;
+          for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+          return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        } finally {
+          clearTimeout(timeout);
+        }
+      }
+
+      function checkPublicationCheckpoint(record) {
+        const text = localStorage.getItem(STORAGE.publication);
+        if (!text) return;
+        const prior = JSON.parse(text);
+        if (prior.owner !== record.owner || prior.repo !== record.repo || prior.face !== record.face ||
+            prior.id !== record.id || !Number.isSafeInteger(prior.seq) ||
+            !Number.isSafeInteger(prior.registry_seq)) {
+          throw new Error("The saved publication identity differs. Keep your existing file and use its original front door.");
+        }
+        if (record.registry_seq < prior.registry_seq || record.seq < prior.seq ||
+            (record.seq === prior.seq && record.frame_hash !== prior.frame_hash)) {
+          throw new Error("Publication rollback or conflicting head refused; your saved file is unchanged.");
+        }
+      }
+
+      async function dialSignedPublication(repo, face, expectedOwner) {
+        if (PROFILE_SPACE && repo !== PROFILE_SPACE) throw new Error("This is another AI. Open its own front-door link to keep your files separate.");
+        const slug = repo.split("/")[1];
+        const [receiptText, registryText, frameText, chainText, publicText] = await Promise.all(
+          ["DIAL.json", "registry.json", "FRAME.json", "FRAMES.jsonl", slug + "/SKILL.md"]
+            .map((path) => fetchPublicationText(repo, path))
+        );
+        const verifiedPublic = await window.VBDialIntegrity.verifyPublishedFace({
+          receiptText, registryText, frameText, chainText, skillText: publicText,
+          expectedOwner, publicRepo: repo, face: "public"
+        });
+        let verified = verifiedPublic;
+        let content = publicText;
+        const dial = verifiedPublic.dial;
+        if (face === "private") {
+          const [privateReceipt, privateRegistry, privateFrame, privateChain, privateText] = await Promise.all(
+            ["DIAL.json", "registry.json", "FRAME.json", "FRAMES.jsonl", dial.private_skill_path]
+              .map((path) => fetchPublicationText(dial.private_repo, path, true))
+          );
+          if (privateReceipt !== receiptText) throw new Error("Private and public publication receipts disagree.");
+          verified = await window.VBDialIntegrity.verifyPublishedFace({
+            receiptText: privateReceipt, registryText: privateRegistry, frameText: privateFrame,
+            chainText: privateChain, skillText: privateText, expectedOwner, publicRepo: repo, face
+          });
+          content = privateText;
+        }
+        const parsed = validatePersonFile(content);
+        const meta = parsed.fields.metadata;
+        if (meta.id !== dial[face + "_id"] || meta.face !== face ||
+            meta["estate-owner"] !== expectedOwner || meta["mainline-id"] !== dial.private_id ||
+            meta["public-repo"] !== repo || meta["private-repo"] !== dial.private_repo ||
+            meta["private-path"] !== dial.private_skill_path || meta["dial-profile"] !== "vbrainstem-dial/1" ||
+            parsed.fields.name !== (face === "public" ? slug : "vbrainstem")) {
+          throw new Error("The signed carrier's identity or source binding is invalid.");
+        }
+        const record = {
+          owner: expectedOwner, repo, face, id: meta.id,
+          registry_seq: verified.registry.document.registry_seq, seq: verified.head.seq,
+          frame_hash: verified.head.frame_hash, sha256: verified.head.payload.sha256,
+          source: "https://github.com/" + dial[face + "_repo"] + "/blob/main/" + dial[face + "_skill_path"]
+        };
+        if (!PROFILE_SPACE || face === PROFILE_FACE) checkPublicationCheckpoint(record);
+        return {
+          status: 200,
+          json: { content, public_content: publicText, source: record.source, face, verification: record }
+        };
+      }
+
+      async function applyDialResult(result) {
+        const outcome = await setPersonFile(result.content, "link");
+        if (result.verification) {
+          localStorage.setItem(STORAGE.publication, JSON.stringify(result.verification));
+          localStorage.setItem(STORAGE.publicFace, result.public_content);
+          renderPublicationState();
+        }
+        return outcome;
+      }
+
+      function renderPublicationState() {
+        const version = ++publicationStatusVersion;
+        const proof = localStorage.getItem(STORAGE.publication);
+        const file = getPersonFile();
+        els.publicationState.hidden = !PROFILE_SPACE && !proof;
+        if (!file) { els.publicationState.textContent = ""; return; }
+        if (!proof) {
+          els.publicationState.textContent = "Local file. Its publication has not been verified in this browser.";
+          return;
+        }
+        const saved = JSON.parse(proof);
+        sha256(file).then((digest) => {
+          if (version !== publicationStatusVersion) return;
+          els.publicationState.textContent = digest === saved.sha256 ?
+            "Verified " + saved.face + " publication from " + saved.source + ". Saved proof; freshness is not guaranteed offline." :
+            "Local changes are not covered by the published signature. Export them before replacing this copy.";
+        }).catch((error) => {
+          if (version === publicationStatusVersion) els.publicationState.textContent = "Publication proof unavailable: " + error.message;
+        });
       }
 
       function assembleFromPublicFace(text, url) {
@@ -1598,13 +1758,14 @@
         els.send.disabled = !hasFile;
         els.message.placeholder = hasFile ? "Message..." : "Add your file to chat here";
         if (PROFILE_SPACE) {
-          document.querySelector(".brand").textContent = PROFILE_SPACE.split("/")[1];
-          els.forget.textContent = "Forget this AI in this browser";
+          document.querySelector(".brand").textContent = PROFILE_SPACE.split("/")[1] + " / " + PROFILE_FACE;
+          els.forget.textContent = "Forget this " + PROFILE_FACE + " copy in this browser";
         }
         if (hasFile && document.activeElement !== els.fileEditor) {
           els.fileEditor.value = getPersonFile();
         }
         els.welcome.hidden = hasFile || conversation.length > 0;
+        renderPublicationState();
       }
 
       let setupCopyAttempt = 0;
@@ -2884,10 +3045,23 @@
             if (!body || typeof body.url !== "string" || !body.url.trim()) {
               return { status: 400, json: { error: "A front-door link is required." } };
             }
-            const raw = frontDoorToRaw(await speedDial(body.url));
-            const text = await loadGithubText(raw);
+            const expanded = await speedDial(body.url);
+            const repo = frontRepository(expanded);
+            const suppliedOwner = body.trust || PAGE_PARAMETERS.get("trust") || "";
+            const pinnedOwner = DEMO_TRUST[repo];
+            if (pinnedOwner && suppliedOwner && suppliedOwner !== pinnedOwner) throw new Error("This link's publisher fingerprint does not match the pinned demo.");
+            const expectedOwner = pinnedOwner || suppliedOwner;
             const wanted = body.face === "private" ? "private" : "public";
+            if (expectedOwner) {
+              if (!repo) throw new Error("A valid repository front door is required.");
+              return await dialSignedPublication(repo, wanted, expectedOwner);
+            }
+            const raw = frontDoorToRaw(expanded);
+            const text = await loadGithubText(raw);
             const face = parseFrontmatter(text).fields.metadata || {};
+            if (face["dial-profile"] === "vbrainstem-dial/1") {
+              throw new Error("This signed AI needs its trusted front-door link or publisher fingerprint. Unsigned fallback is not allowed.");
+            }
             const canReadPrivate = Boolean(localStorage.getItem(STORAGE.repoToken) || getGithubToken());
             let privateReason = wanted === "public" ? "public only was asked for"
               : face["private-repo"] ? (canReadPrivate ? "" : "not signed in") : "no private file named";
@@ -2971,6 +3145,31 @@
       }
 
       window.vbrainstem = Object.freeze({ dispatch });
+      let canonicalChat = null;
+      let canonicalScope = null;
+
+      function currentChatScope() {
+        const text = getPersonFile();
+        if (!text) return "";
+        const metadata = validatePersonFile(text).fields.metadata;
+        return JSON.stringify([PROFILE_SPACE, PROFILE_FACE, metadata.id, metadata.face || ""]);
+      }
+
+      window.rapp = Object.freeze({
+        async dispatch(method, path, body) {
+          const scope = currentChatScope();
+          if (!canonicalChat || scope !== canonicalScope) {
+            canonicalScope = scope;
+            canonicalChat = window.RappChat.create(async (internal) => {
+              if (currentChatScope() !== scope) throw new Error("The AI changed; the old session is closed.");
+              const result = await dispatch("POST", "/chat", internal);
+              if (currentChatScope() !== scope) throw new Error("The AI changed while the answer was pending.");
+              return result;
+            });
+          }
+          return canonicalChat.dispatch(method, path, body);
+        }
+      });
 
       async function sendMessage(event) {
         event.preventDefault();
@@ -2996,14 +3195,17 @@
         els.send.disabled = true;
         const busy = addTurn("assistant", "Thinking...", "busy");
         try {
-          const result = await dispatch("POST", "/chat", {
-            user_input: text,
-            conversation_history: prior,
-            session_id: sessionId || undefined
-          });
+          const request = { user_input: text };
+          if (sessionId) request.session_id = sessionId;
+          if (PROFILE_SPACE) request.idempotency_key = makeId();
+          else request.conversation_history = prior;
+          const result = await (PROFILE_SPACE ? window.rapp.dispatch : dispatch)("POST", "/chat", request);
           busy.remove();
           if (result.status !== 200 || result.json.error) {
-            addSystemNotice(result.json.error || "Something went wrong.");
+            const error = result.json.error;
+            addSystemNotice(typeof error === "string" ? error :
+              error?.code === "unknown-session" ? "This chat session is no longer available. Start a new chat." :
+              "The request was refused. Check sign-in and connection; do not repeat an action whose outcome is unknown.");
             if (result.json.code === "signin_rejected") {
               showSignIn();
             }
@@ -3424,7 +3626,7 @@
             setMessage(els.fileMessage, "A different AI is already on this device. Export it if you want to keep it, then tap Forget everything and open the link again.");
             return;
           }
-          const outcome = await setPersonFile(dialed.json.content, "link");
+          const outcome = await applyDialResult(dialed.json);
           const trouble = (outcome && outcome.issues && outcome.issues.length) ? " " + outcome.issues.join(" ") : "";
           if (outcome && outcome.reunited !== undefined) {
             addSystemNotice("Reunited with the copy on this device: " + outcome.reunited + " new memory line(s) brought in." + trouble);
@@ -3480,11 +3682,18 @@
         setMessage(els.fileMessage, "Dialing your public AI...");
         try {
           const chosen = (els.dialFace.querySelector("input[name=dial-face]:checked") || {}).value || "public";
+          if (PROFILE_SPACE && chosen !== PROFILE_FACE) {
+            const target = new URL(profilePageUrl(), location.origin);
+            target.searchParams.set("face", chosen);
+            target.searchParams.set("dial", PROFILE_SPACE);
+            location.assign(target.href);
+            return;
+          }
           const dialed = await dispatch("POST", "/file/dial", { url: els.dialUrl.value, face: chosen });
           if (dialed.status !== 200 || dialed.json.error) {
             throw new Error(dialed.json.error || "Your public AI could not be reached.");
           }
-          const outcome = await setPersonFile(dialed.json.content, "link");
+          const outcome = await applyDialResult(dialed.json);
           els.dialUrl.value = "";
           const trouble = (outcome && outcome.issues && outcome.issues.length) ? " " + outcome.issues.join(" ") : "";
           if (outcome && outcome.reunited !== undefined) {
@@ -3587,7 +3796,7 @@
         clearTimeout(loginTimer);
         if (PROFILE_SPACE) {
           for (const key of Object.values(STORAGE)) {
-            if (key.startsWith("vbrainstem:" + PROFILE_SPACE + ":")) localStorage.removeItem(key);
+            if (key.startsWith("vbrainstem:" + PROFILE_SPACE + ":" + PROFILE_FACE + ":")) localStorage.removeItem(key);
           }
         } else {
           localStorage.clear();
@@ -3599,7 +3808,10 @@
 
       function profilePageUrl() {
         const url = new URL(location.pathname, location.origin);
-        if (PROFILE_SPACE) url.searchParams.set("space", PROFILE_SPACE);
+        if (PROFILE_SPACE) {
+          url.searchParams.set("space", PROFILE_SPACE);
+          url.searchParams.set("face", PROFILE_FACE);
+        }
         const trust = PAGE_PARAMETERS.get("trust");
         if (trust) url.searchParams.set("trust", trust);
         return url.pathname + url.search;
@@ -3607,6 +3819,8 @@
 
       try {
         if (!VALID_SPACE) throw new Error("Invalid AI browser space.");
+        if (PROFILE_SPACE) els.dialFace.querySelector('input[value="' + PROFILE_FACE + '"]').checked = true;
+        if (PROFILE_SPACE) els.dialUrl.value = "https://github.com/" + PROFILE_SPACE;
         updateReadyState();
         renderTools();
         if (getPersonFile()) {
