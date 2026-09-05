@@ -175,7 +175,21 @@ The exact publication payload members are the seven shared binding fields plus:
 
 Each `rapp/1-registry` has `schema`, `registry_seq`, `created_utc`, `entries`, and
 `sig`. Initial `registry_seq` is zero. Entries include the pinned `rapp/1` protocol,
-`estate_owner`, SPKI, live `body.publish` kind binding, and this face's genesis.
+`estate_owner`, SPKI, live `body.publish` kind binding, this face's genesis, and
+exactly these three chat-boundary error registrations:
+
+```json
+[
+  {"type":"error-code","code":"invalid-request"},
+  {"type":"error-code","code":"unknown-session"},
+  {"type":"error-code","code":"refused"}
+]
+```
+
+Missing, additional, or duplicate error-code entries are refused. These declarations
+describe the separate chat adapter's boundary; the generator adds no session engine
+or global-registry service.
+
 Verification uses `rapp_registry.load_document(entries_member="entries",
 allow_unsigned=False)`, `Registry.signature_verifier`, registered genesis/kind
 checks, and `R.verify_frame` with the recorded stream ID and predecessor.

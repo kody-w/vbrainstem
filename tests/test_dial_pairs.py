@@ -250,6 +250,32 @@ class DialPairs(unittest.TestCase):
             with self.subTest(entry_type=entry_type), self.assertRaises(ValueError):
                 DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
 
+    def test_registries_bind_exactly_the_three_used_chat_error_codes(self):
+        pair = self.create_pair()
+        expected = ["invalid-request", "unknown-session", "refused"]
+        for face in ("public", "private"):
+            path = Path(pair["directory"]) / face / "registry.json"
+            original = json.loads(path.read_bytes())
+            codes = [entry["code"] for entry in original["entries"] if entry["type"] == "error-code"]
+            self.assertEqual(sorted(codes), sorted(expected))
+            for mutation in ("missing", "extra", "duplicate"):
+                document = copy.deepcopy(original)
+                if mutation == "missing":
+                    document["entries"] = [
+                        entry for entry in document["entries"]
+                        if entry != {"type": "error-code", "code": "invalid-request"}
+                    ]
+                else:
+                    document["entries"].append({
+                        "type": "error-code", "code": "unexpected" if mutation == "extra" else "refused",
+                    })
+                path.write_bytes(self.encode_json(self.resign(document)))
+                try:
+                    with self.subTest(face=face, mutation=mutation), self.assertRaises(ValueError):
+                        DIAL.verify_pair(pair["directory"], expected_owner=pair["estate_owner"])
+                finally:
+                    path.write_bytes(self.encode_json(original))
+
     def test_signed_receipt_cannot_redirect_or_substitute_private_data(self):
         pair = self.create_pair()
         directory = Path(pair["directory"])

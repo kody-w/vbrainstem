@@ -37,6 +37,7 @@ PRIVATE_TEST_MARKER = "PRIVATE_TEST_MARKER_SYNTHETIC_ONLY"
 CORE_SKILL_URL = "https://raw.githubusercontent.com/kody-w/vbrainstem/main/virtual-brainstem/SKILL.md"
 ENTRIES_KEY = "entries"
 KIND = "body.publish"
+CHAT_ERROR_CODES = ("invalid-request", "unknown-session", "refused")
 DIAL_SCHEMA = "vbrainstem-dial/1"
 CARRIER_SCHEMA = "vbrainstem-carrier/1"
 SLUGS = {"vb-atlas", "vb-forge", "vb-quill", "vb-harbor"}
@@ -360,6 +361,7 @@ def _registry(binding, frame, key):
         {"type": "spki", "rappid": owner,
          "spki_der_b64": base64.b64encode(_spki(key)).decode("ascii"), "deprecated": False},
         {"type": "kind", "kind": KIND, "family": "body", "deprecated": False},
+        *({"type": "error-code", "code": code} for code in CHAT_ERROR_CODES),
         {"type": "genesis", "stream_id": frame["stream_id"],
          "frame_hash": frame["frame_hash"], "deprecated": False},
     ]
@@ -475,6 +477,9 @@ def verify_pair(directory, expected_owner):
         _require(protocol and not protocol["deprecated"] and protocol["spec_hash"] == SPEC_SHA256,
                  "registry must bind the pinned protocol")
         _require(registry.family(KIND) == "body", "publication kind must be registered in body family")
+        _require(registry.error_codes == set(CHAT_ERROR_CODES)
+                 and sum(entry["type"] == "error-code" for entry in registry.entries) == len(CHAT_ERROR_CODES),
+                 "registry must contain exactly the three used chat error codes")
         _verify_signature(dial, registry, expected_owner)
         stream_id = binding[face + "_id"]
         identity = _artifact_json(inventory[prefix + "rappid.json"])
