@@ -8,7 +8,15 @@ knows you. Move to another tool and it comes with you. Delete it and you are bac
 
 ## Get yours in two minutes
 
-Give your AI this link and say "set up my AI file":
+Open [the setup chooser](https://kody-w.github.io/vbrainstem/) and choose ChatGPT,
+Claude Code, or GitHub Copilot CLI. Copy its prompt into that app.
+
+ChatGPT can create a downloadable file; this does not install it into future chats.
+Local Claude Code and Copilot CLI can save a personal skill when you allow the file write.
+Afterward, bring the file back with **Add your file** to use browser chat. Copies do not
+synchronize automatically.
+
+You can also give your AI this link and say "set up my AI file":
 
 ```
 https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md
@@ -76,4 +84,38 @@ MIT.
 
 ## On your phone or in a browser
 
-Open [vbrainstem](https://kody-w.github.io/vbrainstem/). Add your file and tools, then sign in with GitHub to chat from any phone or browser. Everything stays on that device, and you can export your current file whenever you want.
+Open [vbrainstem](https://kody-w.github.io/vbrainstem/). Add your file, then sign in with
+GitHub Copilot to chat. The browser stores its copy locally; chatting sends your message,
+active file, and relevant tool content to GitHub Copilot. Never put secrets in the file.
+Export it to move to another device. Forgetting one browser does not erase other devices,
+GitHub repositories, or earlier chats.
+
+## Four synthetic test AIs
+
+Each demo has its own public front door, separate private repository, mint-once
+RAPPIDs, signed publication frames, and authenticated RAPP/1 registry. They do not
+contain Orion's memories or real personal/customer data.
+
+| AI | Specialty | Open its public copy | Private home |
+|---|---|---|---|
+| Atlas | Research and evidence | [Open Atlas](https://kody-w.github.io/vb-atlas/) | [vb-atlas-private](https://github.com/kody-w/vb-atlas-private) |
+| Forge | Building and testing | [Open Forge](https://kody-w.github.io/vb-forge/) | [vb-forge-private](https://github.com/kody-w/vb-forge-private) |
+| Quill | Writing and editing | [Open Quill](https://kody-w.github.io/vb-quill/) | [vb-quill-private](https://github.com/kody-w/vb-quill-private) |
+| Harbor | Planning and dependencies | [Open Harbor](https://kody-w.github.io/vb-harbor/) | [vb-harbor-private](https://github.com/kody-w/vb-harbor-private) |
+
+Open **File** to see publication verification or deliberately choose the private
+copy. Private loading needs GitHub repository access; a denied request never
+substitutes the public copy. The four AIs, and their public/private copies, use
+separate browser state. A public link never contains a private file.
+
+To try device travel, add a harmless fictional memory, export the file, and import
+it into the matching AI/copy on another device. Changes do not synchronize
+automatically. Local edits are no longer covered by the original publication
+signature. Conflicting rules are refused rather than selected by date.
+
+See [the test and publication guide](docs/testing-four-ais.md),
+[safe manual reunion](docs/reunion.md), and
+[the canonical chat boundary](docs/rapp-chat.md).
+The browser exposes canonical RAPP/1 chat shapes through `window.rapp.dispatch`;
+GitHub Pages is not a network `POST /chat` server. The unchanged Grail-shaped
+internal interface remains available separately for compatibility.

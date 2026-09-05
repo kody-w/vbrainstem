@@ -1,0 +1,14 @@
+{
+  "repository": "https://github.com/kody-w/rapp-1",
+  "commit": "58058d08c9f0e340fae07c9865647f599c32634d",
+  "spec": {
+    "path": "SPEC.md",
+    "revision": 15,
+    "sha256": "348e7d5baa94aaf2ce4c5354f3cb261f389298a04af65e271a686d3b62f7c384"
+  },
+  "files": {
+    "rapp.py": "1a04362b02f14c1e37b70c6b4f72d79e92df1cc9c2b5b394e8e1b141fc0b6050",
+    "rapp_registry.py": "0e268e3e4c9e175a35b1fa6790812af553fa5e5703e1cab3fb64d73eaaa4e9be",
+    "LICENSE": "3b1952c1f983b4fc60337137cc6c863e9ea617ce551397c80e5b2d74eb1c476b"
+  }
+}
