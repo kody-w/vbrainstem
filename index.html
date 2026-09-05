@@ -2635,7 +2635,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
         });
         if ([429, 502, 503].includes(response.status)) {
           pendingLogin.interval = Math.min(pendingLogin.interval + 5, 30);
-          return { status: "pending" };
+          return { status: "pending", busy: true, retry_in: pendingLogin.interval };
         }
         const data = await response.json();
         if (data.access_token) {
@@ -3025,6 +3025,10 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
             setMessage(els.signInMessage, (data.error || "Sign-in ended.") + " Get a new code to try again.", true);
             return;
           }
+          if (data.busy) {
+            // GitHub is slowing the sign-in service down; say so rather than wait in silence.
+            setMessage(els.signInMessage, "GitHub is busy. Still checking every " + data.retry_in + " seconds; leave this open, or get a new code in a few minutes.");
+          }
           scheduleLoginPoll();
         }, Math.max(1000, Number(pendingLogin?.interval || 5) * 1000));
       }
@@ -3335,7 +3339,7 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
       els.copyCode.addEventListener("click", async () => {
         try {
           await navigator.clipboard.writeText(els.deviceCode.textContent);
-          setMessage(els.signInMessage, "Code copied. Open GitHub to finish.");
+          setMessage(els.signInMessage, "Code copied. Open GitHub to finish; this closes by itself once you approve.");
         } catch (error) {
           setMessage(els.signInMessage, "Select and copy the code above.", true);
         }

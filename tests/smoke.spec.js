@@ -862,3 +862,25 @@ test("round-four fixes, part three: private file access is granted by a second s
   await expect(page.locator("#sign-in-title")).toHaveText("Allow private file access");
   await expect(page.locator("#sign-in-start")).toBeVisible();
 });
+
+
+test("a throttled sign-in service is reported while the page keeps checking, and completes when it clears", async ({ page }) => {
+  // sign-in under throttle
+  let pollCount = 0;
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/auth/device", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ device_code: "dc", user_code: "BUSY-0001", verification_uri: "https://github.com/login/device", expires_in: 900, interval: 1 }) }));
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/auth/device/poll", async (route) => {
+    pollCount += 1;
+    if (pollCount <= 2) { await route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ message: "restricted" }) }); return; }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ access_token: "chat-token-after-busy" }) });
+  });
+  await page.goto("/index.html");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.locator("#sign-in-shortcut").click();
+  await page.locator("#start-sign-in").click();
+  await expect(page.locator("#device-code")).toHaveText("BUSY-0001");
+  await expect(page.locator("#sign-in-message")).toContainText("GitHub is busy", { timeout: 15000 });
+  await expect(page.locator("#sign-in-message")).toContainText("Signed in", { timeout: 40000 });
+  expect(await page.evaluate(() => localStorage.getItem("github_token"))).toBe("chat-token-after-busy");
+  expect(pollCount).toBeGreaterThanOrEqual(3);
+});
