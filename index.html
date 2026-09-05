@@ -1144,6 +1144,23 @@ def load_agent(path, tool_name=None):
         return "vb-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
       }
 
+      // A sign-in GitHub rejects is forgotten on the spot, so the next try is clean and every
+      // way into the sign-in sheet works again. The same rule the private-access token follows.
+      function dropSignInToken() {
+        localStorage.removeItem(STORAGE.token);
+        for (const alias of TOKEN_ALIASES) {
+          localStorage.removeItem(alias);
+        }
+        copilotSession = null;
+        updateReadyState();
+      }
+
+      function signInRejected(status) {
+        const error = new Error("GitHub no longer accepts this sign-in (" + status + "). Get a new code.");
+        error.code = "signin_rejected";
+        return error;
+      }
+
       function getGithubToken() {
         const direct = localStorage.getItem(STORAGE.token);
         if (direct) {
@@ -1579,8 +1596,12 @@ def load_agent(path, tool_name=None):
           if (anon.ok) {
             return await anon.text();
           }
-          if (localStorage.getItem(STORAGE.repoToken) && response.status === 401) {
-            localStorage.removeItem(STORAGE.repoToken);
+          if (response.status === 401) {
+            if (localStorage.getItem(STORAGE.repoToken)) {
+              localStorage.removeItem(STORAGE.repoToken);
+            } else {
+              dropSignInToken();
+            }
           }
         }
         if (!response.ok) {
@@ -1603,8 +1624,8 @@ def load_agent(path, tool_name=None):
         const signedIn = Boolean(getGithubToken());
         els.fileState.textContent = hasFile ? "Your file is ready" : "No file yet";
         els.readyDot.classList.toggle("good", hasFile && signedIn);
-        els.signInShortcut.textContent = signedIn ? "Signed in" : "Sign in with GitHub";
-        els.signInShortcut.disabled = signedIn;
+        els.signInShortcut.textContent = signedIn ? "Signed in (switch account)" : "Sign in with GitHub";
+        els.signInShortcut.disabled = false;
         els.fileWork.hidden = !hasFile;
         if (hasFile && document.activeElement !== els.fileEditor) {
           els.fileEditor.value = getPersonFile();
@@ -2280,6 +2301,10 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           if (response.status === 403) {
             throw new Error("This GitHub account does not have Copilot access.");
           }
+          if (response.status === 401) {
+            dropSignInToken();
+            throw signInRejected(response.status);
+          }
           throw new Error("GitHub sign-in could not be completed (" + response.status + ").");
         }
         const data = await response.json();
@@ -2696,7 +2721,8 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           }
           return { status: 404, json: { error: "not found", path: cleanPath } };
         } catch (error) {
-          return { status: 500, json: { error: error.message } };
+          const status = error.code === "signin_rejected" ? 401 : 500;
+          return { status, json: Object.assign({ error: error.message }, error.code ? { code: error.code } : {}) };
         }
       }
 
@@ -2734,6 +2760,9 @@ _json.dumps(_result, ensure_ascii=False) if isinstance(_result, (dict, list)) el
           busy.remove();
           if (result.status !== 200 || result.json.error) {
             addSystemNotice(result.json.error || "Something went wrong.");
+            if (result.json.code === "signin_rejected") {
+              showSignIn();
+            }
             return;
           }
           sessionId = result.json.session_id;

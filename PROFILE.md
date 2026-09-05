@@ -24,7 +24,9 @@ RAPP/1 wire shapes (`user_input` in, `response`, `agent_logs`, `session_id` out)
 ## 2. Carrier shape (normative)
 
 1. Frontmatter uses only the six Agent Skills fields: `name`, `description`, `license`,
-   `compatibility`, `metadata`, `allowed-tools`. No other key. `name` is `vbrainstem`.
+   `compatibility`, `metadata`, `allowed-tools`. No other key. `name` equals the folder the
+   file lives in, as every skill's must: the mainline is `vbrainstem/SKILL.md`, so its name is
+   `vbrainstem`; a public face (§5b) lives in `<ai>/SKILL.md`, so its name is `<ai>`.
 2. `metadata` is a flat map of strings and MUST carry:
    - `id`: the carrier's identity, minted once with fresh entropy at creation and never derived
      from a name (RAPP/1 §6.2). Either a full `rappid:@owner/vbrainstem:<64 lowercase hex>` or the

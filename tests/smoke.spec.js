@@ -205,7 +205,7 @@ test("mobile file, tools, chat, memory, export, routes, and reset", async ({ pag
   await page.reload();
   await expect(page.locator("body")).toHaveCSS("width", "390px");
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-  await expect(page.getByText("Signed in", { exact: true })).toBeVisible();
+  await expect(page.getByText("Signed in (switch account)", { exact: true })).toBeVisible();
   const blocked = await page.evaluate(async () => {
     const fetchBlocked = await fetch("https://example.invalid/private").then(
       () => false,
@@ -658,4 +658,44 @@ test("round-three fixes: reunion authority by identity, idempotent set-aside, wr
   const setupLink = 'a[href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md"]';
   expect(await page.locator("#file-sheet " + setupLink).count()).toBe(1);
   expect(await page.locator("#about-sheet " + setupLink).count()).toBe(1);
+});
+
+
+test("round-four fixes: a sign-in GitHub rejects is dropped, the sheet reopens, and the shortcut is never dead", async ({ page }) => {
+  // round-four fixes
+  const person = ["---", 'name: "vbrainstem"', 'description: "d"', 'license: "MIT"', 'compatibility: "Any."', "metadata:", '  id: "vb-r4"', '  owner: "Ada"', '  created: "2026-09-04"', '  updated: "2026-09-04"', "---", "", "# Ada", "", "## My tools", "", "- (none)", "", "## Memory", "", "- 2026-09-04 x", "", "## Memory (older)", "", "- (nothing yet)", ""].join("\n");
+  let completions = 0;
+  await page.route("https://api.github.com/copilot_internal/v2/token", (r) => r.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Bad credentials" }) }));
+  await page.route("https://rapp-auth.kwildfeuer.workers.dev/api/copilot/token", (r) => r.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "bad token" }) }));
+  await page.route("https://api.individual.githubcopilot.com/**", (r) => { completions += 1; r.fulfill({ status: 500, body: "never" }); });
+  await page.goto("/index.html");
+  await page.evaluate((p) => { localStorage.clear(); localStorage.setItem("github_token", "revoked-token"); localStorage.setItem("brainstem_token", "revoked-alias"); localStorage.setItem("vbrainstem.file", p); }, person);
+  await page.reload();
+  // before: a token is stored, so the shortcut reads signed in, but it must still open the sheet
+  await expect(page.locator("#sign-in-shortcut")).toBeEnabled();
+  await page.locator("#message").fill("hello");
+  await page.locator("#composer").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#sign-in-sheet")).toBeVisible();
+  await expect(page.locator("#sign-in-start")).toBeVisible();
+  expect(completions).toBe(0);
+  expect(await page.evaluate(() => localStorage.getItem("github_token"))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("brainstem_token"))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("vbrainstem.file"))).toContain("# Ada");
+  await expect(page.locator(".transcript, #transcript, main").first()).toContainText("Get a new code");
+  const status = await page.evaluate(() => window.vbrainstem.dispatch("GET", "/login/status"));
+  expect(status.json.authenticated).toBe(false);
+  await expect(page.locator("#sign-in-shortcut")).toHaveText("Sign in with GitHub");
+  await expect(page.locator("#sign-in-shortcut")).toBeEnabled();
+  // the chat route itself reports the rejection with its code, like a 401 from a server
+  await page.evaluate(() => localStorage.setItem("github_token", "revoked-again"));
+  const direct = await page.evaluate(() => window.vbrainstem.dispatch("POST", "/chat", { user_input: "hi", conversation_history: [] }));
+  expect(direct.status).toBe(401);
+  expect(direct.json.code).toBe("signin_rejected");
+  expect(await page.evaluate(() => localStorage.getItem("github_token"))).toBeNull();
+  // a signed-in person can still reach the sheet to switch accounts
+  await page.evaluate(() => localStorage.setItem("github_token", "some-token"));
+  await page.reload();
+  await expect(page.locator("#sign-in-shortcut")).toBeEnabled();
+  await page.locator("#sign-in-shortcut").click();
+  await expect(page.locator("#sign-in-sheet")).toBeVisible();
 });

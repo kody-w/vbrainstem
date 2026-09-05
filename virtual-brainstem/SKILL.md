@@ -221,7 +221,7 @@ the other.
 ## 3. Running a tool
 
 A tool is one skill file. If it has a code block between `<!-- agent ... -->` markers and a
-launcher between `<!-- runner -->` markers, save the two as `agent.py` and `run.py` in one
+launcher between `<!-- runner sha256=... -->` markers, save the two as `agent.py` and `run.py` in one
 folder (or use `scripts/` if the folder already has them) and run
 `python3 run.py --json '{...}'` with the inputs the file's "What it needs" section describes.
 Return the printed result. If you cannot run code, read the code block and carry out exactly what
@@ -277,9 +277,11 @@ them. Read them by link; never copy them into the person's file.
 If the person wants a second body on the device, a real local Brainstem that runs their tools
 as its own and works alongside you: fetch
 https://kody-w.github.io/rapp-brainstem/skills/rapp-brainstem/SKILL.md and follow it. When it is
-running, put their tools into its `agents/` folder as Python files (each tool's `agent.py`, or the
-file itself turned into one with https://raw.githubusercontent.com/kody-w/rapp-skills/main/skills/rapp-skills/SKILL.md).
-Both of you then read the same file. Do not hatch one unless asked; the virtual one is enough
+running, put their tools into its `agents/` folder as Python files named `<tool>_agent.py`,
+directly inside `agents/` with no subfolders: the converter at
+https://raw.githubusercontent.com/kody-w/rapp-skills/main/skills/rapp-skills/SKILL.md names each
+file that way (`to-agent`). A file named just `agent.py` is never found, because a Brainstem
+loads only `agents/*_agent.py`. Both of you then read the same file. Do not hatch one unless asked; the virtual one is enough
 for almost everyone.
 
 ## 7. Never

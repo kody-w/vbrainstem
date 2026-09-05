@@ -18,7 +18,8 @@ each step, and the file tells it what the steps are.
 
 Every tool is one skill file. Every skill file converts to one Python file and back without loss
 ([rapp-skills](https://github.com/kody-w/rapp-skills)), so the same tool is an agent in a
-Brainstem and a skill everywhere else. Dropping a person's tools into a Brainstem's `agents/`
-folder makes them native there too, with no restart.
+Brainstem and a skill everywhere else. Dropping a person's tools, as `<tool>_agent.py` files,
+directly into a Brainstem's `agents/` folder makes them native there too, with no restart (a
+Brainstem loads only `agents/*_agent.py`; a bare `agent.py` is never found).
 
 Nothing in the file itself names any of this. A person reads a page about themselves.

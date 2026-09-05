@@ -147,7 +147,8 @@ needs a GitHub account and the `gh` command signed in; if either is missing, say
    hyphens). Call it `<ai>`. Their GitHub account is `<account>`.
 2. **Public front door**, repository `<account>/<ai>`, public: a folder `<ai>/` holding a
    `SKILL.md` that is a public face of their file: the same shape, the same "To the AI reading
-   this" section, only what they are happy for anyone to read, its own fresh `id`, and in
+   this" section, only what they are happy for anyone to read, `name: "<ai>"` (a skill's name
+   must equal its folder), its own fresh `id`, and in
    `metadata`: `face: "public"`, `mainline-id` (their file's id), `private-repo:
    "<account>/<ai>-private"`, `private-path: "vbrainstem/SKILL.md"`. Add an `index.html` that opens
    `https://kody-w.github.io/vbrainstem/?dial=<account>/<ai>` so the link is also the phone, and
