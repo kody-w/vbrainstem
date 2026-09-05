@@ -89,3 +89,33 @@ GitHub Copilot to chat. The browser stores its copy locally; chatting sends your
 active file, and relevant tool content to GitHub Copilot. Never put secrets in the file.
 Export it to move to another device. Forgetting one browser does not erase other devices,
 GitHub repositories, or earlier chats.
+
+## Four synthetic test AIs
+
+Each demo has its own public front door, separate private repository, mint-once
+RAPPIDs, signed publication frames, and authenticated RAPP/1 registry. They do not
+contain Orion's memories or real personal/customer data.
+
+| AI | Specialty | Open its public copy | Private home |
+|---|---|---|---|
+| Atlas | Research and evidence | [Open Atlas](https://kody-w.github.io/vb-atlas/) | [vb-atlas-private](https://github.com/kody-w/vb-atlas-private) |
+| Forge | Building and testing | [Open Forge](https://kody-w.github.io/vb-forge/) | [vb-forge-private](https://github.com/kody-w/vb-forge-private) |
+| Quill | Writing and editing | [Open Quill](https://kody-w.github.io/vb-quill/) | [vb-quill-private](https://github.com/kody-w/vb-quill-private) |
+| Harbor | Planning and dependencies | [Open Harbor](https://kody-w.github.io/vb-harbor/) | [vb-harbor-private](https://github.com/kody-w/vb-harbor-private) |
+
+Open **File** to see publication verification or deliberately choose the private
+copy. Private loading needs GitHub repository access; a denied request never
+substitutes the public copy. The four AIs, and their public/private copies, use
+separate browser state. A public link never contains a private file.
+
+To try device travel, add a harmless fictional memory, export the file, and import
+it into the matching AI/copy on another device. Changes do not synchronize
+automatically. Local edits are no longer covered by the original publication
+signature. Conflicting rules are refused rather than selected by date.
+
+See [the test and publication guide](docs/testing-four-ais.md),
+[safe manual reunion](docs/reunion.md), and
+[the canonical chat boundary](docs/rapp-chat.md).
+The browser exposes canonical RAPP/1 chat shapes through `window.rapp.dispatch`;
+GitHub Pages is not a network `POST /chat` server. The unchanged Grail-shaped
+internal interface remains available separately for compatibility.

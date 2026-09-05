@@ -13,6 +13,8 @@ jobs:
   page:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -23,18 +25,19 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
-      - name: The vendored kernel is whole and the skill's words match its code
+      - name: Install signature verification dependency
+        run: python3 -m pip install -r tests/requirements-dial-pairs.txt
+      - name: Kernel and signed public/private publications verify
         run: |
           python3 tools/vendor_kernel.py check
-          python3 -m unittest -v tests/test_vendored_kernel.py
+          python3 -B -m unittest discover -s tests -p 'test_*.py' -v
       - name: The skill files check clean with the converter
         run: |
           curl -fsSL https://raw.githubusercontent.com/kody-w/rapp-skills/main/skills/rapp-skills/scripts/rapp_skills.py -o /tmp/rapp_skills.py
           python3 /tmp/rapp_skills.py check vbrainstem-setup virtual-brainstem samples/ada samples/tools/hello-world
       - name: The setup skill's frames verify against the file on disk
         run: |
-          curl -fsSL https://raw.githubusercontent.com/kody-w/rapp-1/main/rapp.py -o /tmp/rapp.py
-          RAPP_PY=/tmp/rapp.py python3 tools/mint_frame.py verify vbrainstem-setup
+          RAPP_PY=tools/rapp1/rapp.py python3 tools/mint_frame.py verify vbrainstem-setup
       - name: Page smoke (mocked network; the model's mind mocked)
         working-directory: tests
         run: |
