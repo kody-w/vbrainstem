@@ -1,63 +1,19 @@
 const { test, expect } = require("@playwright/test");
-const fs = require("node:fs");
-const path = require("node:path");
-const { execFileSync } = require("node:child_process");
-
-const root = path.resolve(__dirname, "..");
-const slugs = ["vb-atlas", "vb-forge", "vb-quill", "vb-harbor"];
-const pairs = new Map();
-let staging;
+const { createFixtures, artifact, installRoutes, slugs } = require("./helpers/dial-fixtures");
+let fixtures;
+let pairs;
 
 test.beforeAll(() => {
-  const parent = path.join(__dirname, "test-results");
-  fs.mkdirSync(parent, { recursive: true });
-  staging = fs.mkdtempSync(path.join(parent, "dial-fixtures-"));
-  for (const slug of slugs) {
-    const output = execFileSync("python3", [
-      "-B", path.join(root, "tools/dial_pairs.py"), "create", "--slug", slug, "--owner", "fixture",
-      "--output", path.join(staging, "packages"), "--key-dir", path.join(staging, "keys")
-    ], { encoding: "utf8" });
-    pairs.set(slug, JSON.parse(output));
-  }
+  fixtures = createFixtures();
+  pairs = fixtures.pairs;
 });
 
 test.afterAll(() => {
-  if (staging) fs.rmSync(staging, { recursive: true, force: true });
+  if (fixtures) fixtures.cleanup();
 });
 
-function artifact(pair, face, file) {
-  return fs.readFileSync(path.join(pair.directory, face, file), "utf8");
-}
-
-async function routes(page, { authorized = false, seedToken = authorized, mutate = (_, text) => text } = {}) {
-  const privateRequests = [];
-  await page.route("https://**", (route) => route.abort());
-  await page.route("https://raw.githubusercontent.com/fixture/**", (route) => {
-    const parts = new URL(route.request().url()).pathname.split("/").filter(Boolean);
-    const pair = pairs.get(parts[1]);
-    if (!pair || parts[2] !== "main") return route.fulfill({ status: 404 });
-    const file = parts.slice(3).join("/");
-    const text = artifact(pair, "public", file);
-    return route.fulfill({ status: 200, contentType: "text/plain", body: mutate(file, text) });
-  });
-  await page.route("https://api.github.com/repos/fixture/**", (route) => {
-    const url = new URL(route.request().url());
-    const match = url.pathname.match(/^\/repos\/fixture\/(vb-[a-z]+)-private\/contents\/(.+)$/);
-    if (!match) return route.fulfill({ status: 404 });
-    privateRequests.push(route.request().url());
-    if (!authorized || route.request().headers().authorization !== "Bearer fixture-private-token") {
-      return route.fulfill({ status: 404 });
-    }
-    const pair = pairs.get(match[1]);
-    return route.fulfill({
-      status: 200, contentType: "text/plain",
-      body: mutate("private/" + match[2], artifact(pair, "private", match[2]))
-    });
-  });
-  if (seedToken) {
-    await page.addInitScript(() => localStorage.setItem("github_repo_token", "fixture-private-token"));
-  }
-  return privateRequests;
+async function routes(page, options = {}) {
+  return (await installRoutes(page, pairs, options)).privateReads;
 }
 
 test("browser verifier accepts exact Python-generated publication bytes for both faces", async ({ page }) => {
@@ -92,7 +48,7 @@ for (const slug of slugs) {
           dial: pair.public_repo, space: pair.public_repo, face, trust: pair.estate_owner
         });
         await page.goto("/index.html?" + query);
-        await expect(page.locator("#file-state")).toHaveText("Your file is ready");
+        await expect(page.locator("#file-state")).toHaveText("Ready");
         await page.getByRole("button", { name: "Open your file", exact: true }).click();
         await expect(page.locator("#file-editor")).toHaveValue(artifact(pair, face, pair[face + "_skill_path"]));
         await expect(page.locator("#publication-state")).toContainText("Verified");
@@ -116,7 +72,7 @@ test("private denial is explicit and never substitutes public content", async ({
   }), pair);
   expect(result.status).not.toBe(200);
   expect(result.json.content).toBeUndefined();
-  await expect(page.locator("#file-state")).toHaveText("No file yet");
+  await expect(page.locator("#file-state")).toHaveText("Not connected");
 });
 
 test("tampered signed carrier is refused without replacing a saved local file", async ({ page }) => {
@@ -149,7 +105,7 @@ test("wrong private identity and registry cannot be borrowed from another AI", a
   expect(result.json.content).toBeUndefined();
 });
 
-test("a phone user can switch to private and complete access without hunting for controls", async ({ page }) => {
+test("newly available access is selected automatically on the next dial", async ({ page }) => {
   const pair = pairs.get("vb-atlas");
   const privateRequests = await routes(page, { authorized: true, seedToken: false });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -157,15 +113,12 @@ test("a phone user can switch to private and complete access without hunting for
     dial: pair.public_repo, space: pair.public_repo, face: "public", trust: pair.estate_owner
   });
   await page.goto("/index.html?" + query);
-  await expect(page.locator("#file-state")).toHaveText("Your file is ready");
+  await expect(page.locator("#file-state")).toHaveText("Ready");
   expect(privateRequests).toHaveLength(0);
-  await page.getByRole("button", { name: "Use private copy", exact: true }).click();
-  await expect(page).toHaveURL(/face=private/);
-  await expect(page.locator("#repo-token")).toBeInViewport({ ratio: 0.95 });
-  await expect(page.locator("#publication-state")).toContainText("Private access is required");
-  await page.locator("#repo-token").fill("fixture-private-token");
-  await page.getByRole("button", { name: "Save and load private copy", exact: true }).click();
-  await expect(page.locator("#file-state")).toHaveText("Your file is ready");
+  await page.evaluate(() => localStorage.setItem("github_repo_token", "fixture-private-token"));
+  await page.reload();
+  await expect(page.locator("#file-state")).toHaveText("Ready");
+  await page.getByRole("button", { name: "Open your file", exact: true }).click();
   await expect(page.locator("#file-editor")).toHaveValue(artifact(pair, "private", pair.private_skill_path));
   await expect(page.locator("#publication-state")).toContainText("Verified private");
 });

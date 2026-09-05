@@ -151,15 +151,37 @@
       font-size: 13px;
     }
 
-    .copy-row {
-      margin-top: 6px;
+    .favorites {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 8px;
     }
 
-    .copy-row button {
-      width: 100%;
+    .favorites a {
+      display: grid;
+      place-items: center;
+      min-width: 0;
       min-height: 44px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 650;
+      overflow-wrap: anywhere;
+      text-decoration: none;
+    }
+
+    .favorites a[aria-current="page"] {
       border-color: var(--accent);
       color: var(--accent);
+    }
+
+    .favorites a:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 2px;
     }
 
     .dot {
@@ -730,12 +752,16 @@
         <span id="file-state">No file yet</span>
         <button type="button" id="sign-in-shortcut">Sign in with GitHub</button>
       </div>
-      <div class="copy-row" id="copy-controls" hidden>
-        <button type="button" id="switch-copy">Use private copy</button>
-      </div>
+      <nav class="favorites" aria-label="Favorite AIs">
+        <a href="?dial=kody-w/vb-overwatch" aria-label="Dial Overwatch" title="Coordinate work" data-contact="kody-w/vb-overwatch">Overwatch</a>
+        <a href="?dial=kody-w/vb-scout" aria-label="Dial Scout" title="Explore and discover" data-contact="kody-w/vb-scout">Scout</a>
+        <a href="?dial=kody-w/vb-forge" aria-label="Dial Forge" title="Build and test" data-contact="kody-w/vb-forge">Forge</a>
+        <a href="?dial=kody-w/vb-sentinel" aria-label="Dial Sentinel" title="Check results and risks" data-contact="kody-w/vb-sentinel">Sentinel</a>
+      </nav>
     </header>
 
     <main class="transcript" id="transcript" aria-live="polite">
+      <p class="hint" id="connecting-message" role="status" hidden>Connecting to your AI...</p>
       <section class="welcome" id="welcome" aria-live="off">
         <h1>Your AI, wherever you are.</h1>
         <p>One file that helps your AI know you. Start in the app you already use.</p>
@@ -797,7 +823,10 @@
         <button type="button" data-close aria-label="Close your file">&times;</button>
       </div>
       <div class="sheet-body">
-        <p class="hint" id="publication-state" role="status" hidden></p>
+        <details id="connection-details">
+          <summary>Connection details</summary>
+          <p class="hint" id="publication-state" role="status" hidden></p>
+        </details>
         <h3>Bring it in</h3>
         <p class="hint">Choose the file from this device, paste it, or load it from GitHub. No file yet? Start one here with your name, or give any AI <a href="https://raw.githubusercontent.com/kody-w/vbrainstem/main/vbrainstem-setup/SKILL.md" target="_blank" rel="noopener">this link</a> and say "set up my AI file".</p>
         <label class="field">
@@ -833,15 +862,10 @@
           <span>Your AI's name, or its front-door link</span>
           <input id="dial-url" type="text" inputmode="url" autocapitalize="none" placeholder="orion, or https://github.com/you/your-ai">
         </label>
-        <fieldset class="dial-face" id="dial-face">
-          <legend>Dial</legend>
-          <label><input type="radio" name="dial-face" value="public" checked> Public: the public version only</label>
-          <label><input type="radio" name="dial-face" value="private"> Private: explicitly load your private file (requires access)</label>
-        </fieldset>
         <button type="button" id="dial-public">Dial</button>
-        <p class="hint">Brings your AI here from its front door. From then on the copy on this device is the one you use; export a backup whenever you like.</p>
+        <p class="hint">One address for your AI. Your existing GitHub access determines which saved context is available.</p>
         <details id="private-access" class="private-access">
-          <summary>Private file access (optional)</summary>
+          <summary>Additional saved-context access (optional)</summary>
           <p class="hint">Prefer a fine-grained GitHub token limited to this AI's private repository and Contents: read. It is stored in this browser and sent only to GitHub for file access. Private file contents are sent to Copilot when you chat.</p>
           <label class="field">
             <span>Private access token</span>
@@ -967,7 +991,16 @@
       const COPILOT_TOKEN_URL = GITHUB_API + "/copilot_internal/v2/token";
       const DEFAULT_COPILOT_ENDPOINT = "https://api.individual.githubcopilot.com";
       const DEFAULT_MODEL = "gpt-4o";
+      const FAVORITES = Object.freeze({
+        "kody-w/vb-overwatch": "Overwatch",
+        "kody-w/vb-scout": "Scout",
+        "kody-w/vb-forge": "Forge",
+        "kody-w/vb-sentinel": "Sentinel"
+      });
       const DEMO_TRUST = Object.freeze({
+        "kody-w/vb-overwatch": "rappid:@kody-w/vb-overwatch-estate:17c6f7c934f428058fb98bf87699bb7698b3a6b75157a06606a56256e7237dc4",
+        "kody-w/vb-scout": "rappid:@kody-w/vb-scout-estate:0616ff84eb8cf1549c9ffa635e98d615edc6d8d00570eac61fb93dcef8a500f5",
+        "kody-w/vb-sentinel": "rappid:@kody-w/vb-sentinel-estate:34393ee06cdc74612c51746b536f3335be5ad029c0247334a77987447c75ad0c",
         "kody-w/vb-atlas": "rappid:@kody-w/vb-atlas-estate:9ad6dba3fa7f6933e09a3c7dfed059c13d669e93c9e1a34fdf02433a8dda3102",
         "kody-w/vb-forge": "rappid:@kody-w/vb-forge-estate:b57f68c27fb05f8a03c4f5cc412c0de23fa1e7d9151520cc36e221c86b22ea1b",
         "kody-w/vb-quill": "rappid:@kody-w/vb-quill-estate:2138096745d4ef804cc5cfd5b798d08a01ab14e699824c838af3b0068826586c",
@@ -975,7 +1008,8 @@
       });
       const PAGE_PARAMETERS = new URLSearchParams(location.search);
       const dialRepository = frontRepository(PAGE_PARAMETERS.get("dial") || "");
-      const PROFILE_SPACE = (PAGE_PARAMETERS.get("space") || (Object.hasOwn(DEMO_TRUST, dialRepository) ? dialRepository : "")).toLowerCase();
+      const PROFILE_SPACE = (PAGE_PARAMETERS.get("space") ||
+        (Object.hasOwn(DEMO_TRUST, dialRepository) || Object.hasOwn(FAVORITES, dialRepository) ? dialRepository : "")).toLowerCase();
       const PROFILE_FACE = PAGE_PARAMETERS.get("face") === "private" ? "private" : "public";
       const VALID_SPACE = !PROFILE_SPACE || /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9][a-z0-9._-]{0,99}$/.test(PROFILE_SPACE);
       // A browser namespace keeps separate AIs apart; it is not identity or authorization.
@@ -1046,8 +1080,7 @@
         setupCopyStatus: document.getElementById("setup-copy-status"),
         storageWarning: document.getElementById("storage-warning"),
         publicationState: document.getElementById("publication-state"),
-        copyControls: document.getElementById("copy-controls"),
-        switchCopy: document.getElementById("switch-copy"),
+        connectingMessage: document.getElementById("connecting-message"),
         composer: document.getElementById("composer"),
         message: document.getElementById("message"),
         send: document.getElementById("send"),
@@ -1078,7 +1111,6 @@
         exportFile: document.getElementById("export-file"),
         exportBackup: document.getElementById("export-backup"),
         shareBackup: document.getElementById("share-backup"),
-        dialFace: document.getElementById("dial-face"),
         shareFile: document.getElementById("share-file"),
         sharePhone: document.getElementById("share-phone"),
         shareMessage: document.getElementById("share-message"),
@@ -1112,6 +1144,10 @@
       let copilotSession = null;
       let availableModels = DEFAULT_MODELS.slice();
       let publicationStatusVersion = 0;
+      let connecting = false;
+      let connectionRequired = false;
+      let accessConfirmed = false;
+      let connectionTarget = "";
       const nativeFetch = globalThis.fetch.bind(globalThis);
 
 
@@ -1126,11 +1162,29 @@
       // way into the sign-in sheet works again. The same rule the private-access token follows.
       function dropSignInToken() {
         localStorage.removeItem(STORAGE.token);
+        localStorage.removeItem("github_login");
         for (const alias of TOKEN_ALIASES) {
           localStorage.removeItem(alias);
         }
         copilotSession = null;
         updateReadyState();
+      }
+
+      async function accountIdentity(token) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 10000);
+        try {
+          const response = await allowedFetch(GITHUB_API + "/user", {
+            headers: { Accept: "application/vnd.github+json", Authorization: "Bearer " + token },
+            credentials: "omit", redirect: "error", signal: controller.signal
+          });
+          if (!response.ok) throw new Error("GitHub could not identify this sign-in.");
+          const account = await response.json();
+          if (!Number.isSafeInteger(account.id) || account.id <= 0) throw new Error("GitHub returned an invalid account identity.");
+          return account.id;
+        } finally {
+          clearTimeout(timer);
+        }
       }
 
       function signInRejected(status) {
@@ -1290,10 +1344,44 @@
         return /^[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(repo) ? repo.toLowerCase() : "";
       }
 
+      function contactName(repo = PROFILE_SPACE) {
+        if (FAVORITES[repo]) return FAVORITES[repo];
+        const name = (repo.split("/")[1] || "your AI").replace(/^vb-/, "");
+        return name.charAt(0).toUpperCase() + name.slice(1);
+      }
+
+      async function privateCredential(repo) {
+        const candidates = [...new Set([localStorage.getItem(STORAGE.repoToken), getGithubToken()].filter(Boolean))];
+        for (const token of candidates) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 20000);
+          try {
+            const response = await allowedFetch(GITHUB_API + "/repos/" + repo, {
+              headers: { Accept: "application/vnd.github+json", Authorization: "Bearer " + token },
+              credentials: "omit", redirect: "error", cache: "no-store", signal: controller.signal
+            });
+            const limited = response.status === 429 ||
+              (response.status === 403 && (response.headers.get("x-ratelimit-remaining") === "0" || response.headers.has("retry-after")));
+            if (limited) throw new Error("GitHub is temporarily limiting connections. Try again shortly.");
+            if ([401, 403, 404].includes(response.status)) continue;
+            if (!response.ok) throw new Error("GitHub could not check this connection (" + response.status + ").");
+            const metadata = await response.json();
+            if (metadata.private !== true || String(metadata.full_name || "").toLowerCase() !== repo.toLowerCase()) {
+              throw new Error("The saved-context repository does not match its expected privacy or identity.");
+            }
+            return token;
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        return null;
+      }
+
       async function fetchPublicationText(repo, path, privateAccess = false) {
         const headers = { Accept: privateAccess ? "application/vnd.github.raw+json" : "text/plain" };
         if (privateAccess) {
-          const token = localStorage.getItem(STORAGE.repoToken) || getGithubToken();
+          const token = typeof privateAccess === "string" ? privateAccess :
+            localStorage.getItem(STORAGE.repoToken) || getGithubToken();
           if (!token) throw new Error("Private access is required. Add a repository-limited read token before loading this private copy.");
           headers.Authorization = "Bearer " + token;
         }
@@ -1358,10 +1446,12 @@
         let verified = verifiedPublic;
         let content = publicText;
         const dial = verifiedPublic.dial;
+        const credential = face === "auto" ? await privateCredential(dial.private_repo) : null;
+        if (face === "auto") face = credential ? "private" : "public";
         if (face === "private") {
           const [privateReceipt, privateRegistry, privateFrame, privateChain, privateText] = await Promise.all(
             ["DIAL.json", "registry.json", "FRAME.json", "FRAMES.jsonl", dial.private_skill_path]
-              .map((path) => fetchPublicationText(dial.private_repo, path, true))
+              .map((path) => fetchPublicationText(dial.private_repo, path, credential || true))
           );
           if (privateReceipt !== receiptText) throw new Error("Private and public publication receipts disagree.");
           verified = await window.VBDialIntegrity.verifyPublishedFace({
@@ -1393,7 +1483,33 @@
       }
 
       async function applyDialResult(result) {
-        const outcome = await setPersonFile(result.content, "link");
+        const current = getPersonFile();
+        const options = {};
+        if (current && result.verification) {
+          const previous = JSON.parse(localStorage.getItem(STORAGE.publication) || "null");
+          const incoming = validatePersonFile(result.content).fields.metadata;
+          const selected = validatePersonFile(current).fields.metadata;
+          if (incoming.id === selected.id && incoming.face === "private") {
+            options.approvedSource = { id: incoming.id, previousId: selected.id };
+          } else if (previous && previous.owner === result.verification.owner &&
+              previous.id === incoming.id && incoming.id === selected.id && await sha256(current) === previous.sha256) {
+            options.approvedPublication = { id: incoming.id, owner: previous.owner, previousHash: previous.sha256 };
+          }
+        }
+        let outcome;
+        try {
+          outcome = await setPersonFile(result.content, "link", options);
+        } catch (error) {
+          if (error.code !== "reunion_refused" || !result.verification || !current ||
+              getPersonFile() !== current ||
+              !sameAI(validatePersonFile(current).fields, validatePersonFile(result.content).fields)) throw error;
+          outcome = Object.assign(validatePersonFile(current), {
+            keptLocal: true, publicationApplied: false,
+            issues: ["Your saved changes were kept; the published version has different instructions."]
+          });
+          els.fileEditor.value = current;
+          els.fileEditor.reunionBase = current;
+        }
         if (result.verification) {
           localStorage.setItem(STORAGE.publication, JSON.stringify(result.verification));
           localStorage.setItem(STORAGE.publicFace, result.public_content);
@@ -1403,6 +1519,10 @@
       }
 
       function renderPublicationState() {
+        if (connectionRequired && !accessConfirmed) {
+          els.publicationState.textContent = "This connection has not been verified yet.";
+          return;
+        }
         const version = ++publicationStatusVersion;
         const proof = localStorage.getItem(STORAGE.publication);
         const file = getPersonFile();
@@ -1494,6 +1614,9 @@
       function buildSystemPrompt(fileText) {
         const parsed = validatePersonFile(fileText);
         return stripOlderMemory(parsed.body) +
+          "\n\nThe host selects available context automatically using the existing authorized connection. " +
+          "Do not ask the user to select public or private, and do not volunteer access modes or repository details unless asked. " +
+          "Never invent private memories or imply you have information absent from the supplied context." +
           "\n\nCall ManageMemory the moment you learn a durable fact, and ContextMemory to recall; they write to and read this file. " +
           "Never save secrets or anything the person's private section says must stay private.";
       }
@@ -1764,27 +1887,39 @@
       }
 
       function updateReadyState() {
-        const hasFile = Boolean(getPersonFile());
+        const usable = !connecting && (!connectionRequired || accessConfirmed);
+        const hasFile = usable && Boolean(getPersonFile());
         const signedIn = Boolean(getGithubToken());
-        els.fileState.textContent = hasFile ? "Your file is ready" : "No file yet";
+        els.fileState.textContent = PROFILE_SPACE ?
+          (connecting ? "Connecting..." : hasFile ? "Ready" : connectionRequired ? "Connection unavailable" : "Not connected") :
+          (hasFile ? "Your file is ready" : "No file yet");
         els.readyDot.classList.toggle("good", hasFile && signedIn);
         els.signInShortcut.textContent = signedIn ? "Signed in (switch account)" : "Sign in with GitHub";
         els.signInShortcut.disabled = false;
         els.fileWork.hidden = !hasFile;
         els.message.disabled = !hasFile;
         els.send.disabled = !hasFile;
-        els.message.placeholder = hasFile ? "Message..." : "Add your file to chat here";
+        els.message.placeholder = hasFile ? "Message..." : PROFILE_SPACE ? "Connecting to your AI..." : "Add your file to chat here";
+        els.connectingMessage.hidden = !connecting;
+        els.connectingMessage.textContent = "Connecting to " + contactName() + "...";
         if (PROFILE_SPACE) {
-          document.querySelector(".brand").textContent = PROFILE_SPACE.split("/")[1] + " / " + PROFILE_FACE;
-          els.forget.textContent = "Forget this " + PROFILE_FACE + " copy in this browser";
-          els.copyControls.hidden = false;
-          els.switchCopy.textContent = "Use " + (PROFILE_FACE === "public" ? "private" : "public") + " copy";
-          els.saveRepoToken.textContent = PROFILE_FACE === "private" ? "Save and load private copy" : "Save";
+          document.querySelector(".brand").textContent = contactName();
+          document.title = contactName() + " - vbrainstem";
+          els.forget.textContent = "Forget this AI on this browser";
+          els.saveRepoToken.textContent = "Save connection";
+        }
+        for (const link of document.querySelectorAll("[data-contact]")) {
+          if (link.dataset.contact === PROFILE_SPACE) link.setAttribute("aria-current", "page");
+          else link.removeAttribute("aria-current");
+        }
+        for (const button of document.querySelectorAll('[data-open="file"], [data-open="tools"]')) {
+          button.disabled = connecting;
         }
         if (hasFile && document.activeElement !== els.fileEditor) {
           els.fileEditor.value = getPersonFile();
         }
-        els.welcome.hidden = hasFile || conversation.length > 0;
+        if (!usable) els.fileEditor.value = "";
+        els.welcome.hidden = connecting || hasFile || conversation.length > 0;
         renderPublicationState();
       }
 
@@ -1966,9 +2101,15 @@
         };
         // This option comes from a trusted controller, never from a file's metadata.
         const approval = options.approvedSource;
-        const approved = Boolean(approval && approval.id === b.fields.metadata.id &&
+        const snapshot = options.approvedPublication;
+        const cleanPublication = Boolean(snapshot && sameAI(a.fields, b.fields) &&
+          snapshot.id === b.fields.metadata.id && a.fields.metadata.face === "public" && b.fields.metadata.face === "public" &&
+          snapshot.owner === a.fields.metadata["estate-owner"] && snapshot.owner === b.fields.metadata["estate-owner"] &&
+          snapshot.previousHash === await sha256(existingText));
+        const approved = cleanPublication || Boolean(approval && approval.id === b.fields.metadata.id &&
           approval.previousId === a.fields.metadata.id && isMainlineOf(b, a));
         if (approval && !approved) refuse("The approval does not match these files or a private source.");
+        if (snapshot && !cleanPublication) refuse("The verified publication update does not match the unchanged saved snapshot.");
         if (!sameAI(a.fields, b.fields) && !approved) {
           refuse("These files have different identities. Open the other AI in its own space instead.");
         }
@@ -2947,6 +3088,9 @@
       }
 
       async function chat(body) {
+        if (connecting || (connectionRequired && !accessConfirmed)) {
+          return { status: 503, json: { error: "Your AI connection is not ready yet." } };
+        }
         if (!body || typeof body !== "object" || Array.isArray(body)) {
           return { status: 400, json: { error: "Request body must be a JSON object" } };
         }
@@ -3109,9 +3253,34 @@
           const purpose = pendingLogin.purpose;
           pendingLogin = null;
           if (purpose === "private") {
+            if (PROFILE_SPACE) {
+              connecting = true;
+              connectionRequired = true;
+              accessConfirmed = false;
+              updateReadyState();
+            }
             localStorage.setItem(STORAGE.repoToken, data.access_token);
             return { status: "ok", purpose, message: "Private file access allowed on this device." };
           }
+          const extraAccess = localStorage.getItem(STORAGE.repoToken);
+          const previousToken = getGithubToken() || extraAccess;
+          if (extraAccess && previousToken && previousToken !== data.access_token) {
+            const identities = await Promise.allSettled([
+              accountIdentity(previousToken), accountIdentity(data.access_token)
+            ]);
+            const sameAccount = identities.every((result) => result.status === "fulfilled") &&
+              identities[0].value === identities[1].value;
+            if (!sameAccount) {
+              localStorage.removeItem(STORAGE.repoToken);
+              setMessage(els.repoTokenMessage, "Previous saved-context access was cleared for this sign-in.");
+            }
+          }
+          if (PROFILE_SPACE) {
+            connecting = true;
+            connectionRequired = true;
+            accessConfirmed = false;
+          }
+          localStorage.removeItem("github_login");
           localStorage.setItem(STORAGE.token, data.access_token);
           copilotSession = null;
           updateReadyState();
@@ -3135,6 +3304,7 @@
       function healthEnvelope(publicOnly = false) {
         const tools = (() => {
           try {
+            if (connecting || (connectionRequired && !accessConfirmed)) return [];
             const names = mindEntries(coreSkill).map((entry) => entry.name);
             for (const stored of readStoredTools()) {
               const parsed = parseToolSkill(stored.text, stored.source);
@@ -3192,7 +3362,7 @@
             const pinnedOwner = DEMO_TRUST[repo];
             if (pinnedOwner && suppliedOwner && suppliedOwner !== pinnedOwner) throw new Error("This link's publisher fingerprint does not match the pinned demo.");
             const expectedOwner = pinnedOwner || suppliedOwner;
-            const wanted = body.face === "private" ? "private" : "public";
+            const wanted = ["public", "private"].includes(body.face) ? body.face : "auto";
             if (expectedOwner) {
               if (!repo) throw new Error("A valid repository front door is required.");
               return await dialSignedPublication(repo, wanted, expectedOwner);
@@ -3234,6 +3404,9 @@
             return { status: 200, json: healthEnvelope(true) };
           }
           if (verb === "GET" && cleanPath === "/agents") {
+            if (connecting || (connectionRequired && !accessConfirmed)) {
+              return { status: 503, json: { error: "Your AI connection is not ready yet." } };
+            }
             const files = mindEntries(await loadCoreSkill()).map((entry) => ({
               filename: entry.path.replace(/^agents\//, ""),
               agents: [entry.name]
@@ -3298,6 +3471,9 @@
 
       window.rapp = Object.freeze({
         async dispatch(method, path, body) {
+          if (connecting || (connectionRequired && !accessConfirmed)) {
+            return { status: 422, json: { error: { code: "refused", step: null } } };
+          }
           const scope = currentChatScope();
           if (!canonicalChat || scope !== canonicalScope) {
             canonicalScope = scope;
@@ -3464,8 +3640,7 @@
       }
 
       function offerPrivateAccessNext() {
-        return els.dialFace.querySelector("input:checked")?.value === "private" &&
-          fileNamesPrivate() && !localStorage.getItem(STORAGE.repoToken);
+        return false;
       }
 
       async function beginSignIn() {
@@ -3519,6 +3694,10 @@
           const data = result.json;
           if (data.status === "ok") {
             els.signInCode.hidden = true;
+            if (PROFILE_SPACE) {
+              location.replace(automaticDialUrl());
+              return;
+            }
             updateReadyState();
             if (data.purpose === "private") {
               setMessage(els.signInMessage, "Private file access allowed. Dial your AI again to use it.");
@@ -3742,50 +3921,77 @@
       });
 
       async function autoDialFromLink() {
-        const dial = PAGE_PARAMETERS.get("dial");
+        const dial = connectionTarget || PAGE_PARAMETERS.get("dial");
         if (!dial) {
           return;
         }
         const target = /^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9._-]*$/i.test(dial) ? "https://github.com/" + dial : dial;
-        // The link has done its work once the page is open; a reload must not dial again.
-        history.replaceState(null, "", profilePageUrl());
+        if (!PROFILE_SPACE) history.replaceState(null, "", profilePageUrl());
         const existing = getPersonFile();
-        if (existing) {
+        if (existing && !PROFILE_SPACE) {
           await bootSync;
         }
-        setMessage(els.fileMessage, "Dialing your AI...");
+        if (PROFILE_SPACE) {
+          connecting = true;
+          connectionRequired = true;
+          accessConfirmed = false;
+          updateReadyState();
+        }
         try {
           const dialed = await dispatch("POST", "/file/dial", {
             url: target,
-            face: PAGE_PARAMETERS.get("face") === "private" ? "private" : "public"
+            face: "auto"
           });
           if (dialed.status !== 200 || dialed.json.error) {
             throw new Error(dialed.json.error || "Your AI could not be reached.");
           }
+          if (activateResolvedCopy(dialed.json.face)) return;
           if (existing && !sameAI(validatePersonFile(existing).fields, validatePersonFile(dialed.json.content).fields)) {
-            openSheet("file");
-            setMessage(els.fileMessage, "A different AI is already on this device. Export it if you want to keep it, then tap Forget everything and open the link again.");
-            return;
+            throw new Error("A different AI is already on this device. Your existing file was kept.");
           }
+          accessConfirmed = true;
           const outcome = await applyDialResult(dialed.json);
+          connecting = false;
+          updateReadyState();
+          renderTools();
+          if (PROFILE_SPACE) history.replaceState(null, "", automaticDialUrl(PROFILE_SPACE, PROFILE_FACE));
           const trouble = (outcome && outcome.issues && outcome.issues.length) ? " " + outcome.issues.join(" ") : "";
-          if (outcome && outcome.reunited !== undefined) {
+          if (!PROFILE_SPACE && outcome && outcome.reunited !== undefined) {
             addSystemNotice("Reunited with the copy on this device: " + outcome.reunited + " new memory line(s) brought in." + trouble);
             return;
           }
-          setMessage(els.fileMessage, "Your AI is here. Sign in with GitHub to start talking." + trouble, Boolean(trouble));
-          addSystemNotice("Your AI is here from " + dial + ". Sign in with GitHub to start talking." + trouble);
+          const next = getGithubToken() ? "You can start talking." : "Sign in with GitHub to start talking.";
+          const message = (PROFILE_SPACE ? contactName() + " is ready. " : "Your AI is here from " + dial + ". ") + next + trouble;
+          setMessage(els.fileMessage, message, Boolean(trouble));
+          addSystemNotice(message);
         } catch (error) {
+          connecting = false;
+          accessConfirmed = false;
+          updateReadyState();
           showDialFailure(error.message);
           addSystemNotice("Your AI could not be reached: " + error.message);
         }
       }
 
-      function switchCopy(face) {
-        const target = new URL(profilePageUrl(), location.origin);
-        target.searchParams.set("face", face);
-        target.searchParams.set("dial", PROFILE_SPACE);
-        location.assign(target.href);
+      function automaticDialUrl(repo = PROFILE_SPACE, face = null) {
+        const target = new URL(location.pathname, location.origin);
+        target.searchParams.set("dial", repo);
+        target.searchParams.set("space", repo);
+        if (face) target.searchParams.set("face", face);
+        const owner = DEMO_TRUST[repo] || (repo === PROFILE_SPACE ? PAGE_PARAMETERS.get("trust") : "");
+        if (owner) target.searchParams.set("trust", owner);
+        return target.href;
+      }
+
+      function activateResolvedCopy(face) {
+        if (!PROFILE_SPACE || face === PROFILE_FACE) return false;
+        const raw = PAGE_PARAMETERS.get("access-hop") || "0";
+        const hops = /^[0-2]$/.test(raw) ? Number(raw) : 2;
+        if (hops >= 2) throw new Error("Your connection changed while opening this AI. Try its favorite again.");
+        const target = new URL(automaticDialUrl(PROFILE_SPACE, face));
+        target.searchParams.set("access-hop", String(hops + 1));
+        location.replace(target.href);
+        return true;
       }
 
       function showDialFailure(message) {
@@ -3794,22 +4000,15 @@
         if (PROFILE_SPACE) {
           els.publicationState.hidden = false;
           els.publicationState.textContent = message;
-          if (PROFILE_FACE === "private") {
-            document.getElementById("private-access").open = true;
-            requestAnimationFrame(() => {
-              els.repoToken.scrollIntoView({ block: "center" });
-            });
-          }
+          document.getElementById("connection-details").open = true;
         }
       }
-
-      els.switchCopy.addEventListener("click", () => switchCopy(PROFILE_FACE === "public" ? "private" : "public"));
 
       els.sharePhone.addEventListener("click", async () => {
         const shared = new URL(profilePageUrl(), location.origin);
         if (PROFILE_SPACE) {
           shared.searchParams.set("dial", PROFILE_SPACE);
-          shared.searchParams.set("face", "public");
+          shared.searchParams.delete("face");
         }
         const url = shared.href;
         const text = "Your AI, on any phone or browser: load your own file, or dial your public AI, and it is here in real time.";
@@ -3832,29 +4031,44 @@
           setMessage(els.repoTokenMessage, "Paste a token first.", true);
           return;
         }
+        if (PROFILE_SPACE) {
+          connecting = true;
+          connectionRequired = true;
+          accessConfirmed = false;
+          updateReadyState();
+        }
         localStorage.setItem(STORAGE.repoToken, value);
         els.repoToken.value = "";
-        setMessage(els.repoTokenMessage, "Saved on this device. Dial your AI again to use it.");
-        if (PROFILE_SPACE && PROFILE_FACE === "private") els.dialPublic.click();
+        setMessage(els.repoTokenMessage, "Connection saved.");
+        if (PROFILE_SPACE) location.replace(automaticDialUrl());
       });
       els.clearRepoToken.addEventListener("click", () => {
+        if (PROFILE_SPACE) {
+          connecting = true;
+          connectionRequired = true;
+          accessConfirmed = false;
+          updateReadyState();
+        }
         localStorage.removeItem(STORAGE.repoToken);
         setMessage(els.repoTokenMessage, "Removed from this device.");
+        if (PROFILE_SPACE) location.replace(automaticDialUrl());
       });
 
       els.dialPublic.addEventListener("click", async () => {
         els.dialPublic.disabled = true;
-        setMessage(els.fileMessage, "Dialing your public AI...");
+        setMessage(els.fileMessage, "Connecting to your AI...");
         try {
-          const chosen = (els.dialFace.querySelector("input[name=dial-face]:checked") || {}).value || "public";
-          if (PROFILE_SPACE && chosen !== PROFILE_FACE) {
-            switchCopy(chosen);
+          const repo = frontRepository(els.dialUrl.value);
+          if (repo && repo !== PROFILE_SPACE && (DEMO_TRUST[repo] || FAVORITES[repo])) {
+            location.assign(automaticDialUrl(repo));
             return;
           }
-          const dialed = await dispatch("POST", "/file/dial", { url: els.dialUrl.value, face: chosen });
+          const dialed = await dispatch("POST", "/file/dial", { url: els.dialUrl.value, face: "auto" });
           if (dialed.status !== 200 || dialed.json.error) {
             throw new Error(dialed.json.error || "Your public AI could not be reached.");
           }
+          if (activateResolvedCopy(dialed.json.face)) return;
+          accessConfirmed = true;
           const outcome = await applyDialResult(dialed.json);
           els.dialUrl.value = "";
           const trouble = (outcome && outcome.issues && outcome.issues.length) ? " " + outcome.issues.join(" ") : "";
@@ -3862,14 +4076,7 @@
             setMessage(els.fileMessage, "Reunited with the copy on this device: " + outcome.reunited + " new memory line(s) brought in." + (outcome.setAside ? " " + outcome.setAside + " section(s) differed and were kept under \"Set aside\" in the file for you to look at." : "") + trouble, Boolean(trouble));
             return;
           }
-          if (chosen === "private" && /no private file access yet/.test(dialed.json.private_reason || "")) {
-            document.getElementById("private-access").open = true;
-          }
-          setMessage(els.fileMessage, (dialed.json.face === "private"
-            ? "Your AI is here from your private file, with the public one alongside. This device's copy is now the one you use."
-            : (chosen === "private" && dialed.json.private_reason
-              ? "Your private file could not be reached (" + dialed.json.private_reason + "), so the public version is here as a new copy on this device."
-              : "Your AI is here. It is a new copy on this device; export it any time to bring it home.")) + trouble, Boolean(trouble));
+          setMessage(els.fileMessage, "Your AI is ready. Its saved context was selected automatically." + trouble, Boolean(trouble));
         } catch (error) {
           showDialFailure(error.message);
         } finally {
@@ -3959,8 +4166,8 @@
       els.forget.addEventListener("click", () => {
         clearTimeout(loginTimer);
         if (PROFILE_SPACE) {
-          for (const key of Object.values(STORAGE)) {
-            if (key.startsWith("vbrainstem:" + PROFILE_SPACE + ":" + PROFILE_FACE + ":")) localStorage.removeItem(key);
+          for (const key of Object.keys(localStorage)) {
+            if (key.startsWith("vbrainstem:" + PROFILE_SPACE + ":")) localStorage.removeItem(key);
           }
         } else {
           localStorage.clear();
@@ -3983,11 +4190,14 @@
 
       try {
         if (!VALID_SPACE) throw new Error("Invalid AI browser space.");
-        if (PROFILE_SPACE) els.dialFace.querySelector('input[value="' + PROFILE_FACE + '"]').checked = true;
         if (PROFILE_SPACE) els.dialUrl.value = "https://github.com/" + PROFILE_SPACE;
+        connectionTarget = PAGE_PARAMETERS.get("dial") ||
+          (PROFILE_SPACE && localStorage.getItem(STORAGE.publication) ? PROFILE_SPACE : "");
+        connecting = Boolean(PROFILE_SPACE && connectionTarget);
+        connectionRequired = connecting;
         updateReadyState();
-        renderTools();
-        if (getPersonFile()) {
+        if (!connecting) renderTools();
+        if (!connecting && getPersonFile()) {
           bootSync = syncListedTools().then((issues) => {
             if (issues.length) {
               setMessage(els.fileMessage, issues.join(" "), true);
@@ -3995,7 +4205,7 @@
             return issues;
           });
         }
-        if (getPersonFile()) {
+        if (!connecting && getPersonFile()) {
           loadCoreSkill().then(() => updateReadyState()).catch((error) => {
             setMessage(els.fileMessage, "Core skill unavailable: " + error.message, true);
           });

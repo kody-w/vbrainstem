@@ -180,9 +180,12 @@ needs a GitHub account and the `gh` command signed in; if either is missing, say
    holding their real file, unchanged (its name is `vbrainstem`, so its folder must be too).
    Only they, and collaborators they add, can read it.
 5. Tell them: anyone can hand `https://github.com/<account>/<ai>` to any AI and get the public
-   version. Loading the private version requires an explicit choice and access to that
-   repository. Prefer a fine-grained token for that repository with Contents: read, or
-   a signed-in tool that already has access. Never call broad OAuth `repo` access read-only.
+   version, or the fullest version their existing GitHub connection is authorized to
+   read. For verified paired contacts, try authorized private access automatically;
+   ordinary denial means using the shared version, not asking people to choose a mode.
+   Never widen permissions silently or treat a broken signature or server failure as
+   ordinary denial. Prefer a fine-grained connection with Contents: read, or a signed-in
+   tool that already has access. Never call broad OAuth `repo` access read-only.
    Show both links, and explain that GitHub repository privacy does not make cloud inference
    local. Never put private content or signing keys in the public repository.
 6. A claim of RAPP/1 conformance needs real identity, frame, and authenticated registry

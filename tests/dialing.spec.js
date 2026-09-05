@@ -45,7 +45,7 @@ test("four browser spaces preserve distinct files across switching and scoped de
   ];
   for (const [slug, name, tail] of ais) {
     await page.goto(`/index.html?space=kody-w/vb-${slug}`);
-    await expect(page.locator("#file-state")).toHaveText("No file yet");
+    await expect(page.locator("#file-state")).toHaveText("Not connected");
     await importPerson(page, person(name, tail));
   }
   for (const [slug, name, tail] of ais) {
@@ -56,9 +56,9 @@ test("four browser spaces preserve distinct files across switching and scoped de
   await page.goto("/index.html?space=kody-w/vb-atlas");
   await page.getByRole("button", { name: "Open about", exact: true }).click();
   await page.locator("#forget").click();
-  await expect(page.locator("#file-state")).toHaveText("No file yet");
+  await expect(page.locator("#file-state")).toHaveText("Not connected");
   await page.goto("/index.html?space=kody-w/vb-forge");
-  await expect(page.locator("#file-state")).toHaveText("Your file is ready");
+  await expect(page.locator("#file-state")).toHaveText("Ready");
   await page.getByRole("button", { name: "Open your file", exact: true }).click();
   await expect(page.locator("#file-editor")).toHaveValue(person("Forge", "b"));
 });
@@ -95,7 +95,7 @@ test("public and private copies of one AI have separate browser state", async ({
   await page.goto("/index.html?space=kody-w/vb-atlas&face=private");
   await importPerson(page, person("Atlas", "b", "PRIVATE_LOCAL_CANARY"));
   await page.goto("/index.html?space=kody-w/vb-atlas&face=public");
-  await expect(page.locator("#file-state")).toHaveText("No file yet");
+  await expect(page.locator("#file-state")).toHaveText("Not connected");
   await importPerson(page, person("Atlas", "a", "Public role only."));
   expect(await page.locator("#file-editor").inputValue()).not.toContain("PRIVATE_LOCAL_CANARY");
   await page.goto("/index.html?space=kody-w/vb-atlas&face=private");
@@ -125,7 +125,7 @@ test("exported persona imports into a fresh device without other AI state", asyn
     await second.locator("#person-file").setInputFiles({ name: "SKILL.md", mimeType: "text/markdown", buffer: exported });
     await expect(second.locator("#file-editor")).toHaveValue(file);
     await second.goto("/index.html?space=kody-w/vb-harbor");
-    await expect(second.locator("#file-state")).toHaveText("No file yet");
+    await expect(second.locator("#file-state")).toHaveText("Not connected");
   } finally {
     await other.close();
   }

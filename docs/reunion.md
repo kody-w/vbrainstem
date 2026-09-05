@@ -46,6 +46,16 @@ The controller must verify the source and obtain the user's intended private
 selection **before** passing this option. Do not populate it from an imported
 file, query parameter, model response, or unverified `mainline-id`.
 
+For the automatic-access contacts, the user's dial request authorizes selecting
+available context. The controller verifies both the signed source and existing
+GitHub access before approving a same-identity private publication update.
+
+A verified public successor may use the internal `approvedPublication` option
+with its exact identity, publisher, and the previous publication's SHA-256. It is
+accepted only if the saved file still matches that previous fingerprint and both
+identities and publisher bindings agree. A locally edited public file does not
+receive this approval. These options are never accepted from the public dispatcher.
+
 The option must name both exact IDs. The incoming file must not declare a public
 face or public source. For different IDs, the selected file must also name the
 incoming ID as its mainline. These metadata checks narrow an already approved

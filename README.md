@@ -92,21 +92,30 @@ GitHub repositories, or earlier chats.
 
 ## Four synthetic test AIs
 
-Each demo has its own public front door, separate private repository, mint-once
-RAPPIDs, signed publication frames, and authenticated RAPP/1 registry. They do not
-contain Orion's memories or real personal/customer data.
+Your four favorites are **Overwatch, Scout, Forge, and Sentinel**. Click a name in
+the app to dial it. The app uses the fullest context its existing GitHub connection
+can read; if access is not granted, the shared version works instead. There is no
+public/private choice to make and no automatic request for broader permissions.
+
+Each contact has a public front door, a separate private repository, mint-once
+RAPPIDs, signed publications, and an authenticated RAPP/1 registry. The test contacts
+contain no Orion memories or real personal/customer data.
 
 | AI | Specialty | Open its public copy | Private home |
 |---|---|---|---|
-| Atlas | Research and evidence | [Open Atlas](https://kody-w.github.io/vb-atlas/) | [vb-atlas-private](https://github.com/kody-w/vb-atlas-private) |
+| Overwatch | Coordination and overview | [Open Overwatch](https://kody-w.github.io/vb-overwatch/) | [vb-overwatch-private](https://github.com/kody-w/vb-overwatch-private) |
+| Scout | Discovery and research | [Open Scout](https://kody-w.github.io/vb-scout/) | [vb-scout-private](https://github.com/kody-w/vb-scout-private) |
 | Forge | Building and testing | [Open Forge](https://kody-w.github.io/vb-forge/) | [vb-forge-private](https://github.com/kody-w/vb-forge-private) |
-| Quill | Writing and editing | [Open Quill](https://kody-w.github.io/vb-quill/) | [vb-quill-private](https://github.com/kody-w/vb-quill-private) |
-| Harbor | Planning and dependencies | [Open Harbor](https://kody-w.github.io/vb-harbor/) | [vb-harbor-private](https://github.com/kody-w/vb-harbor-private) |
+| Sentinel | Review and risk checks | [Open Sentinel](https://kody-w.github.io/vb-sentinel/) | [vb-sentinel-private](https://github.com/kody-w/vb-sentinel-private) |
 
-Choose **Use private copy** to deliberately switch, or open **File** to see
-publication verification. Private loading needs GitHub repository access; a denied request never
-substitutes the public copy. The four AIs, and their public/private copies, use
-separate browser state. A public link never contains a private file.
+Access is checked before cached private context is exposed. Ordinary denial selects
+the shared AI; a broken signature, malformed publication, rate limit, or transient
+server error is not disguised as an access denial. The separate copies stay isolated
+internally, without putting that choice in the user's way. **File → Connection
+details** retains verification information for anyone who needs it.
+
+Earlier Atlas, Quill, and Harbor demos remain at their existing addresses, outside
+Favorites. They are not renamed into the original four roles.
 
 To try device travel, add a harmless fictional memory, export the file, and import
 it into the matching AI/copy on another device. Changes do not synchronize
