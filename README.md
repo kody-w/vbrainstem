@@ -1,5 +1,9 @@
 # vbrainstem
 
+<!-- rapp1:network-header:start -->
+[![RAPP/1](https://kody-w.github.io/rapp-hive-public/portfolio/badges/vbrainstem.svg)](https://github.com/kody-w/rapp-hive-public/blob/main/portfolio/repos/vbrainstem.md) · **New to RAPP?** [Start here: get your Brainstem →](https://github.com/kody-w/rapp-installer#start-here)
+<!-- rapp1:network-header:end -->
+
 **One file that makes any AI yours.**
 
 Your vbrainstem is a single file you own. It says who you are, how you like to be helped, what
